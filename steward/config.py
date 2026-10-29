@@ -51,6 +51,18 @@ class Paths(BaseModel):
         return self.data / "results" / "c2"
 
     @property
+    def pilot(self) -> Path:
+        return self.data / "pilot"
+
+    @property
+    def handoff_c2_pilot(self) -> Path:
+        return self.data / "handoff" / "c2_pilot"
+
+    @property
+    def results_c2_pilot(self) -> Path:
+        return self.data / "results" / "c2_pilot"
+
+    @property
     def ranked(self) -> Path:
         return self.data / "ranked"
 

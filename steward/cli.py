@@ -90,6 +90,13 @@ def cmd_pilot(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_pilot_report(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.pilot_report import write_pilot_report
+
+    write_pilot_report(settings)
+    return 0
+
+
 def cmd_stage_b(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter import stage_b
 
@@ -130,16 +137,22 @@ def cmd_stage_c1(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_c2_handoff(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter import c2_handoff
 
+    paths = settings.paths
     if args.pilot:
-        root = settings.paths.data / "pilot"
-        paths = c2_handoff.build_shards(settings, root / "stage_c1.jsonl", root / "stage_b.jsonl")
-    else:
-        paths = c2_handoff.build_shards(
+        shards = c2_handoff.build_shards(
             settings,
-            settings.paths.stage_c1 / "results.jsonl",
-            settings.paths.stage_b / "results.jsonl",
+            paths.pilot / "stage_c1.jsonl",
+            paths.pilot / "stage_b.jsonl",
+            paths.handoff_c2_pilot,
         )
-    for path in paths:
+    else:
+        shards = c2_handoff.build_shards(
+            settings,
+            paths.stage_c1 / "results.jsonl",
+            paths.stage_b / "results.jsonl",
+            paths.handoff_c2,
+        )
+    for path in shards:
         print(path)
     return 0
 
@@ -147,7 +160,15 @@ def cmd_c2_handoff(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_c2_merge(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter import c2_handoff
 
-    c2_handoff.merge_results(settings)
+    paths = settings.paths
+    if args.pilot:
+        c2_handoff.merge_results(
+            paths.handoff_c2_pilot, paths.results_c2_pilot, paths.pilot / "stage_c2.jsonl"
+        )
+    else:
+        c2_handoff.merge_results(
+            paths.handoff_c2, paths.results_c2, paths.stage_c2 / "results.jsonl"
+        )
     return 0
 
 
@@ -263,7 +284,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("shard")
     sub.add_argument("out_dir")
     add("c2-schema", cmd_c2_schema, "print the JSON schema of a Stage C2 result")
-    add("c2-merge", cmd_c2_merge, "merge data/results/c2 into data/stage_c2")
+    add("c2-merge", cmd_c2_merge, "merge data/results/c2 into data/stage_c2").add_argument(
+        "--pilot", action="store_true", help="merge the pilot results into data/pilot"
+    )
+    add("pilot-report", cmd_pilot_report, "write reports/PILOT.md from the pilot outputs")
     add("rank", cmd_rank, "write data/ranked/<domain>/<axis>.csv")
     add("analyze", cmd_analyze, "write reports/PHASE1_REPORT.md and figures")
     add("sources-status", cmd_sources_status, "write reports/SOURCES_STATUS.md")

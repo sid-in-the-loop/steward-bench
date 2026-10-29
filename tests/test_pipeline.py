@@ -107,6 +107,7 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
         pipeline,
         pipeline.paths.stage_c1 / "results.jsonl",
         pipeline.paths.stage_b / "results.jsonl",
+        pipeline.paths.handoff_c2,
     )
     assert len(shards) == 1 and validate("c2_input", shards[0]).ok
     first = json.loads(shards[0].read_text().splitlines()[0])["trajectory_id"]
@@ -114,7 +115,11 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
     out.parent.mkdir(parents=True)
     out.write_text(c2_output(first).model_dump_json() + "\n" + "not json\n")
     assert not validate("c2", out).ok
-    merged = c2_handoff.merge_results(pipeline)
+    merged = c2_handoff.merge_results(
+        pipeline.paths.handoff_c2,
+        pipeline.paths.results_c2,
+        pipeline.paths.stage_c2 / "results.jsonl",
+    )
     assert [m.trajectory_id for m in merged] == [first]
     metas = {m.trajectory_id: m for m in read_meta(pipeline.paths.normalized, "fixture")}
     counts = rank.run(
@@ -141,6 +146,7 @@ def test_shard_size_limit(pipeline) -> None:
         pipeline,
         pipeline.paths.stage_c1 / "results.jsonl",
         pipeline.paths.stage_b / "results.jsonl",
+        pipeline.paths.handoff_c2,
     )
     assert [len(p.read_text().splitlines()) for p in shards] == [4, 2]
 
@@ -162,3 +168,18 @@ def test_analysis_report(pipeline) -> None:
     for heading in ("## 1. Funnel", "## 4. Real-user behavior", "## 8. Limitations"):
         assert heading in text
     assert (pipeline.paths.figures / "funnel_by_domain.png").exists()
+
+
+def test_pilot_numbers_and_report(pipeline) -> None:
+    from steward import pilot
+    from steward.pilot_report import write_pilot_report
+
+    FakeBatches.replies["default"] = b_reply
+    # The fake answers every batch with one reply type; C1 parsing of B replies fails cleanly.
+    numbers = pilot.run(pipeline, confirm=True, max_usd=1.0)
+    assert numbers.trajectories == 6
+    assert numbers.b.requests == 6 and numbers.b.cost_usd == pytest.approx(0.006)
+    assert numbers.projected_b_usd == pytest.approx(0.006)
+    text = write_pilot_report(pipeline)
+    assert "Projection for the full run" in text
+    assert "No pilot C2 results" in text

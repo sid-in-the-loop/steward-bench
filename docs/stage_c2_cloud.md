@@ -107,4 +107,4 @@ the handoff branch, and must not push anything other than the results file.
    uv run steward rank && uv run steward analyze
    ```
 
-The pilot uses the same procedure on a single shard built with `uv run steward c2-handoff --pilot`.
+The pilot uses the same procedure on a single shard built with `uv run steward c2-handoff --pilot`, which writes data/handoff/c2_pilot/shard_000.jsonl; its results go to data/results/c2_pilot/shard_000.jsonl on branch results/c2-pilot-shard-000 and merge with `uv run steward c2-merge --pilot`, after which `uv run steward pilot-report` writes reports/PILOT.md.

@@ -75,7 +75,7 @@ def stage_numbers(settings: Settings, stage: str, valid: int) -> StageNumbers:
 
 
 def run(settings: Settings, confirm: bool, max_usd: float) -> PilotNumbers:
-    root = settings.paths.data / "pilot"
+    root = settings.paths.pilot
     inputs = pilot_inputs(settings)
     b_results = stage_b.run(settings, inputs, root / "stage_b.jsonl", PILOT_B, confirm, max_usd)
     # Every pilot trajectory goes through C1 so its cost is measured on the full pilot set.

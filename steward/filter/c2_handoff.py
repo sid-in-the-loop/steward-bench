@@ -49,11 +49,7 @@ def select_inputs(
     return chosen
 
 
-def shard_path(settings: Settings, number: int) -> Path:
-    return settings.paths.handoff_c2 / f"shard_{number:03d}.jsonl"
-
-
-def build_shards(settings: Settings, c1_path: Path, b_path: Path) -> list[Path]:
+def build_shards(settings: Settings, c1_path: Path, b_path: Path, handoff_dir: Path) -> list[Path]:
     stage_a = {r.trajectory_id: r for r in read_stage_a(settings)}
     stage_b = {r.trajectory_id: r for r in read_stage_b(b_path)}
     c1 = read_jsonl(c1_path, StageC1Result)
@@ -79,7 +75,7 @@ def build_shards(settings: Settings, c1_path: Path, b_path: Path) -> list[Path]:
             )
         )
     lines.sort(key=lambda line: (line.domain, line.trajectory_id))
-    for old in settings.paths.handoff_c2.glob("shard_*.jsonl"):
+    for old in handoff_dir.glob("shard_*.jsonl"):
         old.unlink()
     shards: list[list[C2Input]] = [[]]
     size = 0
@@ -93,7 +89,7 @@ def build_shards(settings: Settings, c1_path: Path, b_path: Path) -> list[Path]:
         size += line_bytes
     paths = []
     for number, shard in enumerate(s for s in shards if s):
-        path = shard_path(settings, number)
+        path = handoff_dir / f"shard_{number:03d}.jsonl"
         write_jsonl(path, shard)
         paths.append(path)
     log.info("c2 handoff: %d trajectories in %d shards", len(lines), len(paths))
@@ -119,15 +115,15 @@ def c2_json_schema() -> str:
     return json.dumps(StageC2Output.model_json_schema(), indent=1)
 
 
-def merge_results(settings: Settings) -> list[StageC2Result]:
-    """Merge data/results/c2/*.jsonl into data/stage_c2/results.jsonl, keeping valid lines."""
+def merge_results(handoff_dir: Path, results_dir: Path, out: Path) -> list[StageC2Result]:
+    """Merge the cloud result files into one validated file, keeping only valid lines."""
     inputs: dict[str, C2Input] = {}
-    for path in sorted(settings.paths.handoff_c2.glob("shard_*.jsonl")):
+    for path in sorted(handoff_dir.glob("shard_*.jsonl")):
         for line in read_jsonl(path, C2Input):
             inputs[line.trajectory_id] = line
     merged: dict[str, StageC2Result] = {}
     invalid = 0
-    for path in sorted(settings.paths.results_c2.glob("*.jsonl")):
+    for path in sorted(results_dir.glob("*.jsonl")):
         with path.open() as handle:
             for raw in handle:
                 if not raw.strip():
@@ -148,7 +144,7 @@ def merge_results(settings: Settings) -> list[StageC2Result]:
                     output=output,
                 )
     results = [merged[k] for k in sorted(merged)]
-    write_jsonl(settings.paths.stage_c2 / "results.jsonl", results)
+    write_jsonl(out, results)
     log.info("c2 merge: %d valid results, %d invalid lines", len(results), invalid)
     return results
 
