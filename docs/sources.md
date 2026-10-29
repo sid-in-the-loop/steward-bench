@@ -55,6 +55,17 @@ from brief section 5:
 | Any of the above, detected | `parse_records(read_jsonl_records(path))` |
 | OpenAI-style message lists (OpenHands, SWE-agent, HAL) | `parse_openai_messages` in steward/sources/chat_messages.py |
 | ChatML with `<tool_use>` and `<tool_result>` tags | `parse_chatml_tool_markup` |
+| Session exports with a `messages` list (DataClaw, SWE-Together) | `parse_session_messages`, `parse_markup_messages` in steward/sources/session_export_formats.py |
+| OpenHands event streams (TheAgentCompany, OpenAgentSafety) | `parse_openhands_events` in steward/sources/openhands_events.py |
+| Harbor ATIF trajectory.json (Terminal-Bench) | `parse_atif` in steward/sources/harbor_atif.py |
+| SWE-bench submission formats (SWE-agent, mini-swe-agent, OpenHands, others) | `detect_format` and one parser per format in steward/sources/swe_bench_formats.py |
+| HAL agent calls, tool-calling and code-agent scaffolds | `parse_hal_messages` in steward/sources/hal_messages.py |
+
+Helpers: `read_json` and `json_files_by_stem` (steward/sources/json_files.py) read `.json` or
+`.json.gz`; `sparse_checkout` (steward/sources/git_sparse.py) fetches pinned paths of a GitHub
+repository; `card_license` (steward/sources/hf_card.py) reads a dataset card's license;
+`infer_for_source` (steward/sources/commit_inference.py, command `steward infer-commits`) fills
+missing base commits for sessions on public repositories.
 
 ## Register, test, ingest
 

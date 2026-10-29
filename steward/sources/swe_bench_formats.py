@@ -1,6 +1,6 @@
 """Trajectory formats found in SWE-bench experiments submissions, one parser per format.
 
-The formats are described in data/logs/source_research.md (F1 to F6). Each parser takes the
+Format detection is by file structure, see detect_format. Each parser takes the
 decoded file and returns Steps. Thinking and reasoning fields are never read.
 """
 
