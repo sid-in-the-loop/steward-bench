@@ -134,7 +134,10 @@ class HalLogs(Source):
         license=None,
         notes=(
             "No license declared; research use with attribution to HAL (arXiv 2510.11977). "
-            "Subset under a 5 GB cap: tau-bench airline first. Domain is set per benchmark."
+            "Subset under a 5 GB cap: tau-bench airline first. Domain is set per benchmark. "
+            "Browser-use runs log empty LLM calls and CORE-Bench Claude Code runs have no logging "
+            "section, so both yield no trajectories; ScienceAgentBench Self-Debug runs have no "
+            "tool loop and fail A1."
         ),
     )
 
@@ -161,7 +164,12 @@ class HalLogs(Source):
             if not isinstance(run, dict) or not isinstance(run.get("config"), dict):
                 skipped += 1
                 continue
-            yield from self.run_trajectories(run, path.name.removesuffix(".json.gz"))
+            produced = 0
+            for trajectory in self.run_trajectories(run, path.name.removesuffix(".json.gz")):
+                produced += 1
+                yield trajectory
+            if not produced:
+                log.warning("%s: no agent chat messages logged in %s", NAME, path.name)
         if skipped:
             log.warning("%s: skipped %d unreadable run files", NAME, skipped)
 
