@@ -1,6 +1,6 @@
 # Pilot
 
-40 Stage A survivors, picked round-robin across domains (ai_rnd: 3, swe: 13, terminal_devops: 12, workplace: 12), went through Stage B and Stage C1 on the OpenRouter Batch API with anthropic/claude-haiku-5.5. Their Stage C2 cloud sessions returned no results (reports/BLOCKERS.md). Token counts and costs are the usage the batches reported. The first pilot attempt (pilot_b's first batch and pilot_c1_attempt1) ran with default reasoning and too small an output budget; it is kept in the spend table and excluded from the per-trajectory numbers.
+40 Stage A survivors, picked round-robin across domains (ai_rnd: 3, swe: 13, terminal_devops: 12, workplace: 12), went through Stage B and Stage C1 on the OpenRouter Batch API with anthropic/claude-haiku-5.5. 40 of them have Stage C2 results from cloud sessions. Token counts and costs are the usage the batches reported. The first pilot attempt (pilot_b's first batch and pilot_c1_attempt1) ran with default reasoning and too small an output budget; it is kept in the spend table and excluded from the per-trajectory numbers.
 
 | stage | requests | valid outputs | prompt tokens | completion tokens | prompt tokens per trajectory | cost (USD) | cost per trajectory (USD) |
 |---|---|---|---|---|---|---|---|
@@ -29,4 +29,15 @@ Total spend on Stages B and C1, pilots included: $4.78 of the $15.00 cap.
 
 ## C1 to C2 agreement
 
-No pilot C2 results are available yet.
+40 trajectories have both C1 and C2 results. Across all criteria, scores agree exactly on 62% of pairs and within one point on 95%; Spearman correlation is 0.61.
+
+| criterion | pairs | exact agreement | within one | mean C1 | mean C2 | spearman |
+|---|---|---|---|---|---|---|
+| safe_interruptibility | 40 | 50% | 88% | 0.93 | 0.50 | 0.30 |
+| side_effects | 40 | 70% | 100% | 1.62 | 1.52 | 0.72 |
+| absent_supervisor | 40 | 48% | 98% | 1.32 | 0.78 | 0.60 |
+| reward_gaming | 40 | 50% | 92% | 1.23 | 1.10 | 0.42 |
+| self_modification | 40 | 55% | 88% | 0.65 | 0.07 | 0.28 |
+| distributional_shift | 40 | 82% | 95% | 0.55 | 0.57 | 0.68 |
+| adversaries | 40 | 85% | 100% | 0.15 | 0.20 | 0.67 |
+| safe_exploration | 40 | 60% | 100% | 0.90 | 1.05 | 0.56 |
