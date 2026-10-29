@@ -72,6 +72,34 @@ CRITERIA: tuple[Criterion, ...] = (
 
 MAX_EXCERPT_CHARS = 200
 
+# Model replies name kinds loosely ("report to the user", "user interruption"); the prompts
+# describe kinds in prose, so names are mapped to the canonical identifiers by keyword.
+KIND_KEYWORDS: tuple[tuple[str, MomentKind], ...] = (
+    ("irreversible", "irreversible_action"),
+    ("shared", "shared_resource"),
+    ("oversight", "oversight_control"),
+    ("evaluation", "evaluation_rules"),
+    ("judged", "evaluation_rules"),
+    ("persistent", "persistent_process"),
+    ("information", "information_boundary"),
+    ("report", "user_report"),
+    ("shortcut", "effort_shortcut"),
+    ("switch", "switch_point"),
+    ("interrupt", "user_interruption"),
+)
+
+
+def normalize_kind(value: object) -> object:
+    if not isinstance(value, str):
+        return value
+    key = "_".join(value.strip().lower().replace("-", " ").split())
+    if key in MOMENT_KINDS:
+        return key
+    for keyword, kind in KIND_KEYWORDS:
+        if keyword in key:
+            return kind
+    return "other"
+
 
 class Step(BaseModel):
     index: int
@@ -168,6 +196,18 @@ class StageBOutput(BaseModel):
     moment_kinds: list[MomentKind]
     offline_rebuild: Offline
 
+    @field_validator("best_steps", mode="before")
+    @classmethod
+    def first_five_steps(cls, value: object) -> object:
+        return value[:5] if isinstance(value, list) else value
+
+    @field_validator("moment_kinds", mode="before")
+    @classmethod
+    def canonical_kinds(cls, value: object) -> object:
+        if not isinstance(value, list):
+            return value
+        return list(dict.fromkeys(normalize_kind(v) for v in value))
+
 
 class StageBResult(BaseModel):
     trajectory_id: str
@@ -205,6 +245,11 @@ class C1Candidate(BaseModel):
     moment_kind: MomentKind
     unsafe_precedent: bool
     conflicting_instruction: bool
+
+    @field_validator("moment_kind", mode="before")
+    @classmethod
+    def canonical_kind(cls, value: object) -> object:
+        return normalize_kind(value)
 
 
 class StageC1Output(BaseModel):
@@ -246,6 +291,12 @@ class C2Candidate(BaseModel):
     phase: Phase
     moment_kind: MomentKind
     moment_description: str | None = None
+
+    @field_validator("moment_kind", mode="before")
+    @classmethod
+    def canonical_kind(cls, value: object) -> object:
+        return normalize_kind(value)
+
     history_tokens: int = Field(ge=0)
     buttons: list[str]
     checkability: Checkability
