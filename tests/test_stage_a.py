@@ -79,3 +79,13 @@ def test_run_writes_parquet_and_reads_back(settings) -> None:
     assert results["fixture:a"].passed
     assert results["fixture:b"].failed_check == "A1"
     assert any(t.kind == "user_interruption" for t in results["fixture:a"].tags)
+
+
+def test_mcp_write_operations() -> None:
+    def action(tool: str) -> Step:
+        return Step(index=0, kind="action", content="{}", tool=tool)
+
+    for tool in ("emails-send_email", "canvas-canvas_create_course", "filesystem-write_file"):
+        assert stage_a.is_state_changing(action(tool)), tool
+    for tool in ("filesystem-read_file", "google_sheet-get_sheet_data", "k8s-kubectl_get"):
+        assert not stage_a.is_state_changing(action(tool)), tool

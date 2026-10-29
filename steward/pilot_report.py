@@ -10,7 +10,7 @@ from scipy.stats import spearmanr
 from steward.analysis.tables import markdown_table
 from steward.config import Settings
 from steward.pilot import PilotNumbers
-from steward.schema import CRITERIA, StageC1Result, StageC2Result
+from steward.schema import CRITERIA, CostRecord, StageC1Result, StageC2Result
 from steward.store import read_jsonl
 
 
@@ -50,6 +50,32 @@ def agreement_table(pairs: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def actual_spend_lines(settings: Settings) -> list[str]:
+    """Spend per stage from data/costs.jsonl, including abandoned pilot attempts."""
+    records = read_jsonl(settings.paths.costs, CostRecord)
+    if not records:
+        return ["No batches recorded yet."]
+    frame = pd.DataFrame([r.model_dump() for r in records])
+    by_stage = (
+        frame.groupby("stage")
+        .agg(
+            batches=("batch_id", "count"),
+            requests=("requests", "sum"),
+            prompt_tokens=("prompt_tokens", "sum"),
+            completion_tokens=("completion_tokens", "sum"),
+            cost_usd=("cost_usd", "sum"),
+        )
+        .reset_index()
+    )
+    total = float(frame.cost_usd.sum())
+    return [
+        markdown_table(by_stage),
+        "",
+        f"Total spend on Stages B and C1, pilots included: ${total:.2f} of the "
+        f"${settings.caps.stage_b_c1_usd:.2f} cap.",
+    ]
+
+
 def write_pilot_report(settings: Settings) -> str:
     root = settings.paths.pilot
     numbers = PilotNumbers.model_validate(json.loads((root / "numbers.json").read_text()))
@@ -76,9 +102,16 @@ def write_pilot_report(settings: Settings) -> str:
         "",
         f"{numbers.trajectories} Stage A survivors, picked round-robin across domains "
         f"({', '.join(f'{d}: {n}' for d, n in sorted(numbers.domains.items()))}), went through "
-        "Stage B and Stage C1 on the OpenRouter Batch API with anthropic/claude-haiku-5.5, and "
-        "then through Stage C2 in one cloud session. Token counts and costs are the usage the "
-        "batches reported.",
+        "Stage B and Stage C1 on the OpenRouter Batch API with anthropic/claude-haiku-5.5. "
+        + (
+            f"{len(c2)} of them have Stage C2 results from cloud sessions. "
+            if c2
+            else "Their Stage C2 cloud sessions returned no results (reports/BLOCKERS.md). "
+        )
+        + "Token counts and costs are the usage the batches reported. The first pilot attempt "
+        "(pilot_b's first batch and pilot_c1_attempt1) ran with default reasoning and too small an "
+        "output budget; it is kept in the spend table and excluded from the per-trajectory "
+        "numbers.",
         "",
         markdown_table(stages),
         "",
@@ -92,6 +125,10 @@ def write_pilot_report(settings: Settings) -> str:
         f"inputs, capped at {settings.stage_c1.top_n:,}), about ${numbers.projected_c1_usd:.2f}.",
         f"- Total: about ${numbers.projected_total_usd:.2f} against the ${cap:.2f} cap, so the "
         + ("full run fits." if numbers.projected_total_usd <= cap else "full run does not fit."),
+        "",
+        "## Actual spend",
+        "",
+        *actual_spend_lines(settings),
         "",
         "## C1 to C2 agreement",
         "",

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 from steward.config import Settings
 from steward.filter import batch
 from steward.filter.render import candidate_steps, windowed_rendering
-from steward.filter.selection import load_by_ids, select_with_floor
+from steward.filter.selection import load_by_ids, select_with_floor, with_full_domains
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.schema import StageAResult, StageBResult, StageC1Output, StageC1Result, Trajectory
 from steward.store import read_jsonl, write_jsonl
@@ -40,12 +40,15 @@ def select_inputs(
             r.trajectory_id,
         )
 
-    return select_with_floor(
+    chosen = select_with_floor(
         passes,
         domain_of=lambda r: r.domain,
         sort_key=key,
         top_n=settings.stage_c1.top_n,
         floor=settings.stage_c1.per_domain_floor,
+    )
+    return with_full_domains(
+        chosen, passes, lambda r: r.domain, key, settings.stage_c1.full_domains
     )
 
 

@@ -103,6 +103,7 @@ def c2_output(trajectory_id: str) -> StageC2Output:
 
 def test_c2_handoff_merge_and_rank(pipeline) -> None:
     run_b_and_c1(pipeline)
+    pipeline.stage_c2.one_per_task = False
     shards = c2_handoff.build_shards(
         pipeline,
         pipeline.paths.stage_c1 / "results.jsonl",
@@ -130,7 +131,13 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
         metas,
         ["swe"],
     )
-    assert set(counts) == {("swe", a) for a in AXES}
+    n = pipeline.rank.final_per_domain
+    assert set(counts) == {("swe", a) for a in AXES} | {
+        (d, f"top_{n}") for d in pipeline.stage_c2.domains
+    }
+    final = pd.read_csv(pipeline.paths.ranked / "swe" / f"top_{n}.csv")
+    assert final.trajectory_id.tolist() == [first]
+    assert final.scored_by.iloc[0] == "c2"
     side = pd.read_csv(pipeline.paths.ranked / "swe" / "side_effects.csv")
     assert side.trajectory_id.iloc[0] == first
     assert side.right_behavior_agreement.iloc[0] == "high"
@@ -141,6 +148,7 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
 
 def test_shard_size_limit(pipeline) -> None:
     run_b_and_c1(pipeline)
+    pipeline.stage_c2.one_per_task = False
     pipeline.stage_c2.shard_max_trajectories = 4
     shards = c2_handoff.build_shards(
         pipeline,
@@ -183,3 +191,14 @@ def test_pilot_numbers_and_report(pipeline) -> None:
     text = write_pilot_report(pipeline)
     assert "Projection for the full run" in text
     assert "No pilot C2 results" in text
+
+
+def test_c2_keeps_one_trajectory_per_task(pipeline) -> None:
+    run_b_and_c1(pipeline)
+    shards = c2_handoff.build_shards(
+        pipeline,
+        pipeline.paths.stage_c1 / "results.jsonl",
+        pipeline.paths.stage_b / "results.jsonl",
+        pipeline.paths.handoff_c2,
+    )
+    assert [len(p.read_text().splitlines()) for p in shards] == [1]

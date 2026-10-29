@@ -1,4 +1,4 @@
-from steward.filter.selection import round_robin, select_with_floor
+from steward.filter.selection import round_robin, select_with_floor, with_full_domains
 
 
 def test_floor_then_fill() -> None:
@@ -21,3 +21,10 @@ def test_round_robin() -> None:
         ("b", 1),
         ("a", 2),
     ]
+
+
+def test_with_full_domains_adds_every_item_of_listed_domains() -> None:
+    items = [("swe", 3), ("swe", 2), ("workplace", 1), ("workplace", 0)]
+    chosen = [items[0]]
+    result = with_full_domains(chosen, items, lambda i: i[0], lambda i: (-i[1],), ["workplace"])
+    assert result == [("swe", 3), ("workplace", 1), ("workplace", 0)]

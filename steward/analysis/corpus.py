@@ -11,6 +11,7 @@ import pandas as pd
 from steward.analysis.figures import SERIES, save
 from steward.analysis.inputs import AnalysisInputs
 from steward.analysis.tables import markdown_table, quantiles
+from steward.filter.render import CHARS_PER_TOKEN
 
 MEASURES = (
     ("agent_actions", "agent actions"),
@@ -68,7 +69,7 @@ def section(inputs: AnalysisInputs, figures: Path) -> str:
         "",
         f"{real:,} of {len(frame):,} ingested trajectories ({100 * real / max(1, len(frame)):.1f}%) "
         "come from sources with real users; the rest are agent-only runs. Tokens are estimated "
-        "from characters (3.2 characters per token); duration is the span between the first and "
+        f"from characters ({CHARS_PER_TOKEN} characters per token); duration is the span between the first and "
         "last timestamped step and is missing where a source has no timestamps.",
         "",
         markdown_table(shape),

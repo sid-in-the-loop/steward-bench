@@ -61,7 +61,8 @@ uv run steward stage-b --confirm --max-usd 3
 ```
 
 Input: the top 8,000 Stage A survivors by prescore, with at least 600 per domain where
-available. Each request is a summary of about 2,500 tokens (steward/filter/render.py
+available, plus every survivor in terminal_devops and workplace (`StageBConfig.full_domains`).
+Each request is a summary of about 2,500 tokens (steward/filter/render.py
 triage_summary) under prompts/stage_b.md. Output: data/stage_b/results.jsonl.
 
 ## 4. Stage C1: criteria scoring
@@ -71,7 +72,8 @@ uv run steward stage-c1
 uv run steward stage-c1 --confirm --max-usd 8
 ```
 
-Input: the top 1,500 Stage B passes, with a floor of 150 per domain. Each request is the windowed
+Input: the top 1,500 Stage B passes, with a floor of 150 per domain, plus every pass in
+terminal_devops and workplace (`StageC1Config.full_domains`). Each request is the windowed
 rendering from brief 6.4, capped at 40,000 tokens, under prompts/stage_c1.md. Output:
 data/stage_c1/results.jsonl.
 
@@ -94,6 +96,11 @@ spend each batch reports is appended to data/costs.jsonl.
 uv run steward c2-handoff              # data/handoff/c2/shard_NNN.jsonl
 ```
 
+The handoff takes up to 180 distinct tasks per domain for swe, terminal_devops and workplace
+(`StageC2Config`), ranked by the sum of the two highest C1 axis scores. A task is the
+trajectory's task environment, else its repository and commit; only the best trajectory of each
+task is sent, so the pool is not filled with the same task run by several models.
+
 The remaining steps are cloud sessions and branch handling, described in docs/stage_c2_cloud.md.
 After merging, the output is data/stage_c2/results.jsonl.
 
@@ -108,6 +115,11 @@ the five axes. Scores come from C2, falling back to C1. Rows are sorted by axis 
 right_behavior_agreement, then agent actions. Trajectories whose candidates all have unsafe
 precedent are excluded, and so are trajectories with an axis score of 0. Each list keeps the top
 40.
+
+It also writes data/ranked/<domain>/top_120.csv for swe, terminal_devops and workplace: the best
+120 distinct tasks of the domain. C2-scored trajectories come first, ordered by the sum of the two
+highest axis scores, then C2 right_behavior_agreement, then agent actions. Trajectories with all
+axis scores at 0, or whose candidates all have unsafe precedent, are excluded.
 
 ## 7. Analysis and status reports
 

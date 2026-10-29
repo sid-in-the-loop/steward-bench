@@ -24,6 +24,7 @@ Stage B ────────────> data/stage_b/results.jsonl        
 Stage C1 ───────────> data/stage_c1/results.jsonl        eight criteria scored 0 to 3, Haiku 5.5
 Stage C2 ───────────> data/stage_c2/results.jsonl        deep read, opus in cloud sessions
 rank ───────────────> data/ranked/<domain>/<axis>.csv    top 40 per domain and axis
+                       data/ranked/<domain>/top_120.csv   best 120 distinct tasks per domain
 analyze ────────────> reports/PHASE1_REPORT.md, reports/figures/
 ```
 
@@ -95,10 +96,10 @@ there, not in the stage code.
 |---|---|---|
 | Data directory | `./data`, or the STEWARD_DATA environment variable | `load_paths` |
 | Stage A thresholds | 40 actions, 1 state change, 2 user messages, 30% agent share | `StageAThresholds` |
-| Stage B input | top 8,000 by prescore, floor of 600 per domain, 2,500-token summaries | `StageBConfig` |
-| Stage C1 input | top 1,500 B passes, floor of 150 per domain, 40,000-token renderings | `StageC1Config` |
+| Stage B input | top 8,000 by prescore, floor of 600 per domain, all of terminal_devops and workplace, 2,500-token summaries | `StageBConfig` |
+| Stage C1 input | top 1,500 B passes, floor of 150 per domain, all of terminal_devops and workplace, 40,000-token renderings | `StageC1Config` |
 | Windows | 25 steps before and 15 after, results trimmed to 400 + 400 characters | `RenderConfig` |
-| Stage C2 | top 60 per domain, 25 trajectories and 20 MB per shard, 6 sessions | `StageC2Config` |
+| Stage C2 | 180 distinct tasks per domain for swe, terminal_devops and workplace, 25 trajectories and 20 MB per shard, 6 sessions | `StageC2Config` |
 | Model | anthropic/claude-haiku-5.5 on the OpenRouter Batch API | `ModelConfig` |
 | Spend cap | $15 combined for B and C1 | `Caps` |
 
@@ -118,6 +119,7 @@ runs in `claude --cloud` sessions under the owner's claude.ai login and needs no
 | data/results/c2/shard_NNN.jsonl | C2 outputs, on branches results/c2-shard-NNN |
 | data/stage_c2/results.jsonl | merged and validated C2 results |
 | data/ranked/<domain>/<axis>.csv | top 40 per domain and axis, with the columns in brief section 8 |
+| data/ranked/<domain>/top_120.csv | best 120 distinct tasks for swe, terminal_devops and workplace |
 | data/costs.jsonl | actual spend per batch |
 | reports/SOURCES_STATUS.md | every source, ingested or unavailable, with license and reason |
 | reports/PILOT.md | pilot token counts, cost per trajectory and full-run projection |
@@ -153,6 +155,6 @@ the shard count: at most 60 trajectories per domain, 25 per shard.
 - Pattern tags see action text only. Moment kinds such as user_report and effort_shortcut depend
   on the model stages.
 - Token counts are character-based estimates.
-- Stage B and C1 are single passes by a small model. C2 corrects only the top 60 per domain, and
-  everything below that rests on C1.
+- Stage B and C1 are single passes by a small model. C2 rereads 180 tasks per domain in swe,
+  terminal_devops and workplace; everything else rests on C1.
 - Section 8 of reports/PHASE1_REPORT.md lists the limitations measured on the actual corpus.

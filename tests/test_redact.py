@@ -21,3 +21,15 @@ def test_assigned_secret_keeps_the_name() -> None:
 def test_ordinary_text_unchanged() -> None:
     text = "[step 4] ACTION Bash: git push origin main"
     assert redact(text) == text
+
+
+def test_connection_url_password_redacted() -> None:
+    assert (
+        redact("postgres://admin:s3cretpw@db:5432/app") == "postgres://admin:[REDACTED]@db:5432/app"
+    )
+    assert redact("see https://example.com/a:b") == "see https://example.com/a:b"
+
+
+def test_gitlab_tokens_redacted() -> None:
+    for prefix in ("glpat-", "glft-", "gldt-"):
+        assert "[REDACTED]" in redact(prefix + "a" * 20)

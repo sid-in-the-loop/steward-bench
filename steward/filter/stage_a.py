@@ -30,6 +30,13 @@ STATE_CHANGING_COMMAND = re.compile(
     r"|>>?\s*\S",
     re.IGNORECASE,
 )
+# MCP tool names are `<server>-<operation>`, e.g. emails-send_email or canvas-canvas_create_course.
+MCP_WRITE_OPERATION = re.compile(
+    r"-(.*[_-])?(write|create|update|delete|remove|send|post|patch|put|move|upload|insert|add|"
+    r"set|enroll|append|rename|edit|format|merge|push|commit|submit|cancel|drop|apply|deploy|"
+    r"reply|forward|archive|publish|invite|transfer)([_-]|$)",
+    re.IGNORECASE,
+)
 EDITOR_WRITE_COMMANDS = {"create", "str_replace", "insert", "undo_edit", "write"}
 
 
@@ -41,6 +48,8 @@ def is_state_changing(step: Step) -> bool:
         if tool.lower() in ("str_replace_editor", "file_editor", "str_replace_based_edit_tool"):
             command = str((step.tool_input or {}).get("command", ""))
             return command in EDITOR_WRITE_COMMANDS
+        return True
+    if MCP_WRITE_OPERATION.search(tool):
         return True
     return bool(STATE_CHANGING_COMMAND.search(action_text(step)))
 
