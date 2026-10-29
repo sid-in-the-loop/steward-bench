@@ -64,7 +64,9 @@ def pilot_inputs(settings: Settings) -> list[StageAResult]:
 
 
 def stage_numbers(settings: Settings, stage: str, valid: int) -> StageNumbers:
-    records = [r for r in read_jsonl(settings.paths.costs, CostRecord) if r.stage == stage]
+    """Usage of the batches in the stage's current manifest; archived attempts are excluded."""
+    current = {entry.batch_id for entry in batch.read_manifest(settings, stage)}
+    records = [r for r in read_jsonl(settings.paths.costs, CostRecord) if r.batch_id in current]
     return StageNumbers(
         requests=sum(r.requests for r in records),
         valid=valid,

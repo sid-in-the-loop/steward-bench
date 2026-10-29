@@ -15,7 +15,7 @@ def requests(n: int, size: int = 100) -> list[BatchRequest]:
 
 
 def test_estimate_uses_list_price(settings) -> None:
-    job = batch.estimate(requests(10, 3200), settings.model)
+    job = batch.estimate(requests(10, 2200), settings.model)
     assert job.requests == 10
     assert job.prompt_tokens == 10 * (1 + 1000 + 10)
     assert job.usd == pytest.approx((job.prompt_tokens * 0.05 + 100 * 0.25) / 1e6)
@@ -24,9 +24,9 @@ def test_estimate_uses_list_price(settings) -> None:
 def test_guard_requires_confirm_and_respects_caps(settings) -> None:
     job = batch.estimate(requests(2), settings.model)
     with pytest.raises(CostGuardError, match="--confirm"):
-        batch.check_budget(settings, job, 1.0, False, {"stage_b"})
+        batch.check_budget(settings, job, 1.0, False)
     with pytest.raises(CostGuardError, match="max-usd"):
-        batch.check_budget(settings, job.model_copy(update={"usd": 5.0}), 1.0, True, {"stage_b"})
+        batch.check_budget(settings, job.model_copy(update={"usd": 5.0}), 1.0, True)
     append_jsonl(
         settings.paths.costs,
         [
@@ -43,8 +43,9 @@ def test_guard_requires_confirm_and_respects_caps(settings) -> None:
         ],
     )
     with pytest.raises(CostGuardError, match="cap"):
-        batch.check_budget(settings, job.model_copy(update={"usd": 0.5}), 1.0, True, {"stage_b"})
-    batch.check_budget(settings, job, 1.0, True, {"stage_c1"})
+        batch.check_budget(settings, job.model_copy(update={"usd": 0.5}), 1.0, True)
+    with pytest.raises(CostGuardError, match="cap"):
+        batch.check_budget(settings, job.model_copy(update={"usd": 0.02}), 1.0, True)
 
 
 def test_prompt_size_guard(settings) -> None:

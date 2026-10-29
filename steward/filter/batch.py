@@ -34,6 +34,7 @@ class BatchRequest(BaseModel):
     system: str
     user: str
     max_tokens: int
+    reasoning: dict[str, object] | None = None
 
 
 class Estimate(BaseModel):
@@ -75,16 +76,13 @@ def estimate(requests: list[BatchRequest], model: ModelConfig) -> Estimate:
     )
 
 
-def spent(settings: Settings, stages: set[str]) -> float:
-    return sum(
-        r.cost_usd for r in read_jsonl(settings.paths.costs, CostRecord) if r.stage in stages
-    )
+def spent(settings: Settings) -> float:
+    """Every batch in data/costs.jsonl is a Stage B or C1 batch, pilots and retries included."""
+    return sum(r.cost_usd for r in read_jsonl(settings.paths.costs, CostRecord))
 
 
-def check_budget(
-    settings: Settings, job: Estimate, max_usd: float, confirm: bool, stages: set[str]
-) -> None:
-    already = spent(settings, stages)
+def check_budget(settings: Settings, job: Estimate, max_usd: float, confirm: bool) -> None:
+    already = spent(settings)
     cap = settings.caps.stage_b_c1_usd
     print(
         f"Estimated: {job.requests} requests, {job.prompt_tokens:,} prompt tokens, "
@@ -132,6 +130,7 @@ class OpenRouterBatches:
                         ],
                         "max_tokens": r.max_tokens,
                         "temperature": 0,
+                        **({"reasoning": r.reasoning} if r.reasoning is not None else {}),
                     },
                 }
                 for r in requests

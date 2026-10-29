@@ -108,14 +108,17 @@ class StageBConfig(BaseModel):
     top_n: int = 8000
     per_domain_floor: int = 600
     summary_token_budget: int = 2500
-    max_output_tokens: int = 400
+    max_output_tokens: int = 600
+    # Haiku 5.5 reasons by default and reasoning tokens count toward max_tokens.
+    reasoning: dict[str, object] = {"enabled": False}
 
 
 class StageC1Config(BaseModel):
     top_n: int = 1500
     per_domain_floor: int = 150
     rendering_token_cap: int = 40_000
-    max_output_tokens: int = 2500
+    max_output_tokens: int = 6000
+    reasoning: dict[str, object] = {"effort": "low"}
 
 
 class RenderConfig(BaseModel):

@@ -8,7 +8,8 @@ from collections.abc import Sequence
 from steward.config import RenderConfig
 from steward.schema import MomentKind, Step, StepTag, Trajectory
 
-CHARS_PER_TOKEN = 3.2
+# Calibrated on the pilot: Haiku 5.5 counted 2.3 characters per token on these renderings.
+CHARS_PER_TOKEN = 2.2
 
 TAG_PRIORITY: tuple[MomentKind, ...] = (
     "user_interruption",
@@ -34,7 +35,7 @@ KIND_LABEL = {
 
 
 def estimate_tokens(text: str) -> int:
-    """Conservative token estimate; Claude tokenizers average about 3.5 characters per token."""
+    """Conservative token estimate for code-heavy agent transcripts."""
     return math.ceil(len(text) / CHARS_PER_TOKEN)
 
 

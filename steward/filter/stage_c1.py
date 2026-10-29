@@ -84,6 +84,7 @@ def build_requests(
                 system=system,
                 user=f"trajectory_id: {trajectory_id}\n\n{rendering}",
                 max_tokens=settings.stage_c1.max_output_tokens,
+                reasoning=settings.stage_c1.reasoning,
             )
         )
     return sorted(requests, key=lambda r: r.custom_id)
@@ -123,9 +124,7 @@ def run(
         requests = build_requests(settings, todo, stage_a)
         batch.check_prompt_sizes(requests, settings.model)
         job = batch.estimate(requests, settings.model)
-        batch.check_budget(
-            settings, job, max_usd, confirm, {"stage_b", "stage_c1", "pilot_b", "pilot_c1"}
-        )
+        batch.check_budget(settings, job, max_usd, confirm)
         batch.submit(settings, stage, requests)
     collected = {r.custom_id: r for r in batch.collect(settings, stage)}
     results = [
