@@ -2,7 +2,12 @@
 
 ## Stage C2: cloud sessions cannot push results
 
-Status: blocking. Stage C2 has no results, so the stop condition in brief section 2.3 is not met.
+Status: resolved on 2026-10-29. Cause: the local origin URL used the SSH alias github-sid, which
+`claude --cloud` does not recognize as GitHub, so sessions received a snapshot without a git
+remote and every push failed with "'origin' does not appear to be a git repository". The fetch
+URL is now https://github.com/sid-in-the-loop/steward-bench.git; pushes from the cluster still use
+the alias. A probe session then pushed its branches, and the pilot was relaunched. The record below
+is kept as it was.
 
 What happened: `claude --cloud` creates sessions as expected. `steward c2-launch` runs it under
 `script`, because it needs a terminal, and records each session URL in
