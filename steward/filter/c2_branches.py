@@ -20,7 +20,7 @@ MAX_FILE_BYTES = 20_000_000
 def git(*args: str, cwd: Path) -> str:
     result = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()[:500]}")
+        raise RuntimeError(f"git {' '.join(args)} failed: {result.stderr.strip()[:3000]}")
     return result.stdout
 
 
