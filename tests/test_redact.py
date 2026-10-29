@@ -1,4 +1,4 @@
-from steward.filter.redact import redact
+from steward.filter.redact import redact, redact_strings
 
 
 def test_known_key_shapes_are_redacted() -> None:
@@ -33,3 +33,16 @@ def test_connection_url_password_redacted() -> None:
 def test_gitlab_tokens_redacted() -> None:
     for prefix in ("glpat-", "glft-", "gldt-"):
         assert "[REDACTED]" in redact(prefix + "a" * 20)
+
+
+def test_notion_tokens_redacted() -> None:
+    for sample in ["ntn_" + "a1" * 23, "secret_" + "B" * 43]:
+        assert redact(sample) == "[REDACTED]", sample
+
+
+def test_redact_strings_reaches_nested_values() -> None:
+    nested = {"scores": {"a": {"excerpt": "auth=ntn_" + "c" * 46, "score": 2}}, "steps": [1]}
+    assert redact_strings(nested) == {
+        "scores": {"a": {"excerpt": "auth=[REDACTED]", "score": 2}},
+        "steps": [1],
+    }

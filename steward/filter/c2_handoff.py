@@ -11,7 +11,7 @@ from pydantic import ValidationError
 
 from steward.config import Settings
 from steward.filter.rank import task_key
-from steward.filter.redact import redact
+from steward.filter.redact import redact, redact_strings
 from steward.filter.selection import load_by_ids
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.filter.stage_b import read_results as read_stage_b
@@ -99,7 +99,9 @@ def build_shards(settings: Settings, c1_path: Path, b_path: Path, handoff_dir: P
                 source=trajectory.source,
                 domain=result.domain,
                 rendering=redact(rendering),
-                c1_output=result.output,
+                c1_output=type(result.output).model_validate(
+                    redact_strings(result.output.model_dump())
+                ),
             )
         )
     lines.sort(key=lambda line: (line.domain, line.trajectory_id))
