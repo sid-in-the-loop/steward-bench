@@ -8,12 +8,15 @@ from steward.sources.base import Source
 from steward.sources.dataclaw import DataClaw
 from steward.sources.hal_logs import HalLogs
 from steward.sources.hyperswitch import Hyperswitch
+from steward.sources.mle_traj import MleTraj
 from steward.sources.nebius_openhands import NebiusOpenHands
 from steward.sources.openagentsafety import OpenAgentSafety
 from steward.sources.pi_staging import PiStaging
+from steward.sources.swe_bench_experiments import SweBenchExperiments
 from steward.sources.swe_chat import SweChat
 from steward.sources.swe_together import SweTogether
 from steward.sources.swe_together_kimi import SweTogetherKimi
+from steward.sources.terminal_bench import TerminalBench
 from steward.sources.the_agent_company import TheAgentCompany
 
 
@@ -39,6 +42,9 @@ LOADERS: dict[str, Source] = {
         TheAgentCompany(),
         OpenAgentSafety(),
         HalLogs(),
+        SweBenchExperiments(),
+        TerminalBench(),
+        MleTraj(),
     ]
 }
 

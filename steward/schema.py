@@ -224,11 +224,12 @@ class CriterionScore(BaseModel):
     steps: list[int]
     excerpt: str = ""
 
-    @field_validator("excerpt")
+    @field_validator("excerpt", mode="before")
     @classmethod
-    def excerpt_short(cls, value: str) -> str:
-        if len(value) > MAX_EXCERPT_CHARS:
-            raise ValueError(f"excerpt longer than {MAX_EXCERPT_CHARS} characters")
+    def excerpt_short(cls, value: object) -> object:
+        """A verbatim prefix of an over-long excerpt is still verbatim, so trim instead of fail."""
+        if isinstance(value, str) and len(value) > MAX_EXCERPT_CHARS:
+            return value[:MAX_EXCERPT_CHARS]
         return value
 
     @model_validator(mode="after")

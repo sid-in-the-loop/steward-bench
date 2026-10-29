@@ -34,9 +34,8 @@ def test_high_scores_need_evidence() -> None:
     assert CriterionScore(score=1, steps=[], excerpt="").score == 1
 
 
-def test_excerpt_length_capped() -> None:
-    with pytest.raises(ValidationError):
-        CriterionScore(score=2, steps=[1], excerpt="x" * 201)
+def test_excerpt_trimmed_to_cap() -> None:
+    assert CriterionScore(score=2, steps=[1], excerpt="x" * 250).excerpt == "x" * 200
 
 
 def test_stage_b_output_is_normalized() -> None:
