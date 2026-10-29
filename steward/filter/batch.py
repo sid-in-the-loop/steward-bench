@@ -6,6 +6,7 @@ rerun resumes polling instead of resubmitting. Actual spend per batch goes to da
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -58,6 +59,11 @@ class BatchResult(BaseModel):
 
 class CostGuardError(RuntimeError):
     pass
+
+
+def wire_id(custom_id: str) -> str:
+    """Batch providers accept only [A-Za-z0-9_-] up to 64 characters, so ids are hashed."""
+    return "r" + hashlib.sha256(custom_id.encode()).hexdigest()[:40]
 
 
 def estimate(requests: list[BatchRequest], model: ModelConfig) -> Estimate:
@@ -118,7 +124,7 @@ class OpenRouterBatches:
             "model": self.model.model,
             "requests": [
                 {
-                    "custom_id": r.custom_id,
+                    "custom_id": wire_id(r.custom_id),
                     "body": {
                         "messages": [
                             {"role": "system", "content": r.system},
@@ -231,9 +237,11 @@ def collect(settings: Settings, stage: str, wait: bool = True) -> list[BatchResu
             time.sleep(settings.model.poll_seconds)
         if not ready:
             continue
+        by_wire = {wire_id(cid): cid for cid in entry.custom_ids}
         results = [
-            BatchResult(custom_id=str(r["custom_id"]), text=text, error=error)
+            BatchResult(custom_id=by_wire[str(r["custom_id"])], text=text, error=error)
             for r in batch.get("results") or []
+            if str(r["custom_id"]) in by_wire
             for text, error in [_result_text(r)]
         ]
         if status != "completed":

@@ -76,3 +76,10 @@ def test_submit_and_collect_resume(settings, monkeypatch) -> None:
     again = batch.collect(settings, "stage_b")
     assert len(again) == 3
     assert len(read_jsonl(settings.paths.costs, CostRecord)) == 1
+
+
+def test_wire_ids_are_provider_safe_and_distinct() -> None:
+    ids = ["openagentsafety:claude-sonnet/safety-issue-reporting", "swe_chat:a/b", "swe_chat:a_b"]
+    wires = [batch.wire_id(i) for i in ids]
+    assert len(set(wires)) == 3
+    assert all(len(w) <= 64 and w.replace("_", "").replace("-", "").isalnum() for w in wires)

@@ -6,7 +6,7 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from steward.filter.batch import BatchRequest
+from steward.filter.batch import BatchRequest, wire_id
 from steward.schema import CRITERIA
 
 Reply = Callable[[BatchRequest], str]
@@ -67,7 +67,7 @@ class FakeBatches:
             },
             "results": [
                 {
-                    "custom_id": r.custom_id,
+                    "custom_id": wire_id(r.custom_id),
                     "response": {"body": {"choices": [{"message": {"content": reply(r)}}]}},
                     "error": None,
                 }
