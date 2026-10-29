@@ -293,7 +293,8 @@ def parse_json_object(text: str) -> dict[str, Any]:
     end = text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("no JSON object in reply")
-    value = json.loads(text[start : end + 1])
+    # Replies sometimes carry raw newlines or tabs inside excerpt strings.
+    value = json.loads(text[start : end + 1], strict=False)
     if not isinstance(value, dict):
         raise ValueError("reply is not a JSON object")
     return value

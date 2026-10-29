@@ -78,6 +78,18 @@ not change prompts, schemas or code.
 The session must not write titles, names or descriptions of benchmark scenarios. It must not
 edit the handoff branch, and it must not push anything other than the results file.
 
+### If something fails
+
+Nobody watches the session, so it must not stop to ask questions.
+
+- If `uv sync` fails, use any Python 3.12 or later: run `pip install -e .`, then call
+  `python -m steward.cli` wherever these steps say `uv run steward`.
+- If subagents on opus cannot be started, do the deep read in the session itself, one
+  trajectory at a time, with the same three inputs.
+- If the session is truly blocked, write data/results/c2/BLOCKED_<shard number>.md. Say which
+  step failed and give the exact error. Push it to a branch named like the results branch with
+  `-blocked` appended. That branch is the only channel back to the cluster.
+
 ## On the cluster
 
 Every command below works with the pilot too: add `--pilot`. The pilot uses the directories

@@ -23,6 +23,11 @@ returns.
 
 Check: `uv run steward validate normalized data/normalized/<source>`.
 
+For real-user sources whose sessions name a public GitHub repository but no commit (SWE-chat,
+Pi, DataClaw), run `uv run steward infer-commits <source>` after ingesting. For each session with
+at least 40 actions, it takes the last default-branch commit before the session started, from a
+bare treeless clone in data/raw/_git, and marks it in meta as `base_commit_method`.
+
 ## 1. Stage A: rules, tags, prescore
 
 ```bash

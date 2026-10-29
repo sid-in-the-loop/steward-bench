@@ -12,6 +12,7 @@ import gzip
 import json
 import logging
 import os
+import shutil
 import subprocess
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -32,30 +33,29 @@ def mirror_path(settings: Settings, repo: str) -> Path:
 
 
 def fetch_history(settings: Settings, repo: str) -> Path | None:
-    """Bare treeless clone of a public GitHub repo; None if it is private or gone."""
+    """Bare treeless clone of a public GitHub repo; None if it is private, gone or too slow."""
     path = mirror_path(settings, repo)
     if (path / "HEAD").exists():
         return path
     path.parent.mkdir(parents=True, exist_ok=True)
-    result = subprocess.run(
-        [
-            "git",
-            "clone",
-            "--quiet",
-            "--bare",
-            "--filter=tree:0",
-            "--single-branch",
-            f"https://github.com/{repo}.git",
-            str(path),
-        ],
-        env=GIT_ENV,
-        capture_output=True,
-        timeout=600,
-        check=False,
-    )
-    if result.returncode != 0:
+    partial = path.with_name(path.name + ".partial")
+    shutil.rmtree(partial, ignore_errors=True)
+    command = ["git", "clone", "--quiet", "--bare", "--filter=tree:0", "--single-branch"]
+    try:
+        result = subprocess.run(
+            [*command, f"https://github.com/{repo}.git", str(partial)],
+            env=GIT_ENV,
+            capture_output=True,
+            timeout=300,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        result = None
+    if result is None or result.returncode != 0:
+        shutil.rmtree(partial, ignore_errors=True)
         log.info("commit inference: cannot clone %s", repo)
         return None
+    partial.rename(path)
     return path
 
 

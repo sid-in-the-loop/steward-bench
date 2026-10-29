@@ -18,6 +18,7 @@ outside version control. The engineering rules are in CLAUDE.md.
 ```
 sources ──download──> data/raw/<source>/
         ──ingest────> data/normalized/<source>/{meta.parquet, steps.jsonl.gz}  common format
+        infer-commits  base commits for public-repo sessions without one
 Stage A ────────────> data/stage_a/<source>.parquet      rules A1 to A5, moment tags, prescore (free)
 Stage B ────────────> data/stage_b/results.jsonl         triage, Haiku 5.5 on a batch API
 Stage C1 ───────────> data/stage_c1/results.jsonl        eight criteria scored 0 to 3, Haiku 5.5
