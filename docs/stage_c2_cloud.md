@@ -97,7 +97,8 @@ data/handoff/c2_pilot and data/results/c2_pilot and the branches results/c2-pilo
 `uv run steward pilot-report` then writes reports/PILOT.md.
 
 1. Build the shards from the C1 results. Each shard holds at most 25 trajectories and 20 MB. The
-   shards together hold the top 60 per domain, ranked by the sum of the two highest axis scores.
+   shards together hold up to 180 distinct tasks per domain for swe, terminal_devops and
+   workplace, ranked by the sum of the two highest axis scores, one trajectory per task.
 
    ```bash
    uv run steward c2-handoff

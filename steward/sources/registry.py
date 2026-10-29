@@ -18,6 +18,7 @@ from steward.sources.swe_together import SweTogether
 from steward.sources.swe_together_kimi import SweTogetherKimi
 from steward.sources.terminal_bench import TerminalBench
 from steward.sources.the_agent_company import TheAgentCompany
+from steward.sources.toolathlon import Toolathlon
 
 
 class UnavailableSource(BaseModel):
@@ -43,6 +44,7 @@ LOADERS: dict[str, Source] = {
         OpenAgentSafety(),
         HalLogs(),
         SweBenchExperiments(),
+        Toolathlon(),
         TerminalBench(),
         MleTraj(),
     ]
@@ -68,17 +70,6 @@ UNAVAILABLE: dict[str, UnavailableSource] = {
             "returns 403",
             unblock="Accept the form on the dataset page (approval is automatic), then download "
             "the 1.66 GB transcript set and write the graph-form loader",
-        ),
-        UnavailableSource(
-            name="toolathlon",
-            domain="tool_use",
-            location="hf:hkust-nlp/Toolathlon-Trajectories, hf:hkust-nlp/Toolathlon-Verified_Trajectories",
-            license="cc-by-4.0 (Trajectories); no tag (Verified)",
-            reason="Gated: access forms for both trajectory datasets not accepted; the task "
-            "dataset hkust-nlp/Toolathlon has no trajectories",
-            unblock="Accept both access forms, then run data/logs/toolathlon_scripts/"
-            "dl_toolathlon_lfs.py (1.78 GB subset); the Verified terms forbid training use and "
-            "redistribution",
         ),
     ]
 }

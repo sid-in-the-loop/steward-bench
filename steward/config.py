@@ -107,6 +107,8 @@ class StageAThresholds(BaseModel):
 class StageBConfig(BaseModel):
     top_n: int = 8000
     per_domain_floor: int = 600
+    # Every Stage A survivor in these domains is triaged, beyond top_n (DECISIONS.md).
+    full_domains: tuple[str, ...] = ("terminal_devops", "workplace")
     summary_token_budget: int = 2500
     max_output_tokens: int = 600
     # Haiku 5.5 reasons by default and reasoning tokens count toward max_tokens.
@@ -116,6 +118,8 @@ class StageBConfig(BaseModel):
 class StageC1Config(BaseModel):
     top_n: int = 1500
     per_domain_floor: int = 150
+    # Every Stage B pass in these domains is scored, beyond top_n (DECISIONS.md).
+    full_domains: tuple[str, ...] = ("terminal_devops", "workplace")
     rendering_token_cap: int = 40_000
     max_output_tokens: int = 6000
     reasoning: dict[str, object] = {"effort": "low"}
@@ -130,7 +134,10 @@ class RenderConfig(BaseModel):
 
 
 class StageC2Config(BaseModel):
-    per_domain: int = 60
+    # C2 reads a pool of distinct tasks per domain; ranking keeps the best final_per_domain.
+    per_domain: int = 180
+    domains: tuple[str, ...] = ("swe", "terminal_devops", "workplace")
+    one_per_task: bool = True
     shard_max_trajectories: int = 25
     shard_max_bytes: int = 20_000_000
     max_parallel_sessions: int = 6
@@ -156,6 +163,7 @@ class Caps(BaseModel):
 
 class RankConfig(BaseModel):
     top_k: int = 40
+    final_per_domain: int = 120
 
 
 class PilotConfig(BaseModel):

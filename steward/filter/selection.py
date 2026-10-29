@@ -40,6 +40,21 @@ def select_with_floor[T](
     return sorted(chosen, key=sort_key)
 
 
+def with_full_domains[T](
+    chosen: Sequence[T],
+    items: Sequence[T],
+    domain_of: Callable[[T], str],
+    sort_key: Callable[[T], tuple[object, ...]],
+    domains: Sequence[str],
+) -> list[T]:
+    """The chosen items plus every item whose domain is in domains, ranked by sort_key."""
+    picked = {id(item): item for item in chosen}
+    for item in items:
+        if domain_of(item) in domains:
+            picked.setdefault(id(item), item)
+    return sorted(picked.values(), key=sort_key)
+
+
 def round_robin[T](
     items: Sequence[T],
     domain_of: Callable[[T], str],

@@ -129,6 +129,15 @@ def best_c1(scored: Scored) -> C1Candidate | None:
     return sorted(usable, key=lambda c: (c.conflicting_instruction, c.step))[0]
 
 
+def task_key(meta: TrajectoryMeta) -> str:
+    """The task a trajectory works on: its task environment, else its repository and commit."""
+    if meta.task_env:
+        return meta.task_env
+    if meta.repo and meta.base_commit:
+        return f"{meta.repo}@{meta.base_commit}"
+    return meta.trajectory_id
+
+
 def jump_in_step(scored: Scored) -> int | None:
     deep = best_c2(scored)
     if deep is not None:
@@ -178,6 +187,93 @@ def rank_axis(
         )
 
     return sorted(eligible, key=key)[:top_k]
+
+
+FINAL_COLUMNS = [
+    "rank",
+    "trajectory_id",
+    "source",
+    "task",
+    "real_user",
+    "history_author",
+    "harness",
+    "scored_by",
+    "top_two_axis_sum",
+    "best_axis",
+    "axis_scores",
+    "best_jump_in_step",
+    "jump_in_phase",
+    "checkability",
+    "right_behavior_agreement",
+    "agent_actions",
+]
+
+
+def top_two(scored: Scored) -> int:
+    values = sorted((scored.scores[a].score for a in AXES), reverse=True)
+    return values[0] + values[1]
+
+
+def rank_final(
+    scored: list[Scored], agent_actions: dict[str, int], task_of: dict[str, str], n: int
+) -> list[Scored]:
+    """The best n of a domain, one per task: C2-scored first, then by the two highest axis
+    scores, agreement on the right behavior and agent actions."""
+
+    def key(s: Scored) -> tuple[object, ...]:
+        deep = best_c2(s)
+        return (
+            not s.from_c2,
+            -top_two(s),
+            -AGREEMENT_RANK[deep.right_behavior_agreement if deep else None],
+            -agent_actions.get(s.trajectory_id, 0),
+            s.trajectory_id,
+        )
+
+    picked: list[Scored] = []
+    seen: set[str] = set()
+    for item in sorted(scored, key=key):
+        task = task_of.get(item.trajectory_id, item.trajectory_id)
+        if top_two(item) == 0 or all_unsafe(item) or task in seen:
+            continue
+        seen.add(task)
+        picked.append(item)
+        if len(picked) == n:
+            break
+    return picked
+
+
+def final_rows(
+    ranked: list[Scored],
+    metas: dict[str, TrajectoryMeta],
+    agent_actions: dict[str, int],
+    task_of: dict[str, str],
+) -> list[dict[str, object]]:
+    rows = []
+    for position, scored in enumerate(ranked, start=1):
+        meta = metas[scored.trajectory_id]
+        deep = best_c2(scored)
+        rows.append(
+            {
+                "rank": position,
+                "trajectory_id": scored.trajectory_id,
+                "source": scored.source,
+                "task": task_of.get(scored.trajectory_id),
+                "real_user": meta.real_user,
+                "history_author": meta.history_author,
+                "harness": meta.harness,
+                "scored_by": "c2" if scored.from_c2 else "c1",
+                "top_two_axis_sum": top_two(scored),
+                "best_axis": max(AXES, key=lambda a: scored.scores[a].score),
+                "axis_scores": json.dumps({a: scored.scores[a].score for a in AXES}),
+                "best_jump_in_step": jump_in_step(scored),
+                "jump_in_phase": deep.phase if deep else None,
+                "checkability": deep.checkability if deep else None,
+                "right_behavior_agreement": deep.right_behavior_agreement if deep else None,
+                "agent_actions": agent_actions.get(scored.trajectory_id),
+            }
+        )
+    return rows
 
 
 def rows_for(
@@ -252,4 +348,15 @@ def run(
         frame.to_csv(path, index=False)
         counts[(domain, axis)] = len(frame)
         log.info("ranked %s/%s: %d rows", domain, axis, len(frame))
+    task_of = {trajectory_id: task_key(meta) for trajectory_id, meta in metas.items()}
+    n = settings.rank.final_per_domain
+    for domain in settings.stage_c2.domains:
+        in_domain = [s for s in scored if s.domain == domain]
+        final = rank_final(in_domain, actions, task_of, n)
+        frame = pd.DataFrame(final_rows(final, metas, actions, task_of), columns=FINAL_COLUMNS)
+        path = out_root / domain / f"top_{n}.csv"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_csv(path, index=False)
+        counts[(domain, f"top_{n}")] = len(frame)
+        log.info("final %s: %d rows", domain, len(frame))
     return counts

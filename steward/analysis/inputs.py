@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict
 from steward.config import Settings
 from steward.filter.render import CHARS_PER_TOKEN
 from steward.filter.stage_a import read_results as read_stage_a
-from steward.schema import StageAResult, StageBResult, StageC1Result, StageC2Result
+from steward.schema import AXES, StageAResult, StageBResult, StageC1Result, StageC2Result
 from steward.store import open_steps, read_jsonl, read_meta, source_dir, written_sources
 
 log = logging.getLogger(__name__)
@@ -133,4 +133,4 @@ def load(settings: Settings) -> AnalysisInputs:
 
 
 def ranked_files(settings: Settings) -> list[Path]:
-    return sorted(settings.paths.ranked.glob("*/*.csv"))
+    return sorted(p for p in settings.paths.ranked.glob("*/*.csv") if p.stem in AXES)

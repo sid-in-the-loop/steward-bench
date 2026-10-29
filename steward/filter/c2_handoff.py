@@ -10,13 +10,20 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from steward.config import Settings
+from steward.filter.rank import task_key
 from steward.filter.redact import redact
 from steward.filter.selection import load_by_ids
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.filter.stage_b import read_results as read_stage_b
 from steward.filter.stage_c1 import render_for_scoring
-from steward.schema import AXES, C2Input, StageC1Result, StageC2Output, StageC2Result
-from steward.store import read_jsonl, write_jsonl
+from steward.schema import (
+    AXES,
+    C2Input,
+    StageC1Result,
+    StageC2Output,
+    StageC2Result,
+)
+from steward.store import read_jsonl, read_meta, write_jsonl
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +35,17 @@ def top_two_axis_sum(result: StageC1Result) -> int:
 
 
 def select_inputs(
-    settings: Settings, c1: list[StageC1Result], agent_actions: dict[str, int]
+    settings: Settings,
+    c1: list[StageC1Result],
+    agent_actions: dict[str, int],
+    task_of: dict[str, str],
 ) -> list[StageC1Result]:
-    """Top N per domain by the sum of the two highest axis scores, ties by agent actions."""
+    """Top N per configured domain by the sum of the two highest axis scores, ties by agent
+    actions; with one_per_task, only the best trajectory of each task is kept."""
+    config = settings.stage_c2
     by_domain: dict[str, list[StageC1Result]] = defaultdict(list)
     for result in c1:
-        if result.output is not None:
+        if result.output is not None and result.domain in config.domains:
             by_domain[result.domain].append(result)
     chosen: list[StageC1Result] = []
     for domain in sorted(by_domain):
@@ -45,7 +57,17 @@ def select_inputs(
                 r.trajectory_id,
             ),
         )
-        chosen.extend(ranked[: settings.stage_c2.per_domain])
+        seen: set[str] = set()
+        picked: list[StageC1Result] = []
+        for result in ranked:
+            task = task_of.get(result.trajectory_id, result.trajectory_id)
+            if config.one_per_task and task in seen:
+                continue
+            seen.add(task)
+            picked.append(result)
+            if len(picked) == config.per_domain:
+                break
+        chosen.extend(picked)
     return chosen
 
 
@@ -53,7 +75,13 @@ def build_shards(settings: Settings, c1_path: Path, b_path: Path, handoff_dir: P
     stage_a = {r.trajectory_id: r for r in read_stage_a(settings)}
     stage_b = {r.trajectory_id: r for r in read_stage_b(b_path)}
     c1 = read_jsonl(c1_path, StageC1Result)
-    chosen = select_inputs(settings, c1, {k: v.agent_actions for k, v in stage_a.items()})
+    task_of = {
+        meta.trajectory_id: task_key(meta)
+        for source in sorted({r.source for r in c1})
+        for meta in read_meta(settings.paths.normalized, source)
+    }
+    actions = {k: v.agent_actions for k, v in stage_a.items()}
+    chosen = select_inputs(settings, c1, actions, task_of)
     by_id = {r.trajectory_id: r for r in chosen}
     lines: list[C2Input] = []
     for trajectory in load_by_ids(settings, list(by_id)):
