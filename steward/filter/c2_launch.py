@@ -36,7 +36,9 @@ class Launch(BaseModel):
 def prompt_for(shard: str, results_file: str, results_branch: str) -> str:
     return (
         f"Stage C2 for {shard} on branch {HANDOFF_BRANCH}. Follow docs/stage_c2_cloud.md "
-        f"exactly. Write results to {results_file}. Push results to branch {results_branch}."
+        f"exactly. Write results to {results_file}. Push results to branch {results_branch}. "
+        "Nobody can answer questions: do not wait for input, and if blocked follow the "
+        "'If something fails' section of that file."
     )
 
 
