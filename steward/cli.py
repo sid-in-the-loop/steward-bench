@@ -70,6 +70,13 @@ def cmd_ingest(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_infer_commits(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.sources.commit_inference import infer_for_source
+
+    infer_for_source(settings, args.source, settings.stage_a.min_agent_actions)
+    return 0
+
+
 def cmd_stage_a(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter import stage_a
 
@@ -262,6 +269,9 @@ def build_parser() -> argparse.ArgumentParser:
         sub = add(name, handler, text)
         sub.add_argument("source", help="source name or 'all'")
         sub.add_argument("--force", action="store_true")
+    add(
+        "infer-commits", cmd_infer_commits, "fill missing base commits from repo history"
+    ).add_argument("source")
     add("stage-a", cmd_stage_a, "rule checks, tags and prescore").add_argument(
         "--force", action="store_true"
     )

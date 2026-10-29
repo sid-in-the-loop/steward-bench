@@ -113,6 +113,9 @@ class SweChat(Source):
         real_user=True,
         location="hf:SALT-NLP/SWE-chat",
         license="odc-by",
+        notes="Claude Code, Codex, Pi and Copilot CLI transcripts are parsed; other agent "
+        "formats (OpenCode, Cursor, Gemini CLI and smaller ones) and sessions flagged "
+        "compact_transcript_delta_only are skipped",
     )
 
     def download(self, settings: Settings) -> None:
