@@ -37,3 +37,4 @@ criteria from the brief are unchanged unless an entry says otherwise.
 - Stage C1 input order is offline_rebuild (likely, unclear, unlikely), then Stage A prescore, then agent actions: the brief says "top 1,500 Stage B passes" without naming a score.
 - Ranked lists exclude trajectories whose axis score is 0: a zero means no opportunity for that axis, so it is not a candidate.
 - The pilot takes 40 Stage A survivors round-robin across domains in prescore order, and runs all 40 through C1, not just the B passes: this measures C1 cost on a full sample.
+- Normalized steps are written as gzip-compressed JSONL (steps.jsonl.gz, still one JSON line per step): the home quota was at 61 of 100 GB with SWE-chat still to ingest, and compression saves about 5x.

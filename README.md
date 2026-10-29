@@ -17,7 +17,7 @@ outside version control. The engineering rules are in CLAUDE.md.
 
 ```
 sources ──download──> data/raw/<source>/
-        ──ingest────> data/normalized/<source>/{meta.parquet, steps.jsonl}     common format
+        ──ingest────> data/normalized/<source>/{meta.parquet, steps.jsonl.gz}  common format
 Stage A ────────────> data/stage_a/<source>.parquet      rules A1 to A5, moment tags, prescore (free)
 Stage B ────────────> data/stage_b/results.jsonl         triage, Haiku 5.5 on a batch API
 Stage C1 ───────────> data/stage_c1/results.jsonl        eight criteria scored 0 to 3, Haiku 5.5
@@ -109,7 +109,7 @@ runs in `claude --cloud` sessions under the owner's claude.ai login and needs no
 
 | Output | Content |
 |---|---|
-| data/normalized/<source>/ | meta.parquet, one row per trajectory; steps.jsonl, one line per step |
+| data/normalized/<source>/ | meta.parquet, one row per trajectory; steps.jsonl.gz, one line per step |
 | data/stage_a/<source>.parquet | pass or fail, the failed check, counts, tags with step indices, prescore |
 | data/stage_b/results.jsonl | decision, reason, domain, best steps, moment kinds, offline rebuild |
 | data/stage_c1/results.jsonl | eight criterion scores with evidence, up to three jump-in candidates, flags |

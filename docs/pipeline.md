@@ -15,7 +15,7 @@ uv run steward download <source>       # or: all
 uv run steward ingest <source>         # or: all; --force rewrites a source
 ```
 
-Output: data/normalized/<source>/meta.parquet, with one row per trajectory, and steps.jsonl, with
+Output: data/normalized/<source>/meta.parquet, with one row per trajectory, and steps.jsonl.gz (gzip-compressed JSONL), with
 one line per step. A `_DONE` marker is written last, so an interrupted ingest leaves no partial
 source. Mixed real-user sources get their domain from steward/sources/domain_rule.py. Sessions
 the rule cannot decide are marked `domain_decided_by_rule = false` and take the domain Stage B

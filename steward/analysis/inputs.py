@@ -14,7 +14,7 @@ from steward.config import Settings
 from steward.filter.render import CHARS_PER_TOKEN
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.schema import StageAResult, StageBResult, StageC1Result, StageC2Result
-from steward.store import STEPS_FILE, read_jsonl, read_meta, source_dir, written_sources
+from steward.store import open_steps, read_jsonl, read_meta, source_dir, written_sources
 
 log = logging.getLogger(__name__)
 
@@ -46,7 +46,7 @@ def step_statistics(settings: Settings, source: str) -> tuple[pd.DataFrame, pd.D
     stats: dict[str, dict[str, object]] = {}
     events: list[dict[str, object]] = []
     last_action: dict[str, tuple[str, str]] = {}
-    with (source_dir(settings.paths.normalized, source) / STEPS_FILE).open() as handle:
+    with open_steps(source_dir(settings.paths.normalized, source)) as handle:
         for line in handle:
             record = json.loads(line)
             trajectory_id = record["trajectory_id"]

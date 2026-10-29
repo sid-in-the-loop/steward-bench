@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import gzip
 import json
 import os
 from collections.abc import Iterable, Iterator
 from pathlib import Path
+from typing import TextIO
 
 import pandas as pd
 from pydantic import BaseModel
@@ -13,7 +15,7 @@ from pydantic import BaseModel
 from steward.schema import Step, Trajectory, TrajectoryMeta
 
 META_FILE = "meta.parquet"
-STEPS_FILE = "steps.jsonl"
+STEPS_FILE = "steps.jsonl.gz"
 DONE_FILE = "_DONE"
 
 
@@ -37,6 +39,11 @@ def to_meta(trajectory: Trajectory) -> TrajectoryMeta:
     )
 
 
+def open_steps(directory: Path) -> TextIO:
+    """Open a source's gzip-compressed steps file for reading."""
+    return gzip.open(directory / STEPS_FILE, "rt")
+
+
 def source_dir(normalized_root: Path, source: str) -> Path:
     return normalized_root / source
 
@@ -52,7 +59,7 @@ def write_source(normalized_root: Path, source: str, trajectories: Iterable[Traj
     steps_tmp = out / f"{STEPS_FILE}.tmp"
     metas: list[dict[str, object]] = []
     seen: set[str] = set()
-    with steps_tmp.open("w") as handle:
+    with gzip.open(steps_tmp, "wt", compresslevel=3) as handle:
         for trajectory in trajectories:
             if trajectory.trajectory_id in seen:
                 continue
@@ -102,7 +109,7 @@ def iter_trajectories(
             meta=json.loads(meta.meta_json),
         )
 
-    with (source_dir(normalized_root, source) / STEPS_FILE).open() as handle:
+    with open_steps(source_dir(normalized_root, source)) as handle:
         for line in handle:
             record = json.loads(line)
             trajectory_id = record.pop("trajectory_id")

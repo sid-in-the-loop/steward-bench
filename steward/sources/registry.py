@@ -5,9 +5,13 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 from steward.sources.base import Source
+from steward.sources.dataclaw import DataClaw
 from steward.sources.hyperswitch import Hyperswitch
 from steward.sources.nebius_openhands import NebiusOpenHands
+from steward.sources.pi_staging import PiStaging
 from steward.sources.swe_chat import SweChat
+from steward.sources.swe_together import SweTogether
+from steward.sources.swe_together_kimi import SweTogetherKimi
 
 
 class UnavailableSource(BaseModel):
@@ -25,6 +29,10 @@ LOADERS: dict[str, Source] = {
         SweChat(),
         Hyperswitch(),
         NebiusOpenHands(),
+        SweTogether(),
+        SweTogetherKimi(),
+        PiStaging(),
+        DataClaw(),
     ]
 }
 

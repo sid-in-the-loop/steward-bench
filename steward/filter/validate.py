@@ -26,6 +26,7 @@ from steward.schema import (
     Step,
     TrajectoryMeta,
 )
+from steward.store import open_steps
 
 TRAJECTORY_ID = re.compile(r"^[a-z0-9_]+:\S+$")
 
@@ -106,7 +107,7 @@ def validate_normalized(report: Report, path: Path) -> None:
     expected = {m.trajectory_id: m.n_steps for m in metas}
     counts: dict[str, int] = {}
     last: dict[str, int] = {}
-    with (path / "steps.jsonl").open() as handle:
+    with open_steps(path) as handle:
         for number, line in enumerate(handle, start=1):
             record = json.loads(line)
             trajectory_id = record.pop("trajectory_id")
