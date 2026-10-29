@@ -1,7 +1,7 @@
 """Schema validation for every stage output.
 
 Usage: python -m steward.filter.validate <stage> <path> [--shard <c2 input shard>]
-Stages: normalized, a, b, c1, c2, c2_input, c2_merged, ranked.
+Stages: normalized, a, b, c1, c2, c2_input, c2_merged, ranked, final.
 """
 
 from __future__ import annotations
@@ -16,6 +16,7 @@ import pandas as pd
 from pydantic import BaseModel, ValidationError
 
 from steward.filter.rank import COLUMNS as RANKED_COLUMNS
+from steward.filter.rank import FINAL_COLUMNS
 from steward.schema import (
     C2Input,
     StageAResult,
@@ -157,6 +158,22 @@ def validate_ranked(report: Report, path: Path) -> None:
     _check_ids(report, list(frame["trajectory_id"]))
 
 
+def validate_final(report: Report, path: Path) -> None:
+    frame = pd.read_csv(path)
+    if list(frame.columns) != FINAL_COLUMNS:
+        report.add(f"columns {list(frame.columns)} differ from {FINAL_COLUMNS}")
+        return
+    report.records = len(frame)
+    if list(frame["rank"]) != list(range(1, len(frame) + 1)):
+        report.add("ranks are not 1..n")
+    tasks = list(frame["task"])
+    if len(set(tasks)) != len(tasks):
+        report.add("a task appears more than once")
+    if (frame["top_two_axis_sum"] <= 0).any():
+        report.add("a row has no axis score above 0")
+    _check_ids(report, list(frame["trajectory_id"]))
+
+
 def validate(stage: str, path: Path, shard: Path | None = None) -> Report:
     report = Report(stage=stage, path=str(path))
     if not path.exists():
@@ -182,6 +199,8 @@ def validate(stage: str, path: Path, shard: Path | None = None) -> Report:
         validate_jsonl(report, path, StageC2Result)
     elif stage == "ranked":
         validate_ranked(report, path)
+    elif stage == "final":
+        validate_final(report, path)
     else:
         report.add(f"unknown stage {stage}")
     return report

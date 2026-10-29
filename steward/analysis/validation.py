@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from steward.config import Settings
 from steward.filter.validate import Report, validate
+from steward.schema import AXES
 from steward.store import source_dir, written_sources
 
 
@@ -22,5 +23,6 @@ def validate_all(settings: Settings) -> list[Report]:
         if path.exists():
             reports.append(validate(stage, path))
     reports += [validate("c2_input", p) for p in sorted(paths.handoff_c2.glob("shard_*.jsonl"))]
-    reports += [validate("ranked", p) for p in sorted(paths.ranked.glob("*/*.csv"))]
+    for path in sorted(paths.ranked.glob("*/*.csv")):
+        reports.append(validate("ranked" if path.stem in AXES else "final", path))
     return reports

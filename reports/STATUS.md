@@ -1,67 +1,54 @@
-# Phase 1 status, 2026-10-29 03:05
+# Phase 1 status, 2026-10-29 16:50
 
-The stop condition in brief section 2.3 is not met. The only gap is Stage C2. Cloud sessions
-start, but none of them can push its results back to this repository (BLOCKERS.md). Everything
-that does not depend on C2 is done, validated, committed and pushed. The ranked lists use C1
-scores, which section 8 allows as the fallback, and can be refreshed in about 30 minutes once C2
-runs.
+Stage C2 is complete. The owner narrowed the final lists to swe, terminal_devops and workplace,
+with 120 distinct tasks each (DECISIONS.md, owner-directed extension), and all three lists are
+full and C2-scored. The per-axis lists for every domain are refreshed with C2 scores.
 
 ## Done
 
 | Item | State |
 |---|---|
-| Sources | 13 of 16 sources ingested, 41,366 trajectories; metr_malt, toolathlon and spider2_dbt unavailable, each with its reason and unblock step in SOURCES_STATUS.md |
-| Stage A | 10,258 survivors (24.8%) |
-| Stage B | top 8,000 triaged, 7,996 valid replies, 7,666 YES |
-| Stage C1 | 1,500 scored, 1,494 valid |
-| Stage C2 inputs | 291 trajectories in 12 shards (top 60 per domain), redacted and pushed on handoff/c2, with the 2 pilot shards |
-| Ranking | data/ranked/<domain>/<axis>.csv for all 6 domains and all 5 axes; 436 distinct trajectories |
-| Reports | PHASE1_REPORT.md with 10 figures, SOURCES_STATUS.md, PILOT.md, DECISIONS.md, BLOCKERS.md |
-| Validation | `steward validate-all` passes for all 70 outputs |
-| Code | 126 tests pass; ruff, ruff format and mypy strict are clean |
-| Docs | README.md, docs/pipeline.md, docs/sources.md and docs/stage_c2_cloud.md are complete |
+| Sources | 14 of 16 sources ingested, 48,361 trajectories; Toolathlon added for workplace; metr_malt and spider2_dbt unavailable, each with its reason in SOURCES_STATUS.md |
+| Stage A | 11,367 survivors (23.5%) |
+| Stage B | 9,399 triaged, 8,847 YES |
+| Stage C1 | 3,989 scored, 3,970 valid |
+| Stage C2 | 540 trajectories in 22 cloud sessions (180 distinct tasks per domain); 538 results, 0 invalid |
+| Final lists | data/ranked/<domain>/top_120.csv for swe, terminal_devops and workplace, 120 rows each, all C2-scored |
+| Per-axis lists | data/ranked/<domain>/<axis>.csv for all 6 domains and all 5 axes |
+| Reports | PHASE1_REPORT.md with figures and C1 to C2 agreement, SOURCES_STATUS.md, PILOT.md, DECISIONS.md |
 
-Ranked rows per list: swe, terminal_devops, workplace and ai_rnd have 40 on every axis; data has
-16 to 32; tool_use has 1 row on one axis.
+## Final lists
 
-## Not done
+| Domain | Sources | Best axis |
+|---|---|---|
+| swe | swe_chat 112, dataclaw 7, swe_together 1 | side_effects 57, safe_interruptibility 34, reward_gaming 12, absent_supervisor 9, self_modification 8 |
+| terminal_devops | swe_chat 79, terminal_bench 40, dataclaw 1 | side_effects 73, safe_interruptibility 25, reward_gaming 18, absent_supervisor 3, self_modification 1 |
+| workplace | the_agent_company 48, toolathlon 48, openagentsafety 24 | side_effects 72, reward_gaming 36, absent_supervisor 9, safe_interruptibility 3 |
 
-- Stage C2, so data/stage_c2/results.jsonl, the C1 to C2 agreement in PILOT.md and report
-  section 5, and the C2-only ranked columns (jump_in_phase, buttons, checkability,
-  right_behavior_agreement) are missing.
-- tool_use is nearly empty after Stage A: tau-bench runs rarely reach the A1 minimum of 40 agent
-  actions, and Toolathlon is gated. Thresholds were not changed.
-- 2,913 of 17,968 SWE-chat sessions were not ingested. They are in harness formats without a
-  parser (OpenCode, Cursor, Gemini CLI and smaller ones) or flagged
-  compact_transcript_delta_only. The SWE-chat prompt_pushback and prompt_intent labels were not
-  loaded either, because they live in the 6.4 GB conversations table.
+The sum of the two highest axis scores (out of 6) has a median of 4 in swe and workplace and 3
+in terminal_devops.
+
+## Gaps
+
+- 2 of the 540 C2 inputs got no result (two Toolathlon runs in shard 019, skipped by the
+  session). The workplace list still filled from the other 178.
+- self_modification and absent_supervisor are thin in every domain, and safe_interruptibility is
+  thin in workplace, where runs have no real user to interrupt.
+- ai_rnd, data and tool_use have per-axis lists but no final list, as the owner directed.
 
 ## Spend
 
 | Item | Spend |
 |---|---|
-| Stages B and C1, pilots included (data/costs.jsonl) | $4.78 of the $15 cap |
-| Abandoned first pilot attempt, within that total | $0.09 |
-| C2 | 5 short cloud sessions on claude.ai credits; no C2 work completed |
-
-The OpenRouter key showed $18.15 of earlier usage before this run; that is not part of these
-figures.
+| Stages B and C1, pilots included (data/costs.jsonl) | $8.78 of the $15 cap |
+| C2 | 22 cloud sessions plus 2 pilot sessions on claude.ai credits |
 
 ## Decisions for you
 
-1. Stage C2: open one of the session URLs in BLOCKERS.md to see why it stopped. Most likely the
-   Claude GitHub app needs write access to sid-in-the-loop/steward-bench. Once that is fixed,
-   run the commands listed there (about 12 sessions, six at a time).
-2. tool_use: keep the 40-action A1 minimum, or lower it for that domain (brief threshold, so your
-   call), and decide whether to accept the Toolathlon and MALT access forms on Hugging Face.
-3. The repository is public, and handoff/c2 holds redacted renderings of gated SWE-chat and
-   mle-traj sessions. You approved this; delete the branch if that changes.
-4. Rotate HF_TOKEN and OPENROUTER_API_KEY. Both were pasted into the conversation, and the
-   HF_TOKEN also appeared in a git clone command line on this shared machine during one
-   download.
-5. project_desc/ and your uncommitted CLAUDE.md edit are not committed; commit them if you want
-   them on the public main branch.
-6. Disk: data/ is 58 GB and the home quota is at 79 of 100 GB. data/raw/_git (2 GB of bare
-   repository clones for commit inference) can be removed if space is needed.
+1. Rotate HF_TOKEN and OPENROUTER_API_KEY, which were pasted into the conversation.
+2. The probe branches claude/c2-probe3 and results/c2-probe3 on origin can be deleted.
+3. project_desc/ and your uncommitted CLAUDE.md edit are not committed.
+4. Disk: data/raw/_git (about 2 GB of bare clones for commit inference) can be removed if space
+   is needed.
 
 Every judgment call made during the run is in DECISIONS.md, one line each with the reason.

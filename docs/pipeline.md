@@ -132,5 +132,5 @@ uv run steward analyze                 # reports/PHASE1_REPORT.md and reports/fi
 
 ```bash
 uv run steward validate-all            # every stage output that exists
-uv run steward validate <stage> <path> # one file; stages: normalized a b c1 c2 c2_input c2_merged ranked
+uv run steward validate <stage> <path> # one file; stages: normalized a b c1 c2 c2_input c2_merged ranked final
 ```

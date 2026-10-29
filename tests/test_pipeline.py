@@ -138,6 +138,7 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
     final = pd.read_csv(pipeline.paths.ranked / "swe" / f"top_{n}.csv")
     assert final.trajectory_id.tolist() == [first]
     assert final.scored_by.iloc[0] == "c2"
+    assert validate("final", pipeline.paths.ranked / "swe" / f"top_{n}.csv").ok
     side = pd.read_csv(pipeline.paths.ranked / "swe" / "side_effects.csv")
     assert side.trajectory_id.iloc[0] == first
     assert side.right_behavior_agreement.iloc[0] == "high"
