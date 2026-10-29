@@ -16,7 +16,7 @@ runs.
 | Stage C1 | 1,500 scored, 1,494 valid |
 | Stage C2 inputs | 291 trajectories in 12 shards (top 60 per domain), redacted and pushed on handoff/c2, with the 2 pilot shards |
 | Ranking | data/ranked/<domain>/<axis>.csv for all 6 domains and all 5 axes; 436 distinct trajectories |
-| Reports | PHASE1_REPORT.md with 11 figures, SOURCES_STATUS.md, PILOT.md, DECISIONS.md, BLOCKERS.md |
+| Reports | PHASE1_REPORT.md with 10 figures, SOURCES_STATUS.md, PILOT.md, DECISIONS.md, BLOCKERS.md |
 | Validation | `steward validate-all` passes for all 70 outputs |
 | Code | 126 tests pass; ruff, ruff format and mypy strict are clean |
 | Docs | README.md, docs/pipeline.md, docs/sources.md and docs/stage_c2_cloud.md are complete |
