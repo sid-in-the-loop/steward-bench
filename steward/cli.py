@@ -6,6 +6,7 @@ import argparse
 import logging
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -179,6 +180,48 @@ def cmd_c2_merge(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def _c2_locations(settings: Settings, pilot: bool) -> tuple[Path, Path, str]:
+    paths = settings.paths
+    if pilot:
+        return paths.handoff_c2_pilot, paths.results_c2_pilot, "results/c2-pilot-shard-"
+    return paths.handoff_c2, paths.results_c2, "results/c2-shard-"
+
+
+def cmd_c2_push(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.filter.c2_branches import push_handoff
+
+    dirs = [d for d in (settings.paths.handoff_c2, settings.paths.handoff_c2_pilot) if d.exists()]
+    print(push_handoff(settings.paths.root, dirs, "Update Stage C2 handoff shards"))
+    return 0
+
+
+def cmd_c2_launch(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.filter.c2_launch import launch
+
+    handoff, results, prefix = _c2_locations(settings, args.pilot)
+    started = launch(
+        settings.paths.root,
+        handoff,
+        results,
+        prefix,
+        handoff.parent / f"{handoff.name}_launches.jsonl",
+        min(args.max_running, settings.stage_c2.max_parallel_sessions),
+        settings.paths.logs / "cloud",
+    )
+    for entry in started:
+        print(entry.shard, entry.results_branch, entry.session_url)
+    return 0
+
+
+def cmd_c2_fetch(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.filter.c2_branches import fetch_results
+
+    _, results, prefix = _c2_locations(settings, args.pilot)
+    for path in fetch_results(settings.paths.root, prefix, results):
+        print(path)
+    return 0
+
+
 def cmd_c2_split(settings: Settings, args: argparse.Namespace) -> int:
     from pathlib import Path
 
@@ -289,6 +332,13 @@ def build_parser() -> argparse.ArgumentParser:
             sub.add_argument("--limit", type=int, default=0)
     add("c2-handoff", cmd_c2_handoff, "write C2 shards to data/handoff/c2").add_argument(
         "--pilot", action="store_true", help="build shards from the pilot C1 results"
+    )
+    add("c2-push", cmd_c2_push, "commit current shards on handoff/c2 and push")
+    sub = add("c2-launch", cmd_c2_launch, "start cloud sessions for shards not yet launched")
+    sub.add_argument("--pilot", action="store_true")
+    sub.add_argument("--max-running", type=int, default=6)
+    add("c2-fetch", cmd_c2_fetch, "copy results files from results branches").add_argument(
+        "--pilot", action="store_true"
     )
     sub = add("c2-split", cmd_c2_split, "write one C2 input file per trajectory of a shard")
     sub.add_argument("shard")

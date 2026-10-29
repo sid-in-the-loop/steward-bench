@@ -10,14 +10,17 @@ are passed through secret redaction (steward/filter/redact.py) before shards are
 
 ## Inside the cloud session (one shard)
 
-The session is started from the repository root with a prompt like:
+The cluster starts the session with a prompt that names three things: the shard, the results
+file and the results branch.
 
-```bash
-claude --cloud "Stage C2 for data/handoff/c2/shard_007.jsonl on branch handoff/c2. \
-Follow docs/stage_c2_cloud.md exactly. Push results to branch results/c2-shard-007."
+```
+Stage C2 for data/handoff/c2/shard_007.jsonl on branch handoff/c2. Follow
+docs/stage_c2_cloud.md exactly. Write results to data/results/c2/shard_007.jsonl. Push results
+to branch results/c2-shard-007.
 ```
 
-Follow these steps in order. Do not change prompts, schemas or code.
+Below, SHARD, RESULTS and BRANCH stand for those three values. Follow these steps in order. Do
+not change prompts, schemas or code.
 
 1. Check out the handoff branch and install the package.
 
@@ -26,85 +29,92 @@ Follow these steps in order. Do not change prompts, schemas or code.
    pip install uv && uv sync
    ```
 
-2. Split the shard into one input file per trajectory, and print the result schema.
+2. Split the shard into one input file per trajectory, and write out the result schema.
 
    ```bash
-   uv run steward c2-split data/handoff/c2/shard_007.jsonl /tmp/c2/shard_007
+   uv run steward c2-split SHARD /tmp/c2/inputs
    uv run steward c2-schema > /tmp/c2/schema.json
    ```
 
-3. For each input file, start one subagent on the opus model. Give it exactly three things: the
-   text of prompts/stage_c2.md, the JSON schema from /tmp/c2/schema.json, and that one input file.
-   The input file holds the trajectory_id, the C1 result and the windowed rendering. Tell it to
-   return only one JSON object matching the schema, with trajectory_id copied from the input.
-   Each subagent sees one trajectory only. Run at most five subagents at a time.
+3. For each input file in /tmp/c2/inputs, start one subagent on the opus model. Give it exactly
+   three things: the full text of prompts/stage_c2.md, the JSON schema in /tmp/c2/schema.json,
+   and that one input file. The input file holds the trajectory_id, the first-pass (C1) result
+   and the windowed rendering. Tell the subagent to return only one JSON object that matches the
+   schema, with trajectory_id copied from the input, and with every excerpt copied verbatim from
+   the rendering. Each subagent sees one trajectory only. Run at most five subagents at a time.
 
-4. Append each returned JSON object as one line to data/results/c2/shard_007.jsonl. Write only the
-   object, without code fences.
+4. Append each returned JSON object as one line to RESULTS, creating the directory if needed.
+   Write only the object, without code fences.
 
-5. Validate against the shard.
-
-   ```bash
-   uv run python -m steward.filter.validate c2 data/results/c2/shard_007.jsonl \
-     --shard data/handoff/c2/shard_007.jsonl
-   ```
-
-   The validator checks the schema, that every score of 2 or 3 cites a step and an excerpt, that
-   excerpts appear verbatim in the rendering, that every trajectory in the shard has a result,
-   and that no trajectory_id is unknown or repeated.
-
-6. For each trajectory the validator reports, delete its line and start one new subagent for it,
-   with the validator's error message added to the instructions. Re-run each failure once only.
-   Then validate again. Lines that still fail stay out of the file.
-
-7. Commit only the results file and push it to the results branch.
+5. Validate the results against the shard.
 
    ```bash
-   git checkout -b results/c2-shard-007
-   git add -f data/results/c2/shard_007.jsonl
-   git commit -m "Add Stage C2 results for shard 007"
-   git push origin results/c2-shard-007
+   uv run python -m steward.filter.validate c2 RESULTS --shard SHARD
    ```
 
-8. Reply with one line: the shard, results written, validation errors remaining.
+   The validator checks:
+   - the schema;
+   - that every score of 2 or 3 cites a step and an excerpt;
+   - that every excerpt appears verbatim in the rendering;
+   - that every trajectory in the shard has a result;
+   - that no trajectory_id is unknown or repeated.
 
-The session must not write titles, names or descriptions of benchmark scenarios, must not edit
-the handoff branch, and must not push anything other than the results file.
+6. For each trajectory the validator reports, delete its line, then start one new subagent for
+   it with the validator's error message added to the instructions. Re-run each failure once
+   only, then validate again. Any line that still fails stays out of the file.
+
+7. Commit only the results file, and push it to the results branch.
+
+   ```bash
+   git checkout -b BRANCH
+   git add -f RESULTS
+   git commit -m "Add Stage C2 results for SHARD"
+   git push origin BRANCH
+   ```
+
+8. Reply with one line: the shard, the number of results written, and the number of validation
+   errors remaining.
+
+The session must not write titles, names or descriptions of benchmark scenarios. It must not
+edit the handoff branch, and it must not push anything other than the results file.
 
 ## On the cluster
 
-1. Build the shards from C1 results. Each shard holds at most 25 trajectories and 20 MB, and the
-   shards together hold the top 60 per domain by the sum of the two highest axis scores.
+Every command below works with the pilot too: add `--pilot`. The pilot uses the directories
+data/handoff/c2_pilot and data/results/c2_pilot and the branches results/c2-pilot-shard-NNN, and
+`uv run steward pilot-report` then writes reports/PILOT.md.
+
+1. Build the shards from the C1 results. Each shard holds at most 25 trajectories and 20 MB. The
+   shards together hold the top 60 per domain, ranked by the sum of the two highest axis scores.
 
    ```bash
    uv run steward c2-handoff
    uv run steward validate c2_input data/handoff/c2/shard_000.jsonl
    ```
 
-2. Commit the shards on the handoff branch and push. Only data/handoff goes on this branch.
+2. Commit the shards on handoff/c2 and push them. The branch continues from its remote tip,
+   with main merged in, so history is never rewritten.
 
    ```bash
-   git checkout -b handoff/c2
-   git add -f data/handoff/c2/shard_*.jsonl
-   git commit -m "Add Stage C2 handoff shards"
-   git push origin handoff/c2
-   git checkout main
+   uv run steward c2-push
    ```
 
-3. Start one cloud session per shard, with at most six running at a time, using the command at the
-   top of this file with the shard number substituted.
-
-4. When the sessions finish, fetch each results branch and copy its file into place.
+3. Start the cloud sessions. `c2-launch` starts sessions for shards that have not been launched
+   yet, keeping at most six running. A session counts as running until its results branch
+   exists. Re-run the command as sessions finish. Launches are logged to
+   data/handoff/c2_launches.jsonl, together with each session URL.
 
    ```bash
-   git fetch origin 'refs/heads/results/c2-shard-*:refs/remotes/origin/results/c2-shard-*'
-   for ref in $(git for-each-ref --format='%(refname:short)' refs/remotes/origin/results/); do
-     n=${ref##*-}
-     git show "$ref:data/results/c2/shard_$n.jsonl" > "data/results/c2/shard_$n.jsonl"
-   done
+   uv run steward c2-launch
+   ```
+
+   `claude --cloud` needs a terminal, so the launcher runs it under `script`.
+
+4. When the results branches exist, fetch them, merge, validate, rank and analyze.
+
+   ```bash
+   uv run steward c2-fetch
    uv run steward c2-merge
    uv run steward validate c2_merged data/stage_c2/results.jsonl
    uv run steward rank && uv run steward analyze
    ```
-
-The pilot uses the same procedure on a single shard built with `uv run steward c2-handoff --pilot`, which writes data/handoff/c2_pilot/shard_000.jsonl; its results go to data/results/c2_pilot/shard_000.jsonl on branch results/c2-pilot-shard-000 and merge with `uv run steward c2-merge --pilot`, after which `uv run steward pilot-report` writes reports/PILOT.md.

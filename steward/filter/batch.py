@@ -150,7 +150,8 @@ class OpenRouterBatches:
                 log.warning("poll %s failed: %s", batch_id, error)
                 time.sleep(30 * (attempt + 1))
                 continue
-            if response.status_code == 429 or response.status_code >= 500:
+            # A batch can read as 404 for a short while after it is created.
+            if response.status_code in (404, 429) or response.status_code >= 500:
                 time.sleep(30 * (attempt + 1))
                 continue
             response.raise_for_status()
