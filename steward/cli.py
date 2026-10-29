@@ -151,6 +151,23 @@ def cmd_c2_merge(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_c2_split(settings: Settings, args: argparse.Namespace) -> int:
+    from pathlib import Path
+
+    from steward.filter import c2_handoff
+
+    for path in c2_handoff.split_shard(Path(args.shard), Path(args.out_dir)):
+        print(path)
+    return 0
+
+
+def cmd_c2_schema(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.filter import c2_handoff
+
+    print(c2_handoff.c2_json_schema())
+    return 0
+
+
 def cmd_rank(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter import c2_handoff, rank, stage_c1
     from steward.filter.stage_a import read_results
@@ -242,6 +259,10 @@ def build_parser() -> argparse.ArgumentParser:
     add("c2-handoff", cmd_c2_handoff, "write C2 shards to data/handoff/c2").add_argument(
         "--pilot", action="store_true", help="build shards from the pilot C1 results"
     )
+    sub = add("c2-split", cmd_c2_split, "write one C2 input file per trajectory of a shard")
+    sub.add_argument("shard")
+    sub.add_argument("out_dir")
+    add("c2-schema", cmd_c2_schema, "print the JSON schema of a Stage C2 result")
     add("c2-merge", cmd_c2_merge, "merge data/results/c2 into data/stage_c2")
     add("rank", cmd_rank, "write data/ranked/<domain>/<axis>.csv")
     add("analyze", cmd_analyze, "write reports/PHASE1_REPORT.md and figures")

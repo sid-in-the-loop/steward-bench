@@ -29,9 +29,8 @@ def section(inputs: AnalysisInputs) -> str:
         f"{100 * unknown_share:.0f}% have no recorded author. Later phases must report results by "
         "history author.",
         f"- Thin domains (fewer than 150 ingested trajectories): {', '.join(thin) or 'none'}.",
-        "- Stage C2 did not run in this pass because the repository is public and the brief requires "
-        "a private repository before gated renderings are pushed (BLOCKERS.md). Rankings fall back "
-        "to C1 scores, so jump_in_phase, buttons, checkability and right_behavior_agreement are empty.",
+        f"- Stage C2 covers {len(inputs.stage_c2):,} trajectories; every other ranked row falls back "
+        "to C1 scores and has no jump_in_phase, buttons, checkability or right_behavior_agreement.",
         "- Stage B and C1 used Claude Haiku 5.5 through the OpenRouter Batch API instead of the "
         "Anthropic Batch API named in the brief; model and prompts are unchanged.",
         "- Token counts are character-based estimates (3.2 characters per token), not tokenizer counts.",

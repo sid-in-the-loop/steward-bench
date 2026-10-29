@@ -14,6 +14,8 @@ criteria from the brief are unchanged unless an entry says otherwise.
 - Tokens are estimated as characters / 3.2, a conservative ratio for Claude tokenizers, so cost estimates sit above actual spend.
 - Raw data stays in data/raw under the home quota, with downloads capped at 5 GB per source and 25 GB total: 77 GB was free and /projects allocations were not used without the owner's say.
 
+- C2 shards and results go on public branches of this repository: the brief requires a private repository, the owner waived that at 00:33 on 2026-10-29, and shard renderings are passed through secret redaction first. Renderings from gated datasets (SWE-chat, mle-traj) become publicly readable as a result.
+
 ## Sources and normalization
 
 - SWE-chat transcripts in Claude Code, Codex, Pi and Copilot CLI formats are parsed; other agent formats (Cursor exports without tool calls, Gemini CLI, Grok CLI, OpenCode and smaller ones) are skipped and counted in SOURCES_STATUS.md: those four formats cover most sessions, and the time went to other sources.

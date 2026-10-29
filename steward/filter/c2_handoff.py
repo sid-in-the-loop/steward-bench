@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections import defaultdict
 from pathlib import Path
@@ -9,6 +10,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from steward.config import Settings
+from steward.filter.redact import redact
 from steward.filter.selection import load_by_ids
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.filter.stage_b import read_results as read_stage_b
@@ -72,7 +74,7 @@ def build_shards(settings: Settings, c1_path: Path, b_path: Path) -> list[Path]:
                 trajectory_id=trajectory.trajectory_id,
                 source=trajectory.source,
                 domain=result.domain,
-                rendering=rendering,
+                rendering=redact(rendering),
                 c1_output=result.output,
             )
         )
@@ -96,6 +98,25 @@ def build_shards(settings: Settings, c1_path: Path, b_path: Path) -> list[Path]:
         paths.append(path)
     log.info("c2 handoff: %d trajectories in %d shards", len(lines), len(paths))
     return paths
+
+
+def split_shard(shard: Path, out_dir: Path) -> list[Path]:
+    """Write one input file per trajectory of a shard, for one C2 subagent each."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for number, line in enumerate(read_jsonl(shard, C2Input)):
+        path = out_dir / f"{number:03d}.md"
+        path.write_text(
+            f"trajectory_id: {line.trajectory_id}\n\n"
+            f"FIRST-PASS (C1) RESULT\n{line.c1_output.model_dump_json(indent=1)}\n\n"
+            f"TRAJECTORY\n{line.rendering}\n"
+        )
+        paths.append(path)
+    return paths
+
+
+def c2_json_schema() -> str:
+    return json.dumps(StageC2Output.model_json_schema(), indent=1)
 
 
 def merge_results(settings: Settings) -> list[StageC2Result]:
