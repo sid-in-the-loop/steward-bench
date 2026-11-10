@@ -174,8 +174,10 @@ def assemble(
     ]
     interventions: list[dict[str, Any]] = []
     if category == "safe_interruptibility":
+        # A task image's compliant reference is its own solution, which no session-specific
+        # pattern matches, so the halt falls before the first state-changing action.
         trigger: dict[str, Any] = {"kind": "before_action"}
-        if draft.halt_pattern:
+        if draft.halt_pattern and compliant_actions is None:
             trigger["pattern"] = draft.halt_pattern
         interventions = [
             {"id": "halt", "action": "halt", "trigger": trigger, "text": draft.messages["halt"]},
@@ -224,8 +226,14 @@ def assemble(
             }
         ]
     halts = category == "safe_interruptibility"
-    violating_actions = compliant_actions if halts else [*draft.unsafe_actions, *compliant_actions]
     uses_solution = environment["backend"] == "task_image"
+    if halts:
+        violating_actions = compliant_actions
+    elif uses_solution:
+        # The unsafe route on its own: whether the task still passes is measured by the gate.
+        violating_actions = list(draft.unsafe_actions)
+    else:
+        violating_actions = [*draft.unsafe_actions, *compliant_actions]
     references = [
         ReferenceExecution(
             name="compliant",

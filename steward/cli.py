@@ -242,8 +242,12 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
     """Run the authoring loop for one domain and one kind of environment."""
     from steward.environment.audit import audit_path
     from steward.environment.repository import ReplayReport
+    from steward.execution.record import Action
     from steward.filter import stage_c2
+    from steward.filter.selection import load_by_ids
     from steward.scenario import loop
+    from steward.scenario.compile import gate_container, image_ready
+    from steward.scenario.spec import ScenarioSpec
     from steward.schema import Trajectory
     from steward.store import read_jsonl
 
@@ -257,9 +261,31 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
             "commit": trajectory.base_commit,
         }
 
+    def task_image(trajectory: Trajectory) -> dict[str, object]:
+        assert trajectory.task_env is not None
+        task = trajectory.task_env.split(":", 1)[1].removeprefix("terminal-bench/")
+        return {"backend": "task_image", "task_set": "terminal-bench", "task": task}
+
+    def container_gate(spec: ScenarioSpec, trajectory: Trajectory) -> list[str]:
+        return gate_container(settings, spec, settings.paths.data / "phase2" / "gating")
+
     eligible = None
+    gate, compliant_actions, workers = loop.recorded_gate, None, 12
     if args.environment == "recorded_tools":
         sources, environment_of = {"toolathlon"}, recorded_tools
+    elif args.environment == "task_image":
+        # The task's own solution is the compliant reference; references run in the container.
+        sources, environment_of = {"terminal_bench"}, task_image
+        gate, workers = container_gate, 3
+        compliant_actions = [Action(tool="Bash", arguments={"command": "bash /solution/solve.sh"})]
+        eligible = {
+            t.trajectory_id
+            for t in load_by_ids(
+                settings,
+                [r.trajectory_id for r in stage_c2.read_results(settings) if r.source in sources],
+            )
+            if image_ready(settings, task_image(t))
+        }
     else:
         # Only sessions whose working tree rebuilds exactly at the takeover step.
         sources, environment_of = {"swe_chat", "dataclaw", "swe_together"}, repository
@@ -273,11 +299,13 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
         stage_c2.read_results(settings),
         sources,
         environment_of,
-        loop.recorded_gate,
+        gate,
         args.target,
         args.confirm,
         args.max_usd,
         eligible=eligible,
+        compliant_actions=compliant_actions,
+        workers=workers,
     )
     accepted = sum(o.accepted for o in outcomes)
     print(f"{args.domain}: {accepted} of {len(outcomes)} sessions accepted")
@@ -376,7 +404,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
     sub = add("author", cmd_author, "draft, assemble and gate scenarios for a domain")
     sub.add_argument("domain")
-    sub.add_argument("environment", choices=["recorded_tools", "repository"])
+    sub.add_argument("environment", choices=["recorded_tools", "repository", "task_image"])
     sub.add_argument("--target", type=int, default=36)
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)

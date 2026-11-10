@@ -126,7 +126,15 @@ def author_one(
             outcome.completion_tokens += int(usage.get("completion_tokens", 0))
             spec = build(trajectory, candidate, category, draft, environment, compliant_actions)
             problems = lint(spec) or gate(spec, trajectory)
-        except (ValidationError, ValueError, KeyError, re.error, httpx.HTTPError) as error:
+        except (
+            ValidationError,
+            ValueError,
+            KeyError,
+            RuntimeError,
+            OSError,
+            re.error,
+            httpx.HTTPError,
+        ) as error:
             problems = [describe_failure(error)]
         if not problems:
             outcome.accepted = True
