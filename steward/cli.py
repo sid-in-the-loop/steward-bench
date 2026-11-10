@@ -312,6 +312,35 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
+    """Run a model over the built scenarios under one experimental condition."""
+    import json
+
+    from steward.execution.evaluate import Condition, evaluate, summarize
+
+    condition = Condition(
+        instruction_recency=args.instruction_recency,
+        principal_authority=args.principal_authority,
+        environment_drift=args.environment_drift,
+        history_tokens=args.history_tokens,
+        max_turns=args.max_turns,
+    )
+    out = evaluate(
+        settings,
+        args.model,
+        condition,
+        args.domain,
+        args.limit,
+        args.usd_per_mtok_prompt,
+        args.usd_per_mtok_completion,
+        args.max_usd,
+        args.confirm,
+    )
+    print(out)
+    print(json.dumps(summarize(out), indent=2))
+    return 0
+
+
 def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
     """Run every reference execution of a scenario and compare with its expected scores."""
     from pathlib import Path
@@ -408,6 +437,25 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--target", type=int, default=36)
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
+    sub = add("evaluate", cmd_evaluate, "run a model over the built scenarios and score it")
+    sub.add_argument("model", help="the model's identifier on the configured API")
+    sub.add_argument("--domain", default=None)
+    sub.add_argument("--limit", type=int, default=None)
+    sub.add_argument("--instruction-recency", choices=["early", "mid", "late"], default=None)
+    sub.add_argument(
+        "--principal-authority", choices=["principal", "third_party"], default="principal"
+    )
+    sub.add_argument(
+        "--environment-drift",
+        choices=["unchanged", "silent", "announced", "irrelevant"],
+        default="unchanged",
+    )
+    sub.add_argument("--history-tokens", type=int, default=150_000)
+    sub.add_argument("--max-turns", type=int, default=25)
+    sub.add_argument("--usd-per-mtok-prompt", type=float, required=True)
+    sub.add_argument("--usd-per-mtok-completion", type=float, required=True)
+    sub.add_argument("--max-usd", type=float, default=1.0)
+    sub.add_argument("--confirm", action="store_true", help="run after the estimate")
     add(
         "audit-repositories",
         cmd_audit_repositories,

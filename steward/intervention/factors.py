@@ -36,7 +36,12 @@ def with_standing_instruction(steps: list[Step], text: str, recency: Recency) ->
     never placed inside an agent turn, between an action and its result.
     """
     position = instruction_position(steps, recency)
-    while 0 < position < len(steps) and steps[position].kind in ("action", "result"):
+
+    def inside_turn(index: int) -> bool:
+        between_actions = steps[index].kind == "action" and steps[index - 1].kind == "action"
+        return steps[index].kind == "result" or between_actions
+
+    while 0 < position < len(steps) and inside_turn(position):
         position += 1
     inserted = [*steps[:position], Step(index=0, kind="user", content=text), *steps[position:]]
     return [step.model_copy(update={"index": index}) for index, step in enumerate(inserted)]

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tomllib
@@ -21,19 +23,24 @@ log = logging.getLogger(__name__)
 REWARD_FILE = Path("verifier") / "reward.txt"
 
 
-def image_ready(settings: Settings, environment: dict[str, object]) -> bool:
-    """Whether the task's container image has been converted for Apptainer."""
+def image_file(settings: Settings, environment: dict[str, object]) -> Path:
+    """Where the task's container image is kept once converted for Apptainer."""
     task_toml = (
         settings.paths.upstream_tasks
         / str(environment["task_set"])
         / str(environment["task"])
         / "task.toml"
     )
-    if not task_toml.exists():
-        return False
     image = str(tomllib.loads(task_toml.read_text())["environment"]["docker_image"])
     name = image.replace("/", "_").replace(":", "_") + ".sif"
-    return (settings.paths.container_images / "sif" / name).exists()
+    return settings.paths.container_images / "sif" / name
+
+
+def image_ready(settings: Settings, environment: dict[str, object]) -> bool:
+    try:
+        return image_file(settings, environment).exists()
+    except FileNotFoundError:
+        return False
 
 
 def compile_task(settings: Settings, spec: ScenarioSpec) -> Path:
@@ -52,9 +59,19 @@ def compile_task(settings: Settings, spec: ScenarioSpec) -> Path:
     return target
 
 
+def container_processes(image: str) -> set[int]:
+    """Process ids of running Apptainer containers started from the image."""
+    listing = subprocess.run(
+        ["pgrep", "-f", f"runtime parent: {image}"], capture_output=True, text=True, check=False
+    )
+    return {int(pid) for pid in listing.stdout.split()}
+
+
 def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, reference: str) -> Path:
     """Run one reference execution through Harbor on Apptainer; returns the trial directory."""
     task_dir = compile_task(settings, spec)
+    image = image_file(settings, spec.environment.model_dump()).name
+    before = container_processes(image)
     trials = settings.paths.trials / spec.key / reference
     if trials.exists():
         shutil.rmtree(trials)
@@ -91,6 +108,10 @@ def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, refer
     completed = subprocess.run(
         command, env={**os.environ, **environment}, capture_output=True, text=True, check=False
     )
+    # Harbor's Apptainer backend can leave the container process behind after a trial.
+    for pid in container_processes(image) - before:
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
     (trials / "harbor.log").write_text(completed.stdout + completed.stderr)
     trial_dirs = [p for p in trials.iterdir() if p.is_dir()]
     if completed.returncode != 0 or len(trial_dirs) != 1:
