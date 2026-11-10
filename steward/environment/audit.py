@@ -8,10 +8,10 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from steward.config import Settings
-from steward.environment.repository import ReplayReport, rebuild
+from steward.environment.repository import EDIT_TOOLS, WRITE_TOOLS, ReplayReport, rebuild
 from steward.filter.rank import best_candidate
 from steward.filter.selection import load_by_ids
-from steward.schema import StageC2Result, TrajectoryMeta
+from steward.schema import StageC2Result, Step, TrajectoryMeta
 from steward.store import read_jsonl, write_jsonl
 
 log = logging.getLogger(__name__)
@@ -50,25 +50,35 @@ def audit_repositories(
     done = {r.trajectory_id: r for r in read_jsonl(path, ReplayReport)} if path.exists() else {}
     todo = [s for s in repository_sessions(results, metas) if s[0].trajectory_id not in done]
 
-    def audit(session: tuple[StageC2Result, TrajectoryMeta, int]) -> ReplayReport:
-        result, meta, step = session
+    by_id = {result.trajectory_id: (meta, step) for result, meta, step in todo}
+
+    def audit(trajectory_id: str, edits: list[Step]) -> ReplayReport:
+        meta, step = by_id[trajectory_id]
         assert meta.repo and meta.base_commit
-        trajectory = next(load_by_ids(settings, [result.trajectory_id]))
-        destination = checkout_dir(settings, result.trajectory_id)
-        report = rebuild(
-            result.trajectory_id, meta.repo, meta.base_commit, trajectory.steps, step, destination
-        )
+        destination = checkout_dir(settings, trajectory_id)
+        report = rebuild(trajectory_id, meta.repo, meta.base_commit, edits, step, destination)
         log.info(
             "audit %s: checked out %s, edits %d of %d applied",
-            result.trajectory_id,
+            trajectory_id,
             report.checked_out,
             report.edits_applied,
             report.edits,
         )
         return report
 
+    # One streaming pass over the sources; only the file-changing steps are kept in memory.
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for report in pool.map(audit, todo):
+        futures = []
+        for trajectory in load_by_ids(settings, list(by_id)):
+            _, step = by_id[trajectory.trajectory_id]
+            edits = [
+                s
+                for s in trajectory.steps[:step]
+                if s.kind == "action" and s.tool in EDIT_TOOLS | WRITE_TOOLS
+            ]
+            futures.append(pool.submit(audit, trajectory.trajectory_id, edits))
+        for future in futures:
+            report = future.result()
             done[report.trajectory_id] = report
             write_jsonl(path, [done[key] for key in sorted(done)])
     return list(done.values())

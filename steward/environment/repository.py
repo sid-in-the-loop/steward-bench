@@ -150,7 +150,8 @@ def rebuild(
         return report
     report.checked_out = True
     resolver = PathResolver(destination)
-    for step in steps[:takeover_step]:
-        if step.kind == "action" and step.tool in EDIT_TOOLS | WRITE_TOOLS:
+    for step in steps:
+        before_takeover = step.index < takeover_step
+        if before_takeover and step.kind == "action" and step.tool in EDIT_TOOLS | WRITE_TOOLS:
             apply_step(step, resolver, report)
     return report
