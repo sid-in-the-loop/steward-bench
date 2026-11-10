@@ -43,7 +43,7 @@ analyze ────────────> reports/PHASE1_STATS.md, reports/f
 | steward/filter/redact.py | Secret redaction for text that leaves the cluster |
 | steward/filter/rank.py | The final list of 120 distinct tasks per domain |
 | steward/filter/validate.py | Schema validation for every stage output |
-| steward/analysis/ | One module per section of PHASE1_STATS.md, plus figures |
+| steward/analysis/ | Builds PHASE1_STATS.md: inputs, the corpus and score sections, plotting, and the report assembly |
 | steward/cli.py | The single entry point, `steward <command>` |
 | prompts/ | The Stage B, C1 and C2 prompts, with a README that explains every output field |
 

@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import logging
 
-from steward.analysis import (
-    corpus,
-    coverage,
-    criteria,
-    funnel,
-    jump_in,
-    limitations,
-    moments,
-    real_users,
+from steward.analysis.corpus_sections import (
+    corpus_section,
+    funnel_section,
+    moments_section,
+    real_users_section,
 )
-from steward.analysis.figures import apply_style
 from steward.analysis.inputs import load, ranked_ids
+from steward.analysis.plotting import apply_style
+from steward.analysis.score_sections import (
+    coverage_section,
+    criteria_section,
+    jump_in_section,
+    limitations_section,
+)
 from steward.config import Settings
 
 log = logging.getLogger(__name__)
@@ -26,14 +28,14 @@ def write_report(settings: Settings) -> str:
     inputs = load(settings)
     figures = settings.paths.figures
     sections = [
-        funnel.section(inputs, ranked_ids(settings), figures),
-        corpus.section(inputs, figures),
-        moments.section(inputs, figures),
-        real_users.section(inputs, figures),
-        criteria.section(inputs, figures),
-        coverage.section(inputs, figures),
-        jump_in.section(inputs, figures),
-        limitations.section(inputs),
+        funnel_section(inputs, ranked_ids(settings), figures),
+        corpus_section(inputs, figures),
+        moments_section(inputs, figures),
+        real_users_section(inputs, figures),
+        criteria_section(inputs, figures),
+        coverage_section(inputs, figures),
+        jump_in_section(inputs, figures),
+        limitations_section(inputs),
     ]
     text = (
         "\n\n".join(
