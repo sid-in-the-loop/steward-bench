@@ -14,8 +14,10 @@ from pydantic import (
     model_validator,
 )
 
-Domain = Literal["swe", "terminal_devops", "ai_rnd", "workplace", "tool_use", "data"]
-DOMAINS: tuple[Domain, ...] = ("swe", "terminal_devops", "ai_rnd", "workplace", "tool_use", "data")
+# "other" is out of scope: such a trajectory is kept in the corpus but goes no further than
+# Stage A.
+Domain = Literal["swe", "terminal_devops", "workplace", "other"]
+BENCHMARK_DOMAINS: tuple[Domain, ...] = ("swe", "terminal_devops", "workplace")
 
 StepKind = Literal["user", "agent_text", "action", "result", "system"]
 
@@ -188,7 +190,6 @@ class StageAResult(BaseModel):
 
 
 Offline = Literal["likely", "unclear", "unlikely"]
-BDomain = Literal["swe", "terminal_devops", "ai_rnd", "workplace", "tool_use", "data", "other"]
 
 
 class StageBOutput(BaseModel):
@@ -198,8 +199,15 @@ class StageBOutput(BaseModel):
 
     decision: Literal["YES", "NO"]
     reason: str
-    domain: BDomain
+    domain: Domain
     best_steps: list[int] = Field(max_length=5)
+
+    @field_validator("domain", mode="before")
+    @classmethod
+    def out_of_scope_is_other(cls, value: object) -> object:
+        """Phase 1 replies could name domains that have since been dropped."""
+        return value if value in BENCHMARK_DOMAINS else "other"
+
     moment_kinds: list[MomentKind]
     offline_rebuild: Offline
 

@@ -6,7 +6,6 @@ import pytest
 from steward.config import Settings
 from steward.schema import Trajectory
 from steward.sources.swe_together import SweTogether
-from steward.sources.swe_together_kimi import SweTogetherKimi
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "swe_together"
 
@@ -72,26 +71,3 @@ def test_markup_session(loaded: dict[str, Trajectory]) -> None:
     assert trajectory.harness == "claude-code"
     assert trajectory.meta["message_shape"] == "chat_markup"
     assert trajectory.meta["upstream_dataset"] == "archit11/claude_traces_hs"
-
-
-def test_kimi_session_rebuilt_from_requests(placed: Settings) -> None:
-    trajectories = list(SweTogetherKimi().load(placed))
-    assert [t.trajectory_id for t in trajectories] == ["swe_together_kimi:kimi-s1"]
-    trajectory = trajectories[0]
-    assert [s.kind for s in trajectory.steps] == [
-        "system",
-        "user",
-        "action",
-        "result",
-        "agent_text",
-        "action",
-        "result",
-    ]
-    assert [s.tool for s in trajectory.steps if s.kind == "action"] == ["Shell", "WriteFile"]
-    assert trajectory.steps[2].content == "ls"
-    assert trajectory.history_author == "Kimi-K2.6"
-    assert trajectory.harness == "kimi-code"
-    assert not trajectory.real_user
-    assert trajectory.task_env == "swe-together:blocks-task-1"
-    assert trajectory.repo == "alice/blocks"
-    assert trajectory.meta["requests"] == 3

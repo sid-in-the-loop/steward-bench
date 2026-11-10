@@ -13,10 +13,8 @@ def test_devops() -> None:
     )
 
 
-def test_ai_rnd() -> None:
-    assert (
-        assign_domain(actions(["nvidia-smi", "python train.py", "wandb login", "ls"])) == "ai_rnd"
-    )
+def test_ml_training_is_out_of_scope() -> None:
+    assert assign_domain(actions(["nvidia-smi", "python train.py", "wandb login", "ls"])) == "other"
 
 
 def test_plain_swe() -> None:

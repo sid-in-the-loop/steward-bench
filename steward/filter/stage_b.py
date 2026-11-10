@@ -12,7 +12,7 @@ from steward.filter import batch
 from steward.filter.render import triage_summary
 from steward.filter.selection import load_by_ids, select_with_floor, with_full_domains
 from steward.filter.stage_a import read_results as read_stage_a
-from steward.schema import Domain, StageAResult, StageBOutput, StageBResult
+from steward.schema import BENCHMARK_DOMAINS, Domain, StageAResult, StageBOutput, StageBResult
 from steward.store import read_jsonl, write_jsonl
 
 log = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ def stage_a_sort_key(result: StageAResult) -> tuple[object, ...]:
 
 
 def select_inputs(settings: Settings, survivors: list[StageAResult]) -> list[StageAResult]:
+    survivors = [r for r in survivors if r.domain in BENCHMARK_DOMAINS]
     chosen = select_with_floor(
         survivors,
         domain_of=lambda r: r.domain,

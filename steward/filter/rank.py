@@ -169,7 +169,7 @@ def run(
     n = settings.rank.final_per_domain
     counts: dict[str, int] = {}
     for domain in settings.stage_c2.domains:
-        in_domain = [r for r in c2 if r.domain == domain]
+        in_domain = [r for r in c2 if r.domain == domain and r.trajectory_id in metas]
         ranked = rank_domain(in_domain, agent_actions, task_of, n)
         frame = pd.DataFrame(rows_for(ranked, metas, task_of), columns=COLUMNS)
         path = list_path(out_root, domain, n)

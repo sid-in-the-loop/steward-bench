@@ -92,10 +92,6 @@ Nobody watches the session, so it must not stop to ask questions.
 
 ## On the cluster
 
-Every command below works with the pilot too: add `--pilot`. The pilot uses the directories
-data/handoff/c2_pilot and data/results/c2_pilot and the branches results/c2-pilot-shard-NNN, and
-`uv run steward pilot-report` then writes reports/PILOT.md.
-
 1. Build the shards from the C1 results. Each shard holds at most 25 trajectories and 20 MB. The
    shards together hold up to 180 distinct tasks per domain for swe, terminal_devops and
    workplace, ranked by the sum of the two highest axis scores, one trajectory per task.

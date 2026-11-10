@@ -51,18 +51,6 @@ class Paths(BaseModel):
         return self.data / "results" / "c2"
 
     @property
-    def pilot(self) -> Path:
-        return self.data / "pilot"
-
-    @property
-    def handoff_c2_pilot(self) -> Path:
-        return self.data / "handoff" / "c2_pilot"
-
-    @property
-    def results_c2_pilot(self) -> Path:
-        return self.data / "results" / "c2_pilot"
-
-    @property
     def ranked(self) -> Path:
         return self.data / "ranked"
 
@@ -165,14 +153,7 @@ class RankConfig(BaseModel):
     final_per_domain: int = 120
 
 
-class PilotConfig(BaseModel):
-    size: int = 40
-
-
 class SourceSampling(BaseModel):
-    nebius_sample: int = 3000
-    swe_bench_submissions: int = 12
-    swe_bench_instances: int = 150
     seed: int = 20261028
 
 
@@ -186,7 +167,6 @@ class Settings(BaseModel):
     model: ModelConfig = ModelConfig()
     caps: Caps = Caps()
     rank: RankConfig = RankConfig()
-    pilot: PilotConfig = PilotConfig()
     sampling: SourceSampling = SourceSampling()
 
 
@@ -194,4 +174,5 @@ def load_settings() -> Settings:
     return Settings(paths=load_paths())
 
 
-REAL_USER_DOMAINS_BY_RULE: tuple[Domain, ...] = ("swe", "terminal_devops", "ai_rnd")
+# The domains Stage B may assign to a session the domain rule left undecided.
+REAL_USER_DOMAINS_BY_RULE: tuple[Domain, ...] = ("swe", "terminal_devops", "other")

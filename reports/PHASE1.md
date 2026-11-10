@@ -22,6 +22,10 @@ In swe only about 1,000 of the 5,822 triage passes were scored, because the scor
 to the sessions with the highest rule-based prescore. Those were mostly real-user SWE-chat
 sessions.
 
+These counts are from the full run, which included seven sources that were later removed (see
+"What was tried and cut"). `PHASE1_STATS.md` is regenerated from the seven sources that remain,
+so its swe counts for the early stages are lower.
+
 ## Words used
 
 - Step: one entry in a recorded session. It is a user message, agent text, an agent action (a
@@ -170,6 +174,6 @@ cloud sessions on claude.ai credits.
 | The three lists | `reports/top_120/<domain>.csv` |
 | Full Opus answer per trajectory | `data/stage_c2/results.jsonl` (not in git) |
 | The prompts and what each output field means | `prompts/` |
-| Tables and figures for the whole corpus | `reports/PHASE1_STATS.md` |
+| Generated tables and figures for the seven kept sources | `reports/PHASE1_STATS.md` |
 | Decisions that shaped the run | `reports/DECISIONS.md` |
 | How to run each stage | `docs/pipeline.md` |

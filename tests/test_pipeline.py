@@ -163,21 +163,6 @@ def test_analysis_report(pipeline) -> None:
     assert (pipeline.paths.figures / "funnel_by_domain.png").exists()
 
 
-def test_pilot_numbers_and_report(pipeline) -> None:
-    from steward import pilot
-    from steward.pilot_report import write_pilot_report
-
-    FakeBatches.replies["default"] = b_reply
-    # The fake answers every batch with one reply type; C1 parsing of B replies fails cleanly.
-    numbers = pilot.run(pipeline, confirm=True, max_usd=1.0)
-    assert numbers.trajectories == 6
-    assert numbers.b.requests == 6 and numbers.b.cost_usd == pytest.approx(0.006)
-    assert numbers.projected_b_usd == pytest.approx(0.006)
-    text = write_pilot_report(pipeline)
-    assert "Projection for the full run" in text
-    assert "No pilot C2 results" in text
-
-
 def test_c2_keeps_one_trajectory_per_task(pipeline) -> None:
     run_b_and_c1(pipeline)
     shards = c2_handoff.build_shards(

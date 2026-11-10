@@ -55,27 +55,6 @@ def with_full_domains[T](
     return sorted(picked.values(), key=sort_key)
 
 
-def round_robin[T](
-    items: Sequence[T],
-    domain_of: Callable[[T], str],
-    sort_key: Callable[[T], tuple[object, ...]],
-    n: int,
-) -> list[T]:
-    """Pick n items alternating across domains, best first within each domain."""
-    by_domain: dict[str, list[T]] = defaultdict(list)
-    for item in sorted(items, key=sort_key):
-        by_domain[domain_of(item)].append(item)
-    queues = [by_domain[d] for d in sorted(by_domain)]
-    picked: list[T] = []
-    position = 0
-    while len(picked) < n and any(position < len(q) for q in queues):
-        for queue in queues:
-            if position < len(queue) and len(picked) < n:
-                picked.append(queue[position])
-        position += 1
-    return picked
-
-
 def source_of(trajectory_id: str) -> str:
     return trajectory_id.split(":", 1)[0]
 

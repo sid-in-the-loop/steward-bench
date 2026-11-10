@@ -5,13 +5,13 @@ long-running session part way through. Later phases rebuild the environment at a
 real recorded trajectory, hand the history up to t to a new model, change the situation at t,
 and score the continuation with deterministic checks.
 
-Phase 1, this repository, finds the material for those scenarios. It collects agent
-trajectories from public sources, normalizes them into one format, filters them in four stages,
-ranks the survivors per domain and per safety axis, and analyzes the corpus. It does not build
-scenarios, run agents or score models.
+Phase 1, this repository, finds the material for those scenarios in three domains: swe,
+terminal_devops and workplace. It collects agent trajectories from public sources, normalizes
+them into one format, filters them in four stages, and keeps the best 120 distinct tasks per
+domain. It does not build scenarios, run agents or score models.
 
-The full specification is the Phase 1 brief, in project_desc/traj_collection.md, which is kept
-outside version control. The engineering rules are in CLAUDE.md.
+Start with reports/PHASE1.md: it explains what was produced and how to read it. The lists
+themselves are in reports/top_120/.
 
 ## Architecture
 
@@ -22,9 +22,10 @@ sources ──download──> data/raw/<source>/
 Stage A ────────────> data/stage_a/<source>.parquet      rules A1 to A5, moment tags, prescore (free)
 Stage B ────────────> data/stage_b/results.jsonl         triage, Haiku 5.5 on a batch API
 Stage C1 ───────────> data/stage_c1/results.jsonl        eight criteria scored 0 to 3, Haiku 5.5
-Stage C2 ───────────> data/stage_c2/results.jsonl        deep read, opus in cloud sessions
+Stage C2 ───────────> data/stage_c2/results.jsonl        deep read, Opus in cloud sessions
 rank ───────────────> data/ranked/<domain>/top_120.csv   best 120 distinct tasks per domain
-analyze ────────────> reports/PHASE1_REPORT.md, reports/figures/
+                       reports/top_120/<domain>.csv       the same lists, committed
+analyze ────────────> reports/PHASE1_STATS.md, reports/figures/
 ```
 
 | Module | Responsibility |
@@ -33,23 +34,18 @@ analyze ────────────> reports/PHASE1_REPORT.md, reports/
 | steward/config.py | Paths, thresholds, caps and model settings in one place |
 | steward/store.py | Reading and writing normalized sources and JSONL outputs |
 | steward/sources/ | One loader per source, shared transcript parsers, the domain rule, the registry |
-| steward/filter/tags.py | Moment-kind regex patterns (brief Appendix D, extended) |
+| steward/filter/tags.py | Moment-kind regex patterns |
 | steward/filter/stage_a.py | Checks A1 to A5, tags and prescore |
 | steward/filter/render.py | Stage B summaries and the windowed rendering for C1 and C2 |
 | steward/filter/batch.py | Batch API client: estimate, cost guard, submit, poll, collect, spend log |
 | steward/filter/stage_b.py, stage_c1.py | Input selection, requests and result parsing |
-| steward/filter/c2_handoff.py | C2 selection, shards, per-trajectory split and result merge |
+| steward/filter/c2_handoff.py, c2_branches.py, c2_launch.py | C2 selection, shards, cloud sessions and result merge |
 | steward/filter/redact.py | Secret redaction for text that leaves the cluster |
-| steward/filter/validate.py | Schema validation for every stage output |
 | steward/filter/rank.py | The final list of 120 distinct tasks per domain |
-| steward/analysis/ | One module per report section, plus figures and the sources status |
+| steward/filter/validate.py | Schema validation for every stage output |
+| steward/analysis/ | One module per section of PHASE1_STATS.md, plus figures |
 | steward/cli.py | The single entry point, `steward <command>` |
 | prompts/ | The Stage B, C1 and C2 prompts, with a README that explains every output field |
-
-Later phases (fork runtime, model connectors, sandboxes, visualizer) will live beside these
-modules. The extension points are the Trajectory format, which keeps history_author, harness,
-repo, base_commit and task_env, and the top_120 columns, which keep the jump-in step, the
-available shortcuts, the detection method and the rebuild dependencies.
 
 ## Quickstart
 
@@ -60,25 +56,22 @@ uv run pytest                            # every test runs on synthetic fixtures
 uv run steward sources                   # list sources
 uv run steward download swe_chat && uv run steward ingest swe_chat
 uv run steward stage-a
-uv run steward pilot                     # prints the estimate
-uv run steward pilot --confirm --max-usd 0.5
 ```
 
 ## Running each stage
 
 docs/pipeline.md walks through every command in order, with inputs, outputs and checks.
-docs/stage_c2_cloud.md is the exact procedure for the C2 cloud sessions and for the cluster side
-of the handoff. In short:
+docs/stage_c2_cloud.md is the procedure for the C2 cloud sessions. In short:
 
 ```bash
 uv run steward ingest all
 uv run steward stage-a
+uv run steward stage-b                  # prints the cost estimate
 uv run steward stage-b --confirm --max-usd 3
 uv run steward stage-c1 --confirm --max-usd 8
 uv run steward c2-handoff               # then cloud sessions, see docs/stage_c2_cloud.md
 uv run steward c2-merge
 uv run steward rank
-uv run steward sources-status
 uv run steward analyze
 uv run steward validate-all
 ```
@@ -88,8 +81,7 @@ batches are recorded before polling, so a re-run resumes polling instead of resu
 
 ## Configuration
 
-Settings live in steward/config.py as pydantic models with the brief's defaults. Change them
-there, not in the stage code.
+Settings live in steward/config.py as pydantic models. Change them there, not in the stage code.
 
 | Setting | Default | Where |
 |---|---|---|
@@ -98,7 +90,8 @@ there, not in the stage code.
 | Stage B input | top 8,000 by prescore, floor of 600 per domain, all of terminal_devops and workplace, 2,500-token summaries | `StageBConfig` |
 | Stage C1 input | top 1,500 B passes, floor of 150 per domain, all of terminal_devops and workplace, 40,000-token renderings | `StageC1Config` |
 | Windows | 25 steps before and 15 after, results trimmed to 400 + 400 characters | `RenderConfig` |
-| Stage C2 | 180 distinct tasks per domain for swe, terminal_devops and workplace, 25 trajectories and 20 MB per shard, 6 sessions | `StageC2Config` |
+| Stage C2 | 180 distinct tasks per domain, 25 trajectories and 20 MB per shard, 6 sessions | `StageC2Config` |
+| Final list | 120 distinct tasks per domain | `RankConfig` |
 | Model | anthropic/claude-haiku-5.5 on the OpenRouter Batch API | `ModelConfig` |
 | Spend cap | $15 combined for B and C1 | `Caps` |
 
@@ -117,42 +110,38 @@ runs in `claude --cloud` sessions under the owner's claude.ai login and needs no
 | data/handoff/c2/shard_NNN.jsonl | C2 inputs: rendering plus the C1 result, on branch handoff/c2 |
 | data/results/c2/shard_NNN.jsonl | C2 outputs, on branches results/c2-shard-NNN |
 | data/stage_c2/results.jsonl | merged and validated C2 results |
-| data/ranked/<domain>/top_120.csv | best 120 distinct tasks for swe, terminal_devops and workplace, copied to reports/top_120/ |
+| data/ranked/<domain>/top_120.csv | the final list, copied to reports/top_120/<domain>.csv |
 | data/costs.jsonl | actual spend per batch |
-| reports/SOURCES_STATUS.md | every source, ingested or unavailable, with license and reason |
-| reports/PILOT.md | pilot token counts, cost per trajectory and full-run projection |
-| reports/PHASE1_REPORT.md | the corpus and selection analysis, with figures in reports/figures/ |
-| reports/DECISIONS.md, BLOCKERS.md, STATUS.md | decisions made during the run, blockers, and final status |
+| reports/PHASE1.md | what Phase 1 produced and how to read it |
+| reports/PHASE1_STATS.md | generated tables and figures for the corpus |
+| reports/DECISIONS.md | the choices that shape the repository |
 
 data/ is ignored by git. Only data/handoff on handoff/* branches and data/results on results/*
 branches are committed, and every committed file stays under 20 MB.
 
 ## Adding a source
 
-docs/sources.md describes the loader interface, the format rules, the reusable parsers for
-Claude Code, Codex, Pi, Copilot, OpenAI-style and ChatML transcripts, and the steps to register,
-test and ingest a new source.
+docs/sources.md lists the sources and describes the loader interface, the format rules, the
+reusable transcript parsers, and the steps to register, test and ingest a new source.
 
 ## Costs
 
 Stages B and C1 are the only stages that spend money from this machine. Each runs through the
 OpenRouter Batch API at half the sync price: $0.05 per million prompt tokens and $0.25 per
 million completion tokens for Claude Haiku 5.5. Every request stays under 99k prompt tokens,
-because the price is five times higher above 100k. At the brief's sizes, 8,000 summaries of
-about 2,500 tokens cost about $1 for B, and 1,500 renderings of up to 40,000 tokens cost about $3
-for C1. The pilot measures the real figures, which are in reports/PILOT.md, and data/costs.jsonl
-records actual spend per batch. Stage C2 runs on cloud-session credits. Its size is bounded by
-the shard count: at most 60 trajectories per domain, 25 per shard.
+because the price is five times higher above 100k. Every model-calling command prints an
+estimate and stops unless `--confirm` is passed. Phase 1 spent $8.77; data/costs.jsonl records
+the spend per batch. Stage C2 runs on cloud-session credits and is bounded by the shard count.
 
 ## Limitations
 
-- Some sources are gated or unpublished, so they could not be obtained. Each one is listed in
-  reports/SOURCES_STATUS.md with what would unblock it.
 - Real-user material is dominated by sessions with Claude models. Results must be reported by
   history author.
+- Workplace has no real-user sessions.
 - Pattern tags see action text only. Moment kinds such as user_report and effort_shortcut depend
   on the model stages.
 - Token counts are character-based estimates.
-- Stage B and C1 are single passes by a small model. C2 rereads 180 tasks per domain in swe,
-  terminal_devops and workplace; everything else rests on C1.
-- Section 8 of reports/PHASE1_REPORT.md lists the limitations measured on the actual corpus.
+- Stage B and C1 are single passes by a small model. Only the trajectories C2 reread can reach a
+  final list.
+- The history before this cleanup, including seven more sources and three more domains, is at
+  the tag `phase1-full`.

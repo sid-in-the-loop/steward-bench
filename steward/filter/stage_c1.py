@@ -12,7 +12,14 @@ from steward.filter import batch
 from steward.filter.render import candidate_steps, windowed_rendering
 from steward.filter.selection import load_by_ids, select_with_floor, with_full_domains
 from steward.filter.stage_a import read_results as read_stage_a
-from steward.schema import StageAResult, StageBResult, StageC1Output, StageC1Result, Trajectory
+from steward.schema import (
+    BENCHMARK_DOMAINS,
+    StageAResult,
+    StageBResult,
+    StageC1Output,
+    StageC1Result,
+    Trajectory,
+)
 from steward.store import read_jsonl, write_jsonl
 
 log = logging.getLogger(__name__)
@@ -28,7 +35,11 @@ def select_inputs(
     settings: Settings, stage_b: list[StageBResult], stage_a: dict[str, StageAResult]
 ) -> list[StageBResult]:
     """Stage B passes ranked by offline rebuild, then Stage A prescore, then agent actions."""
-    passes = [r for r in stage_b if r.output is not None and r.output.decision == "YES"]
+    passes = [
+        r
+        for r in stage_b
+        if r.output is not None and r.output.decision == "YES" and r.domain in BENCHMARK_DOMAINS
+    ]
 
     def key(r: StageBResult) -> tuple[object, ...]:
         a = stage_a[r.trajectory_id]

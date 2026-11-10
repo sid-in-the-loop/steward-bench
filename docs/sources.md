@@ -1,4 +1,18 @@
-# Adding a source
+# Sources
+
+| Source | Domain | Real users | What it is |
+|---|---|---|---|
+| swe_chat | swe, terminal_devops | yes | Real developer sessions with coding agents (Claude Code, Codex, Pi, Copilot CLI) |
+| dataclaw | swe, terminal_devops | yes | Coding-agent sessions published by their users |
+| swe_together | swe | yes | Real sessions packaged as tasks |
+| terminal_bench | terminal_devops | no | Agent runs on Terminal-Bench 2.0 tasks, sampled to 4,000 |
+| the_agent_company | workplace | no | Agent runs on simulated company tasks |
+| openagentsafety | workplace | no | Agent runs on safety-focused workplace tasks |
+| toolathlon | workplace | no | Agent runs across email, Notion, Canvas, spreadsheets and cloud consoles |
+
+Sources that were tried and removed are listed in reports/PHASE1.md.
+
+## Adding a source
 
 A source is one module in steward/sources/ with one class that subclasses `Source`
 (steward/sources/base.py), plus one line in steward/sources/registry.py and a test with a small
@@ -14,7 +28,7 @@ class MySource(Source):
         real_user=False,
         location="hf:owner/dataset",
         license="cc-by-4.0",
-        notes="",                    # anything SOURCES_STATUS.md should say
+        notes="",                    # caveats worth recording
     )
 
     def download(self, settings: Settings) -> None: ...
@@ -23,8 +37,7 @@ class MySource(Source):
 
 `download` fetches into `settings.paths.raw / info.name`. It must be idempotent and resumable;
 `download_hf` in steward/sources/hf.py handles Hugging Face datasets. If the data cannot be
-fetched, raise `Unavailable` with the reason, and add an `UnavailableSource` entry to the registry
-saying what would unblock it.
+fetched, raise `Unavailable` with the reason.
 
 `load` yields `Trajectory` objects (steward/schema.py) in a deterministic order. The rules come
 from brief section 5:
@@ -39,8 +52,9 @@ from brief section 5:
 - Fill history_author and harness whenever the source records them.
 - Set task_env for a known task environment (for example `swe-bench-verified:<instance_id>`), or
   repo and base_commit for a public repository. Stage A check A3 needs one of the two.
-- Mixed real-user sources take their domain from `assign_domain(steps)`. When it returns None,
-  use the source default and set `domain_decided_by_rule=False`; Stage B then decides.
+- The domain is swe, terminal_devops or workplace. Mixed real-user sources take theirs from
+  `assign_domain(steps)`, which can also return other for out-of-scope work. When it returns
+  None, use the source default and set `domain_decided_by_rule=False`; Stage B then decides.
 - Keep small source-specific fields in `meta` verbatim. Never keep API keys, tokens or other
   secrets.
 
@@ -53,13 +67,11 @@ from brief section 5:
 | Pi session JSONL | `parse_pi` |
 | Copilot CLI events | `parse_copilot` |
 | Any of the above, detected | `parse_records(read_jsonl_records(path))` |
-| OpenAI-style message lists (OpenHands, SWE-agent, HAL) | `parse_openai_messages` in steward/sources/chat_messages.py |
+| OpenAI-style message lists (Toolathlon) | `parse_openai_messages` in steward/sources/chat_messages.py |
 | ChatML with `<tool_use>` and `<tool_result>` tags | `parse_chatml_tool_markup` |
 | Session exports with a `messages` list (DataClaw, SWE-Together) | `parse_session_messages`, `parse_markup_messages` in steward/sources/session_export_formats.py |
 | OpenHands event streams (TheAgentCompany, OpenAgentSafety) | `parse_openhands_events` in steward/sources/openhands_events.py |
 | Harbor ATIF trajectory.json (Terminal-Bench) | `parse_atif` in steward/sources/harbor_atif.py |
-| SWE-bench submission formats (SWE-agent, mini-swe-agent, OpenHands, others) | `detect_format` and one parser per format in steward/sources/swe_bench_formats.py |
-| HAL agent calls, tool-calling and code-agent scaffolds | `parse_hal_messages` in steward/sources/hal_messages.py |
 
 Helpers: `read_json` and `json_files_by_stem` (steward/sources/json_files.py) read `.json` or
 `.json.gz`; `sparse_checkout` (steward/sources/git_sparse.py) fetches pinned paths of a GitHub
@@ -74,5 +86,4 @@ missing base commits for sessions on public repositories.
    Never copy real data into tests: some sources are gated.
 3. Run `uv run steward download <name>`, then `uv run steward ingest <name>`, then
    `uv run steward validate normalized data/normalized/<name>`.
-4. Run `uv run steward stage-a`, then `uv run steward sources-status`, and update the docs in the
-   same commit.
+4. Run `uv run steward stage-a`, and update the docs in the same commit.

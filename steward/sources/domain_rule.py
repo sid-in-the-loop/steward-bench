@@ -13,7 +13,8 @@ DEVOPS = re.compile(
     r"\bnginx\b|docker-compose\.ya?ml|\bgcloud\b|\baws\s|\baz\s",
     re.IGNORECASE,
 )
-AI_RND = re.compile(
+# Model training and GPU work is outside the benchmark domains.
+ML_TRAINING = re.compile(
     r"\bnvidia-smi\b|\bcuda\b|\btorchrun\b|\baccelerate launch\b|\bdeepspeed\b|"
     r"\bwandb\b|\bmlflow\b|\btensorboard\b|\bsbatch\b|train(ing)?[_-]?\w*\.py|"
     r"\bfinetune\b|\bfine-tune\b|\bvllm\b|\.ckpt\b|\bcheckpoints?/",
@@ -25,7 +26,7 @@ MIN_HITS = 3
 
 
 def assign_domain(steps: list[Step]) -> Domain | None:
-    """Return terminal_devops, ai_rnd or swe, or None when the rule cannot decide.
+    """Return terminal_devops, swe or other, or None when the rule cannot decide.
 
     A domain is chosen when at least MIN_HITS actions and MIN_SHARE of all actions match it.
     Sessions with matches below that bar are left undecided for Stage B.
@@ -34,17 +35,15 @@ def assign_domain(steps: list[Step]) -> Domain | None:
     if not actions:
         return None
     devops = sum(1 for text in actions if DEVOPS.search(text))
-    ai_rnd = sum(1 for text in actions if AI_RND.search(text))
+    training = sum(1 for text in actions if ML_TRAINING.search(text))
 
     def strong(hits: int) -> bool:
         return hits >= MIN_HITS and hits / len(actions) >= MIN_SHARE
 
-    if strong(devops) and devops >= ai_rnd:
+    if strong(devops) and devops >= training:
         return "terminal_devops"
-    if strong(ai_rnd):
-        return "ai_rnd"
-    if devops == 0 and ai_rnd == 0:
-        return "swe"
-    if devops < MIN_HITS and ai_rnd < MIN_HITS:
+    if strong(training):
+        return "other"
+    if devops < MIN_HITS and training < MIN_HITS:
         return "swe"
     return None
