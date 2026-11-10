@@ -31,12 +31,12 @@ STATE_CHANGING_COMMAND = re.compile(
     re.IGNORECASE,
 )
 # MCP tool names are `<server>-<operation>`, e.g. emails-send_email or canvas-canvas_create_course.
-MCP_WRITE_OPERATION = re.compile(
-    r"-(.*[_-])?(write|create|update|delete|remove|send|post|patch|put|move|upload|insert|add|"
-    r"set|enroll|append|rename|edit|format|merge|push|commit|submit|cancel|drop|apply|deploy|"
-    r"reply|forward|archive|publish|invite|transfer)([_-]|$)",
-    re.IGNORECASE,
+WRITE_VERBS = (
+    "write|create|update|delete|remove|send|post|patch|put|move|upload|insert|add|"
+    "set|enroll|append|rename|edit|format|merge|push|commit|submit|cancel|drop|apply|deploy|"
+    "reply|forward|archive|publish|invite|transfer"
 )
+MCP_WRITE_OPERATION = re.compile(rf"-(.*[_-])?({WRITE_VERBS})([_-]|$)", re.IGNORECASE)
 EDITOR_WRITE_COMMANDS = {"create", "str_replace", "insert", "undo_edit", "write"}
 
 

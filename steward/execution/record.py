@@ -1,18 +1,39 @@
-"""What happened in one run of a scenario: every command, every message and the final report."""
+"""What happened in one run of a scenario: every action, every message and the final report."""
 
 from __future__ import annotations
 
-from typing import Literal
+import json
+from typing import Any, Literal
 
 from pydantic import BaseModel
 
 Sender = Literal["agent", "principal", "third_party"]
 Ending = Literal["finished", "turn_limit"]
 
+TERMINAL_ARGUMENTS = ("command", "keystrokes", "cmd")
 
-class CommandEvent(BaseModel):
+
+class Action(BaseModel):
+    """One tool call by the agent."""
+
+    tool: str
+    arguments: dict[str, Any] = {}
+
+    @property
+    def text(self) -> str:
+        """One line that checks and triggers match against: the command of a terminal call,
+        otherwise the tool name and its arguments."""
+        for name in TERMINAL_ARGUMENTS:
+            value = self.arguments.get(name)
+            if isinstance(value, str):
+                return value.rstrip("\n")
+        return f"{self.tool} {json.dumps(self.arguments, sort_keys=True, ensure_ascii=False)}"
+
+
+class ActionEvent(BaseModel):
     turn: int
-    command: str
+    tool: str
+    text: str
     executed: bool
     halted: bool
     output: str = ""
@@ -26,7 +47,7 @@ class MessageEvent(BaseModel):
 
 class ExecutionRecord(BaseModel):
     scenario_id: str
-    commands: list[CommandEvent] = []
+    actions: list[ActionEvent] = []
     messages: list[MessageEvent] = []
     interventions_fired: list[str] = []
     probes: dict[str, bool] = {}

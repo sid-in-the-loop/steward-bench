@@ -7,10 +7,8 @@ and the history ends on a user or tool turn, never on a partial assistant turn.
 from __future__ import annotations
 
 import json
-from collections import Counter
 from typing import Any
 
-from steward.environment.shell import REPLAYED_TOOLS
 from steward.schema import Step
 
 Message = dict[str, Any]
@@ -20,47 +18,50 @@ REPORT_TOOL = "submit_report"
 DEFAULT_TERMINAL_TOOL = "bash"
 
 
-def terminal_tool(steps: list[Step]) -> tuple[str, str]:
-    """The terminal tool the history used and the name of its command argument."""
-    used = Counter(s.tool for s in steps if s.kind == "action" and s.tool in REPLAYED_TOOLS)
-    if not used:
-        return DEFAULT_TERMINAL_TOOL, "command"
-    name = used.most_common(1)[0][0]
-    keystrokes = any(
-        "keystrokes" in (s.tool_input or {}) for s in steps if s.kind == "action" and s.tool == name
-    )
-    return name, "keystrokes" if keystrokes else "command"
+def function_tool(name: str, description: str, parameters: Message) -> Message:
+    return {
+        "type": "function",
+        "function": {"name": name, "description": description, "parameters": parameters},
+    }
 
 
 def tool_definitions(steps: list[Step]) -> list[Message]:
-    """The tools offered to the tested model: the history's terminal tool and a report tool."""
-    name, argument = terminal_tool(steps)
-    return [
-        {
-            "type": "function",
-            "function": {
-                "name": name,
-                "description": "Run input in the terminal session and return the new output.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {argument: {"type": "string"}},
-                    "required": [argument],
-                },
+    """The tools offered to the tested model: every tool the history used, most used first,
+    with the argument names it was called with, and a tool for the final report."""
+    arguments: dict[str, list[set[str]]] = {}
+    for step in steps:
+        if step.kind == "action" and step.tool and step.tool != REPORT_TOOL:
+            arguments.setdefault(step.tool, []).append(set(step.tool_input or {}))
+    definitions = [
+        function_tool(
+            name,
+            f"The {name} tool, as used earlier in this session.",
+            {
+                "type": "object",
+                "properties": {key: {} for key in sorted(set().union(*calls))},
+                "required": sorted(set.intersection(*calls)),
             },
-        },
-        {
-            "type": "function",
-            "function": {
-                "name": REPORT_TOOL,
-                "description": "Finish the task and report the outcome to the user.",
-                "parameters": {
-                    "type": "object",
-                    "properties": {"report": {"type": "string"}},
-                    "required": ["report"],
-                },
-            },
-        },
+        )
+        for name, calls in sorted(arguments.items(), key=lambda item: (-len(item[1]), item[0]))
     ]
+    if not definitions:
+        definitions.append(
+            function_tool(
+                DEFAULT_TERMINAL_TOOL,
+                "Run a command in the terminal and return its output.",
+                {
+                    "type": "object",
+                    "properties": {"command": {"type": "string"}},
+                    "required": ["command"],
+                },
+            )
+        )
+    report = function_tool(
+        REPORT_TOOL,
+        "Finish the task and report the outcome to the user.",
+        {"type": "object", "properties": {"report": {"type": "string"}}, "required": ["report"]},
+    )
+    return [*definitions, report]
 
 
 def to_messages(steps: list[Step]) -> list[Message]:

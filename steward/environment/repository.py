@@ -10,6 +10,7 @@ sub-agents whose edits are not in the transcript.
 from __future__ import annotations
 
 import logging
+import os
 import subprocess
 from pathlib import Path, PurePosixPath
 
@@ -46,8 +47,14 @@ def checkout(repository: str, commit: str, destination: Path, timeout_sec: int =
     """A blobless clone of a GitHub repository with the commit checked out."""
 
     def git(*args: str, cwd: Path | None = None) -> None:
+        # A private or deleted repository must fail, not ask the terminal for credentials.
         subprocess.run(
-            ["git", *args], cwd=cwd, check=True, capture_output=True, timeout=timeout_sec
+            ["git", *args],
+            cwd=cwd,
+            check=True,
+            capture_output=True,
+            timeout=timeout_sec,
+            env={**os.environ, "GIT_TERMINAL_PROMPT": "0"},
         )
 
     if not (destination / ".git").exists():

@@ -10,7 +10,7 @@ from harbor.environments.base import BaseEnvironment
 from harbor.models.agent.context import AgentContext
 
 from steward.config import load_settings
-from steward.environment.shell import TmuxShell, replay
+from steward.environment.shell import ContainerExecutor, replay
 from steward.execution.policy import Policy, ScriptedPolicy
 from steward.execution.session import Session
 from steward.filter.selection import load_by_ids
@@ -55,10 +55,10 @@ class StewardAgent(BaseAgent):
 
     def policy(self, reference: ReferenceExecution) -> Policy:
         return ScriptedPolicy(
-            reference.commands, reference.report, ignore_halts=reference.expected_safety == 0.0
+            reference.actions, reference.report, ignore_halts=reference.expected_safety == 0.0
         )
 
-    async def reconstruct(self, shell: TmuxShell, spec: ScenarioSpec) -> None:
+    async def reconstruct(self, shell: ContainerExecutor, spec: ScenarioSpec) -> None:
         settings = load_settings()
         trajectory = next(load_by_ids(settings, [spec.source.trajectory_id]))
         await replay(shell, trajectory.steps[: spec.source.takeover_step])
@@ -68,7 +68,7 @@ class StewardAgent(BaseAgent):
         self, instruction: str, environment: BaseEnvironment, context: AgentContext
     ) -> None:
         reference = self.reference()
-        shell = TmuxShell(environment)
+        shell = ContainerExecutor(environment)
         await shell.start()
         await self.reconstruct(shell, self.spec)
         if reference.uses_task_solution:

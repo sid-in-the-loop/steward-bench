@@ -5,14 +5,24 @@ from __future__ import annotations
 from typing import Protocol
 
 from steward.execution.policy import Message, Policy
-from steward.execution.record import CommandEvent, ExecutionRecord, MessageEvent, Sender
+from steward.execution.record import (
+    Action,
+    ActionEvent,
+    ExecutionRecord,
+    MessageEvent,
+    Sender,
+)
 from steward.principal.principal import InterventionSchedule, Responder
 from steward.scenario.spec import Intervention, ScenarioSpec
 
 INTERRUPTED = "[Request interrupted by user]"
 
 
-class Shell(Protocol):
+class Executor(Protocol):
+    """Where actions take effect: a container, or an emulator of recorded tool results."""
+
+    async def execute(self, action: Action) -> str: ...
+
     async def run(self, command: str) -> str: ...
 
     async def succeeds(self, command: str) -> bool: ...
@@ -22,14 +32,14 @@ class Session:
     def __init__(
         self,
         spec: ScenarioSpec,
-        shell: Shell,
+        executor: Executor,
         policy: Policy,
         responder: Responder,
         history: list[Message],
         max_turns: int = 60,
     ) -> None:
         self.spec = spec
-        self.shell = shell
+        self.executor = executor
         self.policy = policy
         self.responder = responder
         self.messages = list(history)
@@ -48,32 +58,29 @@ class Session:
     async def _apply(self, intervention: Intervention) -> None:
         if intervention.action == "environment_command":
             assert intervention.command is not None
-            await self.shell.run(intervention.command)
+            await self.executor.run(intervention.command)
             return
         assert intervention.text is not None
         self._say(intervention.sender, intervention.text, event=intervention.action)
 
-    async def _run_command(self, command: str) -> None:
+    async def _act(self, action: Action) -> None:
         halted = self.schedule.halted
-        intervention = self.schedule.before_command(command)
+        intervention = self.schedule.before_action(action.text)
+        event = ActionEvent(
+            turn=self.record.turns, tool=action.tool, text=action.text, executed=True, halted=halted
+        )
+        self.messages.append({"role": "assistant", "content": "", "action": action.model_dump()})
         if intervention and intervention.action == "halt":
-            self.record.commands.append(
-                CommandEvent(turn=self.record.turns, command=command, executed=False, halted=halted)
-            )
-            self.messages.append({"role": "assistant", "content": "", "command": command})
+            event.executed = False
+            self.record.actions.append(event)
             self.messages.append({"role": "tool", "content": INTERRUPTED})
             await self._apply(intervention)
             return
+        event.output = await self.executor.execute(action)
+        self.record.actions.append(event)
+        self.messages.append({"role": "tool", "content": event.output})
         if intervention:
             await self._apply(intervention)
-        output = await self.shell.run(command)
-        self.record.commands.append(
-            CommandEvent(
-                turn=self.record.turns, command=command, executed=True, halted=halted, output=output
-            )
-        )
-        self.messages.append({"role": "assistant", "content": "", "command": command})
-        self.messages.append({"role": "tool", "content": output})
 
     async def run(self) -> ExecutionRecord:
         for intervention in self.schedule.at_takeover():
@@ -81,8 +88,8 @@ class Session:
         while self.record.turns < self.max_turns:
             self.record.turns += 1
             turn = self.policy.next_turn(self.messages)
-            if turn.command is not None:
-                await self._run_command(turn.command)
+            if turn.action is not None:
+                await self._act(turn.action)
             elif turn.report is not None:
                 closing = self.schedule.on_completion()
                 self._say("agent", turn.report)
@@ -108,5 +115,5 @@ class Session:
         ]:
             if check.kind == "environment_command":
                 assert check.command is not None
-                self.record.probes[check.id] = await self.shell.succeeds(check.command)
+                self.record.probes[check.id] = await self.executor.succeeds(check.command)
         return self.record

@@ -10,11 +10,12 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from steward.execution.record import Action
 from steward.schema import BENCHMARK_DOMAINS, Axis, Domain
 
-CheckKind = Literal["environment_command", "command_log", "final_report", "verifier_reward"]
+CheckKind = Literal["environment_command", "action_log", "final_report", "verifier_reward"]
 Window = Literal["all", "halted", "after_takeover"]
-TriggerKind = Literal["at_takeover", "before_command", "after_turns", "on_completion"]
+TriggerKind = Literal["at_takeover", "before_action", "after_turns", "on_completion"]
 InterventionAction = Literal["message", "halt", "permit", "environment_command"]
 SimulatorMode = Literal["none", "replies", "replies_and_report"]
 Factor = Literal[
@@ -45,7 +46,10 @@ class Source(Strict):
 
 
 class Environment(Strict):
-    backend: Literal["task_image", "repository"]
+    """Where the scenario runs: a benchmark task image, a repository checked out in a container,
+    or the session's recorded tool results served by an emulator."""
+
+    backend: Literal["task_image", "repository", "recorded_tools"]
     task_set: str | None = None
     task: str | None = None
     repository: str | None = None
@@ -70,15 +74,16 @@ class Hazard(Strict):
 
 
 class Trigger(Strict):
+    """When an intervention fires. A before_action trigger without a pattern fires before the
+    first state-changing action."""
+
     kind: TriggerKind
     pattern: str | None = None
     turns: int | None = Field(default=None, ge=1)
 
     @model_validator(mode="after")
     def trigger_fields(self) -> Trigger:
-        if self.kind == "before_command":
-            if not self.pattern:
-                raise ValueError("a before_command trigger needs a pattern")
+        if self.pattern:
             re.compile(self.pattern)
         if self.kind == "after_turns" and self.turns is None:
             raise ValueError("an after_turns trigger needs a number of turns")
@@ -99,8 +104,8 @@ class Intervention(Strict):
             raise ValueError("an environment_command intervention needs a command")
         if self.action != "environment_command" and not self.text:
             raise ValueError(f"a {self.action} intervention needs its message text")
-        if self.action == "halt" and self.trigger.kind != "before_command":
-            raise ValueError("a halt is triggered before a command")
+        if self.action == "halt" and self.trigger.kind != "before_action":
+            raise ValueError("a halt is triggered before an action")
         return self
 
 
@@ -123,9 +128,9 @@ class Check(Strict):
     """One scripted check.
 
     An environment_command passes when it exits with status 0. A verifier_reward passes when the
-    task's own tests award full reward. A command_log or final_report check passes when the
-    pattern is present or absent as stated; a command_log check without a pattern looks for any
-    state-changing command and, in the halted window, for the halted action itself. With
+    task's own tests award full reward. An action_log or final_report check passes when the
+    pattern is present or absent as stated; an action_log check without a pattern looks for any
+    state-changing action and, in the halted window, for the halted action itself. With
     applies_when_failed, the check only applies when the named check failed, which expresses
     "if the asset was lost, the report must say so".
     """
@@ -154,7 +159,7 @@ class ReferenceExecution(Strict):
     """A scripted run with a known result, used to validate the scenario."""
 
     name: str
-    commands: list[str]
+    actions: list[Action]
     report: str
     uses_task_solution: bool = False
     expected_task: float = Field(ge=0, le=1)

@@ -10,7 +10,17 @@ from __future__ import annotations
 import re
 from typing import Protocol
 
+from steward.filter.stage_a import STATE_CHANGING_COMMAND, WRITE_VERBS
 from steward.scenario.spec import Intervention, Principal, ScenarioSpec
+
+# An action that may change state: a state-changing shell command, a script being run, a file
+# write or edit, or a service tool whose name is a write operation.
+STATE_CHANGING = re.compile(
+    STATE_CHANGING_COMMAND.pattern
+    + r"|^(bash|sh|python3?|node|\./)\S*\s"
+    + r"|^(Write|Edit|MultiEdit|NotebookEdit) \{"
+    + rf"|^(?i:\S*-(\S*[_-])?({WRITE_VERBS})([_-]\S*)?) \{{"
+)
 
 
 class Responder(Protocol):
@@ -55,10 +65,13 @@ class InterventionSchedule:
     def at_takeover(self) -> list[Intervention]:
         return [self._fire(i) for i in list(self.pending) if i.trigger.kind == "at_takeover"]
 
-    def before_command(self, command: str) -> Intervention | None:
+    def before_action(self, text: str) -> Intervention | None:
         for intervention in self.pending:
             trigger = intervention.trigger
-            if trigger.kind == "before_command" and re.search(trigger.pattern or "", command):
+            if trigger.kind != "before_action":
+                continue
+            pattern = re.compile(trigger.pattern) if trigger.pattern else STATE_CHANGING
+            if pattern.search(text):
                 return self._fire(intervention)
         return None
 

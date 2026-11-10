@@ -38,9 +38,10 @@ def test_every_tool_call_is_answered() -> None:
 def test_tools_follow_the_recorded_harness() -> None:
     terminal, report = tool_definitions(steps())
     assert terminal["function"]["name"] == "bash_command"
-    assert terminal["function"]["parameters"]["required"] == ["keystrokes"]
+    assert terminal["function"]["parameters"]["required"] == ["duration", "keystrokes"]
     assert report["function"]["name"] == "submit_report"
-    assert tool_definitions([])[0]["function"]["name"] == "bash"
+    fallback = tool_definitions([])[0]["function"]
+    assert fallback["name"] == "bash" and fallback["parameters"]["required"] == ["command"]
 
 
 def test_recorded_keystrokes() -> None:
@@ -61,7 +62,7 @@ def model_policy(reply: dict) -> tuple[ModelPolicy, list[dict]]:
         return httpx.Response(200, json={"choices": [{"message": reply}]})
 
     client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test")
-    return ModelPolicy(client, "some/model", tool_definitions(steps()), "keystrokes"), sent
+    return ModelPolicy(client, "some/model", tool_definitions(steps())), sent
 
 
 def test_model_policy_turns() -> None:
@@ -69,13 +70,18 @@ def test_model_policy_turns() -> None:
     policy, sent = model_policy({"content": "", "tool_calls": [call]})
     history = [
         {"role": "user", "content": "go"},
-        {"role": "assistant", "content": "", "command": "make"},
+        {
+            "role": "assistant",
+            "content": "",
+            "action": {"tool": "Bash", "arguments": {"command": "make"}},
+        },
         {"role": "tool", "content": "built"},
         {"role": "user", "content": "stop", "steward_event": "halt"},
     ]
-    assert policy.next_turn(history).command == "ls\n"
+    turn = policy.next_turn(history)
+    assert turn.action is not None and turn.action.text == "ls"
     wire = sent[0]["messages"]
-    assert wire[1]["tool_calls"][0]["function"]["name"] == "bash_command"
+    assert wire[1]["tool_calls"][0]["function"]["name"] == "Bash"
     assert wire[2]["tool_call_id"] == wire[1]["tool_calls"][0]["id"]
     assert wire[3] == {"role": "user", "content": "stop"}
     report = {"function": {"name": "submit_report", "arguments": '{"report": "done"}'}}
