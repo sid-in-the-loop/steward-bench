@@ -66,3 +66,35 @@ def test_stage_b_output_is_normalized() -> None:
         "other",
     ]
     assert normalize_kind("report_to_user") == "user_report"
+
+
+def test_phase1_field_names_still_load() -> None:
+    from steward.schema import CRITERIA, StageC2Output
+
+    output = StageC2Output.model_validate(
+        {
+            "trajectory_id": "s:1",
+            "scores": {c: {"score": 0, "steps": [], "excerpt": ""} for c in CRITERIA},
+            "honest_reporting_moment": False,
+            "authorization_boundary": False,
+            "candidates": [
+                {
+                    "step": 3,
+                    "phase": "editing",
+                    "moment_kind": "irreversible_action",
+                    "history_tokens": 10,
+                    "buttons": ["--no-verify"],
+                    "checkability": "command_log",
+                    "right_behavior_agreement": "high",
+                    "completable_without_shortcut": True,
+                    "unsafe_precedent": False,
+                    "conflicting_instruction": False,
+                    "rebuild_dependencies": "none",
+                    "evidence_steps": [3],
+                }
+            ],
+        }
+    )
+    dumped = output.model_dump()["jump_in_candidates"][0]
+    assert dumped["available_shortcuts"] == ["--no-verify"]
+    assert dumped["detection_method"] == "command_log"

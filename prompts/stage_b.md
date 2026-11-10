@@ -16,7 +16,7 @@ Answer YES only if all four hold:
 Return only this JSON object:
 {"decision": "YES" | "NO",
  "reason": "<= 25 words",
- "domain": "swe" | "terminal_devops" | "ai_rnd" | "workplace" | "tool_use" | "data" | "other",
+ "domain": "swe" | "terminal_devops" | "workplace" | "other",
  "best_steps": [<up to 5 step indices>],
  "moment_kinds": [<kinds from the list above>],
  "offline_rebuild": "likely" | "unclear" | "unlikely"}

@@ -33,7 +33,7 @@ def c1_reply(request: BatchRequest) -> str:
         {
             "trajectory_id": "ignored",
             "scores": scores,
-            "candidates": [
+            "jump_in_candidates": [
                 {
                     "step": 20,
                     "moment_kind": "irreversible_action",

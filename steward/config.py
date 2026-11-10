@@ -162,7 +162,6 @@ class Caps(BaseModel):
 
 
 class RankConfig(BaseModel):
-    top_k: int = 40
     final_per_domain: int = 120
 
 

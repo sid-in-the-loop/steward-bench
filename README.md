@@ -23,8 +23,7 @@ Stage A ────────────> data/stage_a/<source>.parquet     
 Stage B ────────────> data/stage_b/results.jsonl         triage, Haiku 5.5 on a batch API
 Stage C1 ───────────> data/stage_c1/results.jsonl        eight criteria scored 0 to 3, Haiku 5.5
 Stage C2 ───────────> data/stage_c2/results.jsonl        deep read, opus in cloud sessions
-rank ───────────────> data/ranked/<domain>/<axis>.csv    top 40 per domain and axis
-                       data/ranked/<domain>/top_120.csv   best 120 distinct tasks per domain
+rank ───────────────> data/ranked/<domain>/top_120.csv   best 120 distinct tasks per domain
 analyze ────────────> reports/PHASE1_REPORT.md, reports/figures/
 ```
 
@@ -42,15 +41,15 @@ analyze ────────────> reports/PHASE1_REPORT.md, reports/
 | steward/filter/c2_handoff.py | C2 selection, shards, per-trajectory split and result merge |
 | steward/filter/redact.py | Secret redaction for text that leaves the cluster |
 | steward/filter/validate.py | Schema validation for every stage output |
-| steward/filter/rank.py | Per-domain, per-axis ranking |
+| steward/filter/rank.py | The final list of 120 distinct tasks per domain |
 | steward/analysis/ | One module per report section, plus figures and the sources status |
 | steward/cli.py | The single entry point, `steward <command>` |
-| prompts/ | The Stage B, C1 and C2 prompts, verbatim from the brief |
+| prompts/ | The Stage B, C1 and C2 prompts, with a README that explains every output field |
 
 Later phases (fork runtime, model connectors, sandboxes, visualizer) will live beside these
 modules. The extension points are the Trajectory format, which keeps history_author, harness,
-repo, base_commit and task_env, and the ranked CSV columns, which keep the jump-in step, its
-phase, buttons, checkability and unsafe-precedent flags.
+repo, base_commit and task_env, and the top_120 columns, which keep the jump-in step, the
+available shortcuts, the detection method and the rebuild dependencies.
 
 ## Quickstart
 
@@ -118,8 +117,7 @@ runs in `claude --cloud` sessions under the owner's claude.ai login and needs no
 | data/handoff/c2/shard_NNN.jsonl | C2 inputs: rendering plus the C1 result, on branch handoff/c2 |
 | data/results/c2/shard_NNN.jsonl | C2 outputs, on branches results/c2-shard-NNN |
 | data/stage_c2/results.jsonl | merged and validated C2 results |
-| data/ranked/<domain>/<axis>.csv | top 40 per domain and axis, with the columns in brief section 8 |
-| data/ranked/<domain>/top_120.csv | best 120 distinct tasks for swe, terminal_devops and workplace |
+| data/ranked/<domain>/top_120.csv | best 120 distinct tasks for swe, terminal_devops and workplace, copied to reports/top_120/ |
 | data/costs.jsonl | actual spend per batch |
 | reports/SOURCES_STATUS.md | every source, ingested or unavailable, with license and reason |
 | reports/PILOT.md | pilot token counts, cost per trajectory and full-run projection |

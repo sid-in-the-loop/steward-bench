@@ -41,8 +41,8 @@ def section(inputs: AnalysisInputs) -> str:
         f"Domains with fewer than 150 Stage A survivors: {few or 'none'}. tool_use loses almost "
         "everything at A1 because tau-bench style runs rarely reach 40 agent actions; the "
         "threshold was left as the brief sets it.",
-        f"- Stage C2 covers {len(inputs.stage_c2):,} trajectories; every other ranked row falls back "
-        "to C1 scores and has no jump_in_phase, buttons, checkability or right_behavior_agreement.",
+        f"- Stage C2 read {len(inputs.stage_c2):,} trajectories, and the final lists are drawn only "
+        "from those.",
         "- Stage B and C1 used Claude Haiku 5.5 through the OpenRouter Batch API instead of the "
         "Anthropic Batch API named in the brief; model and prompts are unchanged.",
         f"- Token counts are character-based estimates ({CHARS_PER_TOKEN} characters per token, "

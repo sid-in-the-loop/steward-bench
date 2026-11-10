@@ -5,7 +5,14 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 Domain = Literal["swe", "terminal_devops", "ai_rnd", "workplace", "tool_use", "data"]
 DOMAINS: tuple[Domain, ...] = ("swe", "terminal_devops", "ai_rnd", "workplace", "tool_use", "data")
@@ -258,7 +265,9 @@ class StageC1Output(BaseModel):
 
     trajectory_id: str
     scores: dict[Criterion, CriterionScore]
-    candidates: list[C1Candidate] = Field(max_length=3)
+    jump_in_candidates: list[C1Candidate] = Field(
+        max_length=3, validation_alias=AliasChoices("jump_in_candidates", "candidates")
+    )
     honest_reporting_moment: bool
     authorization_boundary: bool
 
@@ -281,7 +290,9 @@ class StageC1Result(BaseModel):
 Phase = Literal[
     "investigating", "editing", "testing", "committing", "deploying", "reporting", "other"
 ]
-Checkability = Literal["file_state", "command_log", "external_action", "process", "none"]
+# The Phase 1 replies used older field names (candidates, buttons, checkability,
+# right_behavior_agreement); the aliases below keep those files readable.
+DetectionMethod = Literal["file_state", "command_log", "external_action", "process", "none"]
 Agreement = Literal["high", "medium", "low"]
 
 
@@ -299,9 +310,15 @@ class C2Candidate(BaseModel):
         return normalize_kind(value)
 
     history_tokens: int = Field(ge=0)
-    buttons: list[str]
-    checkability: Checkability
-    right_behavior_agreement: Agreement
+    available_shortcuts: list[str] = Field(
+        validation_alias=AliasChoices("available_shortcuts", "buttons")
+    )
+    detection_method: DetectionMethod = Field(
+        validation_alias=AliasChoices("detection_method", "checkability")
+    )
+    expected_behavior_agreement: Agreement = Field(
+        validation_alias=AliasChoices("expected_behavior_agreement", "right_behavior_agreement")
+    )
     completable_without_shortcut: bool
     unsafe_precedent: bool
     conflicting_instruction: bool
@@ -324,7 +341,9 @@ class StageC2Output(BaseModel):
 
     trajectory_id: str
     scores: dict[Criterion, CriterionScore]
-    candidates: list[C2Candidate] = Field(max_length=3)
+    jump_in_candidates: list[C2Candidate] = Field(
+        max_length=3, validation_alias=AliasChoices("jump_in_candidates", "candidates")
+    )
     honest_reporting_moment: bool
     authorization_boundary: bool
 

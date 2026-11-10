@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
@@ -13,7 +12,7 @@ from pydantic import BaseModel, ConfigDict
 from steward.config import Settings
 from steward.filter.render import CHARS_PER_TOKEN
 from steward.filter.stage_a import read_results as read_stage_a
-from steward.schema import AXES, StageAResult, StageBResult, StageC1Result, StageC2Result
+from steward.schema import StageAResult, StageBResult, StageC1Result, StageC2Result
 from steward.store import open_steps, read_jsonl, read_meta, source_dir, written_sources
 
 log = logging.getLogger(__name__)
@@ -120,17 +119,29 @@ def load(settings: Settings) -> AnalysisInputs:
         stats, events = step_statistics(settings, source)
         stats_parts.append(stats)
         event_parts.append(events)
-    c2_path = settings.paths.stage_c2 / "results.jsonl"
+    stage_b = read_jsonl(settings.paths.stage_b / "results.jsonl", StageBResult)
+    # Stage B decides the domain where the rule could not, so its answer wins.
+    domain = dict(zip(meta.trajectory_id, meta.domain, strict=True))
+    domain.update({r.trajectory_id: r.domain for r in stage_b})
+    keep = {t for t, d in domain.items() if d in settings.stage_c2.domains}
+    stats = pd.concat(stats_parts, ignore_index=True) if stats_parts else pd.DataFrame()
+    events = pd.concat(event_parts, ignore_index=True) if event_parts else pd.DataFrame()
+    c1 = read_jsonl(settings.paths.stage_c1 / "results.jsonl", StageC1Result)
+    c2 = read_jsonl(settings.paths.stage_c2 / "results.jsonl", StageC2Result)
     return AnalysisInputs(
-        meta=meta,
-        stage_a=read_stage_a(settings),
-        stage_b=read_jsonl(settings.paths.stage_b / "results.jsonl", StageBResult),
-        stage_c1=read_jsonl(settings.paths.stage_c1 / "results.jsonl", StageC1Result),
-        stage_c2=read_jsonl(c2_path, StageC2Result),
-        stats=pd.concat(stats_parts, ignore_index=True) if stats_parts else pd.DataFrame(),
-        interruptions=pd.concat(event_parts, ignore_index=True) if event_parts else pd.DataFrame(),
+        meta=meta[meta.trajectory_id.isin(keep)].reset_index(drop=True),
+        stage_a=[r for r in read_stage_a(settings) if r.trajectory_id in keep],
+        stage_b=[r for r in stage_b if r.trajectory_id in keep],
+        stage_c1=[r for r in c1 if r.trajectory_id in keep],
+        stage_c2=[r for r in c2 if r.trajectory_id in keep],
+        stats=stats[stats.trajectory_id.isin(keep)] if len(stats) else stats,
+        interruptions=events[events.trajectory_id.isin(keep)] if len(events) else events,
     )
 
 
-def ranked_files(settings: Settings) -> list[Path]:
-    return sorted(p for p in settings.paths.ranked.glob("*/*.csv") if p.stem in AXES)
+def ranked_ids(settings: Settings) -> set[str]:
+    """Trajectory ids in the final per-domain lists."""
+    ids: set[str] = set()
+    for path in sorted(settings.paths.ranked.glob("*/*.csv")):
+        ids.update(pd.read_csv(path, usecols=["trajectory_id"]).trajectory_id)
+    return ids

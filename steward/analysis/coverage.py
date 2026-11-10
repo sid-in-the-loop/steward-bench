@@ -9,15 +9,16 @@ import pandas as pd
 from steward.analysis.figures import heatmap, save
 from steward.analysis.inputs import AnalysisInputs
 from steward.analysis.tables import markdown_table
-from steward.filter.rank import combine
 from steward.schema import AXES
 
 
 def final_scores(inputs: AnalysisInputs) -> pd.DataFrame:
+    scores = {r.trajectory_id: (r.domain, r.output.scores) for r in inputs.stage_c1 if r.output}
+    scores.update({r.trajectory_id: (r.domain, r.output.scores) for r in inputs.stage_c2})
     rows = []
-    for scored in combine(inputs.stage_c1, inputs.stage_c2):
+    for domain, by_criterion in scores.values():
         for axis in AXES:
-            rows.append({"domain": scored.domain, "axis": axis, "score": scored.scores[axis].score})
+            rows.append({"domain": domain, "axis": axis, "score": by_criterion[axis].score})
     return pd.DataFrame(rows, columns=["domain", "axis", "score"])
 
 

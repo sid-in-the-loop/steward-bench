@@ -17,7 +17,7 @@ def candidate_frame(inputs: AnalysisInputs) -> pd.DataFrame:
     steps = inputs.stats.set_index("trajectory_id")["steps"]
     rows = []
     for result in inputs.stage_c2:
-        for c in result.output.candidates:
+        for c in result.output.jump_in_candidates:
             rows.append(
                 {
                     "by": "c2",
@@ -33,7 +33,7 @@ def candidate_frame(inputs: AnalysisInputs) -> pd.DataFrame:
     for shallow in inputs.stage_c1:
         if shallow.output is None or shallow.trajectory_id in deep:
             continue
-        for candidate in shallow.output.candidates:
+        for candidate in shallow.output.jump_in_candidates:
             rows.append(
                 {
                     "by": "c1",

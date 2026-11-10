@@ -7,7 +7,7 @@ import pytest
 
 from steward.filter import batch, c2_handoff, rank, stage_a, stage_b, stage_c1
 from steward.filter.validate import validate
-from steward.schema import AXES, CRITERIA, StageC2Output
+from steward.schema import CRITERIA, StageC2Output
 from steward.store import read_meta, write_source
 from tests.conftest import make_trajectory
 from tests.fakes import FakeBatches, b_reply, c1_reply
@@ -81,15 +81,15 @@ def c2_output(trajectory_id: str) -> StageC2Output:
             "scores": scores,
             "honest_reporting_moment": False,
             "authorization_boundary": False,
-            "candidates": [
+            "jump_in_candidates": [
                 {
                     "step": 20,
                     "phase": "committing",
                     "moment_kind": "irreversible_action",
                     "history_tokens": 900,
-                    "buttons": ["--force"],
-                    "checkability": "external_action",
-                    "right_behavior_agreement": "high",
+                    "available_shortcuts": ["--force"],
+                    "detection_method": "external_action",
+                    "expected_behavior_agreement": "high",
                     "completable_without_shortcut": True,
                     "unsafe_precedent": False,
                     "conflicting_instruction": False,
@@ -123,28 +123,19 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
     )
     assert [m.trajectory_id for m in merged] == [first]
     metas = {m.trajectory_id: m for m in read_meta(pipeline.paths.normalized, "fixture")}
-    counts = rank.run(
-        pipeline,
-        stage_c1.read_results(pipeline.paths.stage_c1 / "results.jsonl"),
-        merged,
-        stage_a.read_results(pipeline),
-        metas,
-        ["swe"],
-    )
-    n = pipeline.rank.final_per_domain
-    assert set(counts) == {("swe", a) for a in AXES} | {
-        (d, f"top_{n}") for d in pipeline.stage_c2.domains
-    }
-    final = pd.read_csv(pipeline.paths.ranked / "swe" / f"top_{n}.csv")
-    assert final.trajectory_id.tolist() == [first]
-    assert final.scored_by.iloc[0] == "c2"
-    assert validate("final", pipeline.paths.ranked / "swe" / f"top_{n}.csv").ok
-    side = pd.read_csv(pipeline.paths.ranked / "swe" / "side_effects.csv")
-    assert side.trajectory_id.iloc[0] == first
-    assert side.right_behavior_agreement.iloc[0] == "high"
-    assert counts[("swe", "self_modification")] == 0
-    assert validate("ranked", pipeline.paths.ranked / "swe" / "side_effects.csv").ok
-    assert side.history_tokens_at_jump_in.notna().all()
+    actions = {r.trajectory_id: r.agent_actions for r in stage_a.read_results(pipeline)}
+    counts = rank.run(pipeline, merged, actions, metas)
+    assert counts == {"swe": 1, "terminal_devops": 0, "workplace": 0}
+    path = rank.list_path(pipeline.paths.ranked, "swe", pipeline.rank.final_per_domain)
+    final = pd.read_csv(path)
+    assert validate("ranked", path).ok
+    row = final.iloc[0]
+    assert row.trajectory_id == first and row.jump_in_step == 20
+    assert row.primary_axis == "side_effects" and row.selection_score == 3
+    assert json.loads(row.available_shortcuts) == ["--force"]
+    assert row.detection_method == "external_action"
+    assert row.excerpt == "git push origin main"
+    assert (pipeline.paths.reports / "top_120" / "swe.csv").read_text() == path.read_text()
 
 
 def test_shard_size_limit(pipeline) -> None:
@@ -165,14 +156,7 @@ def test_analysis_report(pipeline) -> None:
 
     run_b_and_c1(pipeline)
     metas = {m.trajectory_id: m for m in read_meta(pipeline.paths.normalized, "fixture")}
-    rank.run(
-        pipeline,
-        stage_c1.read_results(pipeline.paths.stage_c1 / "results.jsonl"),
-        [],
-        stage_a.read_results(pipeline),
-        metas,
-        ["swe"],
-    )
+    rank.run(pipeline, [], {}, metas)
     text = write_report(pipeline)
     for heading in ("## 1. Funnel", "## 4. Real-user behavior", "## 8. Limitations"):
         assert heading in text

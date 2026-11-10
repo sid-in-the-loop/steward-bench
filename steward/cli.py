@@ -240,7 +240,7 @@ def cmd_c2_schema(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_rank(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter import c2_handoff, rank, stage_c1
+    from steward.filter import c2_handoff, rank
     from steward.filter.stage_a import read_results
     from steward.store import read_meta, written_sources
 
@@ -249,15 +249,8 @@ def cmd_rank(settings: Settings, args: argparse.Namespace) -> int:
         for source in written_sources(settings.paths.normalized)
         for m in read_meta(settings.paths.normalized, source)
     }
-    domains = sorted({m.domain for m in metas.values()})
-    rank.run(
-        settings,
-        stage_c1.read_results(settings.paths.stage_c1 / "results.jsonl"),
-        c2_handoff.read_results(settings),
-        read_results(settings),
-        metas,
-        domains,
-    )
+    actions = {r.trajectory_id: r.agent_actions for r in read_results(settings)}
+    rank.run(settings, c2_handoff.read_results(settings), actions, metas)
     return 0
 
 
@@ -348,7 +341,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--pilot", action="store_true", help="merge the pilot results into data/pilot"
     )
     add("pilot-report", cmd_pilot_report, "write reports/PILOT.md from the pilot outputs")
-    add("rank", cmd_rank, "write data/ranked/<domain>/<axis>.csv")
+    add("rank", cmd_rank, "write data/ranked/<domain>/top_120.csv from the C2 results")
     add("analyze", cmd_analyze, "write reports/PHASE1_REPORT.md and figures")
     add("sources-status", cmd_sources_status, "write reports/SOURCES_STATUS.md")
     sub = add("validate", cmd_validate, "validate one stage output file")

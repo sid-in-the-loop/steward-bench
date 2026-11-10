@@ -110,16 +110,15 @@ After merging, the output is data/stage_c2/results.jsonl.
 uv run steward rank
 ```
 
-This writes data/ranked/<domain>/<axis>.csv for every domain with ingested data and every one of
-the five axes. Scores come from C2, falling back to C1. Rows are sorted by axis score, then C2
-right_behavior_agreement, then agent actions. Trajectories whose candidates all have unsafe
-precedent are excluded, and so are trajectories with an axis score of 0. Each list keeps the top
-40.
+This writes data/ranked/<domain>/top_120.csv for swe, terminal_devops and workplace, and a
+committed copy in reports/top_120/<domain>.csv. Each list holds the best 120 distinct tasks of
+the domain among the trajectories Stage C2 read, one row per trajectory.
 
-It also writes data/ranked/<domain>/top_120.csv for swe, terminal_devops and workplace: the best
-120 distinct tasks of the domain. C2-scored trajectories come first, ordered by the sum of the two
-highest axis scores, then C2 right_behavior_agreement, then agent actions. Trajectories with all
-axis scores at 0, or whose candidates all have unsafe precedent, are excluded.
+Rows are ordered by selection_score (the sum of the two highest axis scores, 0 to 6), then
+expected_behavior_agreement, then agent actions. A trajectory is left out when every axis score
+is 0 or when every jump-in candidate follows unsafe behavior in the history. The row describes
+the trajectory's best jump-in candidate: no unsafe precedent, then no conflicting instruction,
+then the highest agreement, then the earliest step. reports/PHASE1.md explains every column.
 
 ## 7. Analysis and status reports
 
@@ -132,5 +131,5 @@ uv run steward analyze                 # reports/PHASE1_REPORT.md and reports/fi
 
 ```bash
 uv run steward validate-all            # every stage output that exists
-uv run steward validate <stage> <path> # one file; stages: normalized a b c1 c2 c2_input c2_merged ranked final
+uv run steward validate <stage> <path> # one file; stages: normalized a b c1 c2 c2_input c2_merged ranked
 ```
