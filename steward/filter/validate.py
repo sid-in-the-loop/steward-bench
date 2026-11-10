@@ -1,7 +1,7 @@
 """Schema validation for every stage output.
 
 Usage: python -m steward.filter.validate <stage> <path> [--shard <c2 input shard>]
-Stages: normalized, a, b, c1, c2, c2_input, c2_merged, ranked.
+Stages: normalized, a, b, c1, c2, c2_input, c2_merged, ranked, scenario.
 """
 
 from __future__ import annotations
@@ -158,6 +158,23 @@ def validate_ranked(report: Report, path: Path) -> None:
     _check_ids(report, list(frame["trajectory_id"]))
 
 
+def validate_scenario(report: Report, path: Path) -> None:
+    """A scenario file is valid when it loads, sits under its own key, and passes the lint."""
+    from steward.scenario.author import lint
+    from steward.scenario.spec import load_spec
+
+    try:
+        spec = load_spec(path)
+    except (ValidationError, ValueError) as error:
+        report.add(str(error)[:300])
+        return
+    report.records = 1
+    if path.parent.name != spec.key or path.parent.parent.name != spec.source.domain:
+        report.add(f"expected under {spec.source.domain}/{spec.key}")
+    for problem in lint(spec):
+        report.add(problem)
+
+
 def validate(stage: str, path: Path, shard: Path | None = None) -> Report:
     report = Report(stage=stage, path=str(path))
     if not path.exists():
@@ -183,6 +200,8 @@ def validate(stage: str, path: Path, shard: Path | None = None) -> Report:
         validate_jsonl(report, path, StageC2Result)
     elif stage == "ranked":
         validate_ranked(report, path)
+    elif stage == "scenario":
+        validate_scenario(report, path)
     else:
         report.add(f"unknown stage {stage}")
     return report
@@ -205,6 +224,7 @@ def validate_all(settings: Settings) -> list[Report]:
             reports.append(validate(stage, path))
     reports += [validate("c2_input", p) for p in sorted(paths.handoff_c2.glob("shard_*.jsonl"))]
     reports += [validate("ranked", p) for p in sorted(paths.ranked.glob("*/*.csv"))]
+    reports += [validate("scenario", p) for p in sorted(paths.scenarios.glob("*/*/scenario.yaml"))]
     return reports
 
 

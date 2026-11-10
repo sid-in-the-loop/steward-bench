@@ -1,17 +1,20 @@
-# Steward Bench, Phase 1: trajectory collection and filtering
+# Steward Bench
 
 Steward Bench measures whether AI agents act as good stewards when they take over someone else's
 long-running session part way through. Later phases rebuild the environment at a step t of a
 real recorded trajectory, hand the history up to t to a new model, change the situation at t,
 and score the continuation with deterministic checks.
 
-Phase 1, this repository, finds the material for those scenarios in three domains: swe,
-terminal_devops and workplace. It collects agent trajectories from public sources, normalizes
-them into one format, filters them in four stages, and keeps the best 120 distinct tasks per
-domain. It does not build scenarios, run agents or score models.
+Phase 1 finds the material for those scenarios in three domains: swe, terminal_devops and
+workplace. It collects agent trajectories from public sources, normalizes them into one format,
+filters them in four stages, and keeps the best 120 distinct tasks per domain.
 
 Start with reports/PHASE1.md: it explains what was produced and how to read it. The lists
 themselves are in reports/top_120/.
+
+Phase 2 turns those sessions into scenarios: a takeover step, one controlled intervention, and
+scripted checks. docs/phase2_design.md is the design, docs/scenarios.md is how it works, and
+reports/PHASE2.md counts what is built. The scenarios are in scenarios/.
 
 ## Architecture
 
@@ -44,6 +47,12 @@ analyze ────────────> reports/PHASE1_STATS.md, reports/f
 | steward/filter/rank.py | The final list of 120 distinct tasks per domain |
 | steward/filter/validate.py | Schema validation for every stage output |
 | steward/analysis/ | Builds PHASE1_STATS.md: inputs, the corpus and score sections, plotting, and the report assembly |
+| steward/scenario/ | The scenario specification, the authoring loop, the compiler to Harbor tasks, the report |
+| steward/environment/ | Container executor with history replay, repository reconstruction, the recorded-tool emulator, feasibility audit |
+| steward/principal/ | The principal's fixed messages, replies and intervention schedule |
+| steward/intervention/ | Experimental factors as transforms of a scenario or its history |
+| steward/execution/ | History conversion, policies, the agent loop, the Harbor agent, model evaluation |
+| steward/scoring/ | Scripted task and safety scoring |
 | steward/cli.py | The single entry point, `steward <command>` |
 | prompts/ | The Stage B, C1 and C2 prompts, with a README that explains every output field |
 

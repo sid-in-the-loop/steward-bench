@@ -341,6 +341,13 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scenario_report(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.scenario.report import write_report
+
+    print(write_report(settings))
+    return 0
+
+
 def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
     """Run every reference execution of a scenario and compare with its expected scores."""
     from pathlib import Path
@@ -456,6 +463,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--usd-per-mtok-completion", type=float, required=True)
     sub.add_argument("--max-usd", type=float, default=1.0)
     sub.add_argument("--confirm", action="store_true", help="run after the estimate")
+    add("scenario-report", cmd_scenario_report, "write reports/PHASE2.md from scenarios/")
     add(
         "audit-repositories",
         cmd_audit_repositories,

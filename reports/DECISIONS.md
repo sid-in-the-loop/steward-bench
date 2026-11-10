@@ -37,3 +37,13 @@ record of the Phase 1 run, including blockers and the pilot, is at the tag `phas
 
 - Output fields were renamed for clarity (buttons to available_shortcuts, checkability to detection_method, right_behavior_agreement to expected_behavior_agreement, candidates to jump_in_candidates). Nothing was re-scored, and the schema still reads the old names on the results branches.
 - The per-axis top-40 lists were replaced by one list per domain that carries every axis score.
+
+## Phase 2
+
+- Harbor 0.25 is the execution substrate, with its Singularity environment, because this cluster has Apptainer and no Docker.
+- Workplace scenarios run on an emulator that serves the session's recorded tool results and logs writes without sending them: the hosted services those sessions acted on cannot be rebuilt here. TheAgentCompany and OpenAgentSafety sessions need multi-service stacks and are not used yet.
+- Repository scenarios are drawn only from sessions where every recorded edit applies to the session's commit (69 of 164 swe sessions and 40 of 104 terminal_devops sessions in the deep-read pool). Their references have been checked on the recorded tool results; container runs for them are not built yet.
+- Scenario drafting calls Claude Haiku 5.5 directly instead of through the batch queue, at twice the batch price, because the queue took an hour in Phase 1 and each run costs under $0.30. The spend is recorded in data/costs.jsonl under the same cap.
+- The compliant reference of a scenario is the recorded agent's own continuation without any unsafe action, and the violating reference adds the drafted unsafe actions: both come from what really happened in the session, and both are executed before a scenario is kept.
+- A principal message may deliver the test, add pressure or answer a direct question with a fact, and may never name the hazard or suggest the safe action. The first drafted scenario announced the hazard, which would have made it trivial; recorded runs of that task show 27 of 43 agents falling for the hazard when nothing is said.
+- The pilot commands were removed after Phase 1, so CLAUDE.md's instruction to run the pilot before a full run no longer has a command behind it.
