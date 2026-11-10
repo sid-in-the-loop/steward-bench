@@ -15,6 +15,7 @@ from pathlib import Path
 import pandas as pd
 from pydantic import BaseModel, ValidationError
 
+from steward.config import Settings
 from steward.filter.rank import COLUMNS as RANKED_COLUMNS
 from steward.schema import (
     C2Input,
@@ -26,7 +27,7 @@ from steward.schema import (
     Step,
     TrajectoryMeta,
 )
-from steward.store import open_steps
+from steward.store import open_steps, source_dir, written_sources
 
 TRAJECTORY_ID = re.compile(r"^[a-z0-9_]+:\S+$")
 
@@ -185,6 +186,26 @@ def validate(stage: str, path: Path, shard: Path | None = None) -> Report:
     else:
         report.add(f"unknown stage {stage}")
     return report
+
+
+def validate_all(settings: Settings) -> list[Report]:
+    """Validate every stage output that exists."""
+    paths = settings.paths
+    reports = [
+        validate("normalized", source_dir(paths.normalized, s))
+        for s in written_sources(paths.normalized)
+    ]
+    reports += [validate("a", p) for p in sorted(paths.stage_a.glob("*.parquet"))]
+    for stage, path in (
+        ("b", paths.stage_b / "results.jsonl"),
+        ("c1", paths.stage_c1 / "results.jsonl"),
+        ("c2_merged", paths.stage_c2 / "results.jsonl"),
+    ):
+        if path.exists():
+            reports.append(validate(stage, path))
+    reports += [validate("c2_input", p) for p in sorted(paths.handoff_c2.glob("shard_*.jsonl"))]
+    reports += [validate("ranked", p) for p in sorted(paths.ranked.glob("*/*.csv"))]
+    return reports
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -121,10 +121,10 @@ def cmd_stage_c1(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_c2_handoff(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter import c2_handoff
+    from steward.filter import stage_c2
 
     paths = settings.paths
-    shards = c2_handoff.build_shards(
+    shards = stage_c2.build_shards(
         settings,
         paths.stage_c1 / "results.jsonl",
         paths.stage_b / "results.jsonl",
@@ -136,10 +136,10 @@ def cmd_c2_handoff(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_c2_merge(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter import c2_handoff
+    from steward.filter import stage_c2
 
     paths = settings.paths
-    c2_handoff.merge_results(paths.handoff_c2, paths.results_c2, paths.stage_c2 / "results.jsonl")
+    stage_c2.merge_results(paths.handoff_c2, paths.results_c2, paths.stage_c2 / "results.jsonl")
     return 0
 
 
@@ -147,7 +147,7 @@ RESULTS_BRANCH_PREFIX = "results/c2-shard-"
 
 
 def cmd_c2_push(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter.c2_branches import push_handoff
+    from steward.filter.stage_c2 import push_handoff
 
     dirs = [settings.paths.handoff_c2]
     print(push_handoff(settings.paths.root, dirs, "Update Stage C2 handoff shards"))
@@ -155,7 +155,7 @@ def cmd_c2_push(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_c2_launch(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter.c2_launch import launch
+    from steward.filter.stage_c2 import launch
 
     handoff = settings.paths.handoff_c2
     started = launch(
@@ -173,7 +173,7 @@ def cmd_c2_launch(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_c2_fetch(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter.c2_branches import fetch_results
+    from steward.filter.stage_c2 import fetch_results
 
     results = settings.paths.results_c2
     for path in fetch_results(settings.paths.root, RESULTS_BRANCH_PREFIX, results):
@@ -183,22 +183,22 @@ def cmd_c2_fetch(settings: Settings, args: argparse.Namespace) -> int:
 
 def cmd_c2_split(settings: Settings, args: argparse.Namespace) -> int:
 
-    from steward.filter import c2_handoff
+    from steward.filter import stage_c2
 
-    for path in c2_handoff.split_shard(Path(args.shard), Path(args.out_dir)):
+    for path in stage_c2.split_shard(Path(args.shard), Path(args.out_dir)):
         print(path)
     return 0
 
 
 def cmd_c2_schema(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter import c2_handoff
+    from steward.filter import stage_c2
 
-    print(c2_handoff.c2_json_schema())
+    print(stage_c2.c2_json_schema())
     return 0
 
 
 def cmd_rank(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.filter import c2_handoff, rank
+    from steward.filter import rank, stage_c2
     from steward.filter.stage_a import read_results
     from steward.store import read_meta, written_sources
 
@@ -208,7 +208,7 @@ def cmd_rank(settings: Settings, args: argparse.Namespace) -> int:
         for m in read_meta(settings.paths.normalized, source)
     }
     actions = {r.trajectory_id: r.agent_actions for r in read_results(settings)}
-    rank.run(settings, c2_handoff.read_results(settings), actions, metas)
+    rank.run(settings, stage_c2.read_results(settings), actions, metas)
     return 0
 
 
@@ -227,7 +227,7 @@ def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_validate_all(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.analysis.validation import validate_all
+    from steward.filter.validate import validate_all
 
     reports = validate_all(settings)
     failed = [r for r in reports if not r.ok]

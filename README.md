@@ -39,7 +39,7 @@ analyze ────────────> reports/PHASE1_STATS.md, reports/f
 | steward/filter/render.py | Stage B summaries and the windowed rendering for C1 and C2 |
 | steward/filter/batch.py | Batch API client: estimate, cost guard, submit, poll, collect, spend log |
 | steward/filter/stage_b.py, stage_c1.py | Input selection, requests and result parsing |
-| steward/filter/c2_handoff.py, c2_branches.py, c2_launch.py | C2 selection, shards, cloud sessions and result merge |
+| steward/filter/stage_c2.py | C2 selection, shards, handoff branches, cloud sessions and result merge |
 | steward/filter/redact.py | Secret redaction for text that leaves the cluster |
 | steward/filter/rank.py | The final list of 120 distinct tasks per domain |
 | steward/filter/validate.py | Schema validation for every stage output |

@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import pytest
 
-from steward.filter import batch, c2_handoff, rank, stage_a, stage_b, stage_c1
+from steward.filter import batch, rank, stage_a, stage_b, stage_c1, stage_c2
 from steward.filter.validate import validate
 from steward.schema import CRITERIA, StageC2Output
 from steward.store import read_meta, write_source
@@ -104,7 +104,7 @@ def c2_output(trajectory_id: str) -> StageC2Output:
 def test_c2_handoff_merge_and_rank(pipeline) -> None:
     run_b_and_c1(pipeline)
     pipeline.stage_c2.one_per_task = False
-    shards = c2_handoff.build_shards(
+    shards = stage_c2.build_shards(
         pipeline,
         pipeline.paths.stage_c1 / "results.jsonl",
         pipeline.paths.stage_b / "results.jsonl",
@@ -116,7 +116,7 @@ def test_c2_handoff_merge_and_rank(pipeline) -> None:
     out.parent.mkdir(parents=True)
     out.write_text(c2_output(first).model_dump_json() + "\n" + "not json\n")
     assert not validate("c2", out).ok
-    merged = c2_handoff.merge_results(
+    merged = stage_c2.merge_results(
         pipeline.paths.handoff_c2,
         pipeline.paths.results_c2,
         pipeline.paths.stage_c2 / "results.jsonl",
@@ -142,7 +142,7 @@ def test_shard_size_limit(pipeline) -> None:
     run_b_and_c1(pipeline)
     pipeline.stage_c2.one_per_task = False
     pipeline.stage_c2.shard_max_trajectories = 4
-    shards = c2_handoff.build_shards(
+    shards = stage_c2.build_shards(
         pipeline,
         pipeline.paths.stage_c1 / "results.jsonl",
         pipeline.paths.stage_b / "results.jsonl",
@@ -165,7 +165,7 @@ def test_analysis_report(pipeline) -> None:
 
 def test_c2_keeps_one_trajectory_per_task(pipeline) -> None:
     run_b_and_c1(pipeline)
-    shards = c2_handoff.build_shards(
+    shards = stage_c2.build_shards(
         pipeline,
         pipeline.paths.stage_c1 / "results.jsonl",
         pipeline.paths.stage_b / "results.jsonl",

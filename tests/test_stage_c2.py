@@ -2,8 +2,8 @@
 
 import subprocess
 
-from steward.filter import c2_launch
-from steward.filter.c2_branches import fetch_results, git, push_handoff
+from steward.filter import stage_c2
+from steward.filter.stage_c2 import fetch_results, git, push_handoff
 
 
 def make_repo(tmp_path):
@@ -61,12 +61,12 @@ def test_launch_respects_limit_and_never_relaunches(tmp_path, monkeypatch) -> No
         (handoff / f"shard_{n:03d}.jsonl").write_text("{}\n")
     prompts = []
     monkeypatch.setattr(
-        c2_launch,
+        stage_c2,
         "start_session",
         lambda r, p, d: prompts.append(p) or "https://claude.ai/code/session_x",
     )
     finished: set[str] = set()
-    monkeypatch.setattr(c2_launch, "finished_branches", lambda r, p: finished)
+    monkeypatch.setattr(stage_c2, "finished_branches", lambda r, p: finished)
     args = (
         repo,
         handoff,
@@ -76,10 +76,10 @@ def test_launch_respects_limit_and_never_relaunches(tmp_path, monkeypatch) -> No
         2,
         tmp_path / "logs",
     )
-    assert len(c2_launch.launch(*args)) == 2
-    assert c2_launch.launch(*args) == []
+    assert len(stage_c2.launch(*args)) == 2
+    assert stage_c2.launch(*args) == []
     finished.add("results/c2-shard-000")
-    started = c2_launch.launch(*args)
+    started = stage_c2.launch(*args)
     assert [s.shard for s in started] == ["data/handoff/c2/shard_002.jsonl"]
     assert "Write results to data/results/c2/shard_000.jsonl" in prompts[0]
     assert "Push results to branch results/c2-shard-000" in prompts[0]
