@@ -219,6 +219,31 @@ def cmd_analyze(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
+    """Run every reference execution of a scenario and compare with its expected scores."""
+    from pathlib import Path
+
+    from steward.scenario.compile import run_reference, score_trial
+    from steward.scenario.spec import load_spec
+
+    spec_file = Path(args.spec).resolve()
+    spec = load_spec(spec_file)
+    failures = 0
+    for reference in spec.reference_executions:
+        trial_dir = run_reference(settings, spec, spec_file, reference.name)
+        result = score_trial(spec, trial_dir)
+        expected = (reference.expected_task, reference.expected_safety)
+        ok = (result.task, result.safety) == expected
+        failures += not ok
+        failed = [c.id for c in [*result.safety_checks, *result.violations] if not c.passed]
+        print(
+            f"{spec.scenario_id} {reference.name}: task {result.task:.2f} safety "
+            f"{result.safety:.2f}, expected {expected[0]:.2f} and {expected[1]:.2f}, "
+            f"{'ok' if ok else 'MISMATCH'}; failed checks {failed or 'none'}"
+        )
+    return 1 if failures else 0
+
+
 def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter.validate import main as validate_main
 
@@ -284,6 +309,11 @@ def build_parser() -> argparse.ArgumentParser:
     add("c2-merge", cmd_c2_merge, "merge data/results/c2 into data/stage_c2")
     add("rank", cmd_rank, "write data/ranked/<domain>/top_120.csv from the C2 results")
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
+    add(
+        "scenario-check",
+        cmd_scenario_check,
+        "run a scenario's reference executions and compare with the expected scores",
+    ).add_argument("spec")
     sub = add("validate", cmd_validate, "validate one stage output file")
     sub.add_argument("stage")
     sub.add_argument("path")

@@ -55,6 +55,26 @@ class Paths(BaseModel):
         return self.data / "ranked"
 
     @property
+    def scenarios(self) -> Path:
+        return self.root / "scenarios"
+
+    @property
+    def upstream_tasks(self) -> Path:
+        return self.data / "upstream_tasks"
+
+    @property
+    def tasks(self) -> Path:
+        return self.data / "tasks"
+
+    @property
+    def trials(self) -> Path:
+        return self.data / "trials"
+
+    @property
+    def container_images(self) -> Path:
+        return self.data / "apptainer"
+
+    @property
     def batches(self) -> Path:
         return self.data / "batches"
 

@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from steward.schema import BENCHMARK_DOMAINS, Axis, Domain
 
-CheckKind = Literal["environment_command", "command_log", "final_report"]
+CheckKind = Literal["environment_command", "command_log", "final_report", "verifier_reward"]
 Window = Literal["all", "halted", "after_takeover"]
 TriggerKind = Literal["at_takeover", "before_command", "after_turns", "on_completion"]
 InterventionAction = Literal["message", "halt", "permit", "environment_command"]
@@ -46,6 +46,7 @@ class Source(Strict):
 
 class Environment(Strict):
     backend: Literal["task_image", "repository"]
+    task_set: str | None = None
     task: str | None = None
     repository: str | None = None
     commit: str | None = None
@@ -53,8 +54,8 @@ class Environment(Strict):
 
     @model_validator(mode="after")
     def backend_fields(self) -> Environment:
-        if self.backend == "task_image" and not self.task:
-            raise ValueError("a task_image environment names its task")
+        if self.backend == "task_image" and not (self.task_set and self.task):
+            raise ValueError("a task_image environment names its task set and task")
         if self.backend == "repository" and not (self.repository and self.commit):
             raise ValueError("a repository environment names its repository and commit")
         return self
@@ -119,10 +120,15 @@ class Principal(Strict):
 
 
 class Check(Strict):
-    """One scripted check. An environment_command passes when it exits with status 0; a
-    command_log or final_report check passes when the pattern is present or absent as stated.
-    A command_log check without a pattern looks for any state-changing command and, in the
-    halted window, for the halted action itself."""
+    """One scripted check.
+
+    An environment_command passes when it exits with status 0. A verifier_reward passes when the
+    task's own tests award full reward. A command_log or final_report check passes when the
+    pattern is present or absent as stated; a command_log check without a pattern looks for any
+    state-changing command and, in the halted window, for the halted action itself. With
+    applies_when_failed, the check only applies when the named check failed, which expresses
+    "if the asset was lost, the report must say so".
+    """
 
     id: str
     description: str
@@ -131,6 +137,7 @@ class Check(Strict):
     pattern: str | None = None
     expect: Literal["present", "absent"] = "absent"
     window: Window = "all"
+    applies_when_failed: str | None = None
 
     @model_validator(mode="after")
     def kind_fields(self) -> Check:
@@ -149,8 +156,17 @@ class ReferenceExecution(Strict):
     name: str
     commands: list[str]
     report: str
+    uses_task_solution: bool = False
     expected_task: float = Field(ge=0, le=1)
     expected_safety: float = Field(ge=0, le=1)
+
+
+class Drift(Strict):
+    """A fact the history relied on that has changed since, and an irrelevant change as control."""
+
+    command: str
+    announcement: str
+    control_command: str
 
 
 class Provenance(Strict):
@@ -171,6 +187,8 @@ class ScenarioSpec(Strict):
     disqualifying_violations: list[Check] = Field(default_factory=list)
     reference_executions: list[ReferenceExecution] = Field(min_length=2)
     factors: list[Factor] = Field(default_factory=list)
+    standing_instruction: str | None = None
+    drift: Drift | None = None
     provenance: Provenance
 
     @property
@@ -188,9 +206,18 @@ class ScenarioSpec(Strict):
         ids = [c.id for c in checks] + [i.id for i in self.interventions]
         if len(set(ids)) != len(ids):
             raise ValueError("check and intervention ids must be unique")
+        known = {c.id for c in checks}
+        for check in checks:
+            if check.applies_when_failed and check.applies_when_failed not in known:
+                raise ValueError(f"{check.id} depends on an unknown check")
         actions = [i.action for i in self.interventions]
         if actions.count("permit") > actions.count("halt"):
             raise ValueError("a permit needs an earlier halt")
+        needs_instruction = {"instruction_recency", "context_compaction"} & set(self.factors)
+        if needs_instruction and not self.standing_instruction:
+            raise ValueError(f"{sorted(needs_instruction)} need a standing instruction")
+        if "environment_drift" in self.factors and self.drift is None:
+            raise ValueError("environment_drift needs its drift commands")
         expected = {(r.expected_task, r.expected_safety) for r in self.reference_executions}
         if (1.0, 1.0) not in expected:
             raise ValueError("one reference execution must be fully compliant")

@@ -60,6 +60,7 @@ class Session:
             self.record.commands.append(
                 CommandEvent(turn=self.record.turns, command=command, executed=False, halted=halted)
             )
+            self.messages.append({"role": "assistant", "content": "", "command": command})
             self.messages.append({"role": "tool", "content": INTERRUPTED})
             await self._apply(intervention)
             return
