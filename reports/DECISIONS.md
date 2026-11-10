@@ -1,70 +1,39 @@
 # Decisions
 
-Decisions made during the unattended Phase 1 run, one line each with the reason. Thresholds and
-criteria from the brief are unchanged unless an entry says otherwise.
+The choices that shape what is in this repository, one line each with the reason. The full
+record of the Phase 1 run, including blockers and the pilot, is at the tag `phase1-full`.
 
-## Setup
+## Scope
 
-- project_desc/traj_collection.md is treated as PROJECT_BRIEF.md: it is the Phase 1 brief that CLAUDE.md refers to, and no file named PROJECT_BRIEF.md exists.
-- project_desc/ and the user's uncommitted CLAUDE.md edit are left out of commits: the repository is public, and publishing the unreleased project plan is the owner's call.
-- Stage B and C1 call anthropic/claude-haiku-5.5 through the OpenRouter Batch API: the run instructions say every B and C1 call goes through OpenRouter, and its batch tier is half the sync price.
-- The combined B and C1 cap is $15, not the $10 in CLAUDE.md and the brief: the run instructions set $15 for this run.
-- Spend is measured from the batch usage OpenRouter reports, logged per batch in data/costs.jsonl. The key already showed $18.15 of earlier usage before this run, so key-level usage is not used.
-- Pricing in config is the OpenRouter batch list price ($0.05 per million prompt tokens, $0.25 per million completion tokens) and every request is kept under 99k prompt tokens: the price is five times higher above 100k.
-- Tokens are estimated as characters / 3.2, a conservative ratio for Claude tokenizers, so cost estimates sit above actual spend.
-- Raw data stays in data/raw under the home quota, with downloads capped at 5 GB per source and 25 GB total: 77 GB was free and /projects allocations were not used without the owner's say.
+- Three domains: swe, terminal_devops and workplace. The owner dropped ai_rnd, data and tool_use because too few sessions survived the rules, and asked for the best 120 distinct tasks in each remaining domain.
+- Seven sources are kept: swe_chat, dataclaw, swe_together, terminal_bench, the_agent_company, toolathlon and openagentsafety. The other seven contributed nothing to the final lists and were removed after the run.
+- A session the domain rule or Stage B places outside the three domains is labelled `other` and goes no further.
+- Toolathlon is filed under workplace: its agents act on email, Notion, Canvas, spreadsheets and cloud consoles. Toolathlon-Verified is not used, because its terms forbid redistribution.
+- C2 shards and results are on public branches of this repository. The owner waived the brief's private-repository requirement, and shard text is passed through secret redaction first.
 
-- C2 shards and results go on public branches of this repository: the brief requires a private repository, the owner waived that at 00:33 on 2026-10-29, and shard renderings are passed through secret redaction first. Renderings from gated datasets (SWE-chat, mle-traj) become publicly readable as a result.
+## Selection
 
-## Sources and normalization
+- Stage A thresholds are the brief's and were not changed.
+- A2 counts edit and write tools, editor commands, state-changing shell commands, and MCP tools whose name ends in a write operation (send, create, update and similar).
+- Stage B and C1 take every survivor in terminal_devops and workplace, beyond the brief's top 8,000 and top 1,500, so those smaller domains have enough scored tasks. In swe the brief's limits apply, so about 1,000 of 5,822 triage passes were scored.
+- A task is the trajectory's task environment, else its repository and commit. C2 reads up to 180 distinct tasks per domain and the final list keeps the best 120, so C2 can drop C1's false positives.
+- The final list is ordered by the sum of the two highest axis scores, then agreement on the expected behavior, then agent actions. A trajectory whose jump-in candidates all follow unsafe behavior is left out.
 
-- SWE-chat transcripts in Claude Code, Codex, Pi and Copilot CLI formats are parsed; other agent formats (Cursor exports without tool calls, Gemini CLI, Grok CLI, OpenCode and smaller ones) are skipped and counted in SOURCES_STATUS.md: those four formats cover most sessions, and the time went to other sources.
-- SWE-chat base_commit is the Codex session's git commit when present, otherwise the first commit linked to the session's canonical checkpoint (its parent is the start state): sessions.parquet has no start commit, and A3 needs one.
-- SWE-chat prompt_pushback and prompt_intent come from the 6.4 GB conversations table, which was not downloaded: the persona and success labels are in sessions.parquet, and pushback is reported as unavailable.
-- Hyperswitch traces are agent-only (real_user false), not real-user as the brief's table says: each is a single task prompt for a juspay__hyperswitch-<PR> instance followed only by tool results, from GLM, KAT and Qwen runs.
-- Hyperswitch task_env is the instance id (juspay__hyperswitch-<PR>), which identifies the starting world for A3.
-- Nebius OpenHands is sampled to 3,000 of 67,074 with a fixed seed (20261028), as the brief asks.
-- Codex turn_aborted events with reason interrupted, and Pi assistant turns with stopReason aborted, count as user interruptions alongside Claude Code's `[Request interrupted by user]`: they are the same real-user stop in other harnesses.
-- Codex injected context (environment_context, AGENTS.md, permissions instructions) and Claude Code meta and command messages become system steps, not user steps: they are not typed by the user, and counting them would inflate A4.
+## Data
 
-## Stages
+- When a real-user session names a public repository but no commit, the base commit is inferred as the last default-branch commit before the session started, and marked in meta as inferred.
+- Codex `turn_aborted` events and Pi aborted turns count as user interruptions alongside Claude Code's interrupt marker.
+- Injected context (environment blocks, AGENTS.md, command messages) becomes system steps, not user steps, so it does not count as user participation.
+- Terminal-Bench 2.0 is sampled to 4,000 of 10,426 structured trials, evenly across submissions with a fixed seed.
+- Tokens are estimated at 2.2 characters per token, calibrated against Haiku's own counts.
 
-- Stage A A2 counts edit and write tools, editor create or replace commands, and shell commands that change state (git write commands, file moves, installs, redirects): the brief gives no list.
-- The domain rule assigns terminal_devops or ai_rnd when at least 3 actions and at least 15% of actions match the pattern; a weaker but present signal leaves the domain to Stage B: the brief leaves the rule's thresholds open.
-- Stage B summaries shorten text in fixed passes until they fit 2,500 tokens (cap on user-message length, then action-line length, then eliding middle actions): every user message and action stays represented in order.
-- Window candidates are Stage B best_steps first, then Stage A tags by kind priority (user_interruption, oversight_control, evaluation_rules, persistent_process, irreversible_action, ...), keeping candidates at least 15 steps apart: this de-duplicates overlapping windows.
-- Renderings over 40k tokens are shortened in passes: user messages in the history summary get a cap, then earlier action lines and result snippets shrink, then later windows are dropped.
-- Stage C1 input order is offline_rebuild (likely, unclear, unlikely), then Stage A prescore, then agent actions: the brief says "top 1,500 Stage B passes" without naming a score.
-- Ranked lists exclude trajectories whose axis score is 0: a zero means no opportunity for that axis, so it is not a candidate.
-- The pilot takes 40 Stage A survivors round-robin across domains in prescore order, and runs all 40 through C1, not just the B passes: this measures C1 cost on a full sample.
-- Normalized steps are written as gzip-compressed JSONL (steps.jsonl.gz, still one JSON line per step): the home quota was at 61 of 100 GB with SWE-chat still to ingest, and compression saves about 5x.
-- When a real-user session names a public GitHub repository but records no commit (Pi, DataClaw, SWE-chat without checkpoint commits), base_commit is inferred as the last commit on the default branch before the session's first timestamp, from a bare treeless clone, and meta.base_commit_method marks it as inferred: A3 asks for a public repo and commit, and this is the closest deterministic reconstruction. It is done only for sessions with at least 40 actions, since the rest fail A1 anyway.
-- TheAgentCompany, OpenAgentSafety and HAL trajectories follow the loader decisions in their modules: history_author is the model named by the submission or run config, OpenHands `think` steps are dropped as reasoning, and HAL keeps the agent-model call with the longest history for each task.
-- HAL benchmarks are mapped to domains as tau-bench and web benchmarks to tool_use, SWE-bench, USACO, SciCode and ColBench to swe, and CORE-Bench and ScienceAgentBench to data.
-- TheAgentCompany history_author is the model named in the submission, for example sonnet-20241022; the API-reported model is kept in meta.response_models.
-- Stage B calls run with reasoning disabled and up to 600 output tokens, and Stage C1 calls run with low-effort reasoning and up to 6,000 output tokens: Haiku 5.5 reasons by default and reasoning counts toward max_tokens, so the first pilot attempt's replies all hit the 400-token limit before writing JSON. C1 keeps some reasoning because it is the scoring pass that most rankings rest on.
-- The token estimator uses 2.2 characters per token, calibrated on the first pilot attempt (Haiku 5.5 counted 142,433 prompt tokens where 3.2 characters per token predicted 102,628): the brief's 2,500-token summaries and 40,000-token renderings now hold in the model's own count.
-- The first pilot attempt is kept in data/batches/pilot_*_attempt1 and data/pilot/attempt1, and its spend stays in data/costs.jsonl and counts toward the cap. The cost guard now sums every batch in costs.jsonl.
-- The pilot sample was drawn from the sources ingested by 01:05 (all but SWE-chat, HAL and mle-traj, which were still downloading or ingesting): waiting would have cost about 20 minutes of a 6-hour window, and the cost margin was wide. The pilot covers swe, terminal_devops, workplace and ai_rnd.
-- The full Stage B run starts once the pilot's B and C1 numbers show the projection within the cap, while the pilot's C2 cloud session runs in parallel: the run instructions make the go decision a cost check, and C2 agreement does not change B or C1.
-- Model replies are normalized before validation: moment kinds named loosely (for example 'report to the user', 'user interruption') are mapped to the canonical identifier by keyword, else 'other', and best_steps keeps its first five: the verbatim Appendix A prompt describes kinds in prose, and 7 of 40 pilot replies used such names.
-- Excerpts over 200 characters are trimmed to their first 200, not rejected: a prefix of a verbatim excerpt is still verbatim.
-- SWE-bench experiments: 12 submissions from distinct model families, 150 shared Verified instances each; the flattened 20251127_openhands_claude-opus-4-5 export is excluded because it has no tool calls, and Claude is covered by the Sonar submission. A3 passes on task_env (swe-bench-verified:<instance>); base_commit would need the SWE-bench Verified table, which is not downloaded.
-- Terminal-Bench 2.0 is sampled to 4,000 of the 10,426 structured Harbor trials, evenly across 24 submissions with a fixed seed; the 22,377 unstructured trials and git-lfs placeholder files are not used.
-- mle-traj human Kaggle kernels stay real_user with history_author "human" and fail A4 (no user turns, no agent work), which is the check's intent; the agent runs (MLEvolve, Codex) are loaded as agent-only ai_rnd trajectories.
-- Stage A thresholds are not changed even where they empty a domain, for example tool_use, where tau-bench style runs rarely reach 40 actions: the brief says to ask before changing thresholds.
-- Stage B was submitted in two parts: first for the sources already through Stage A, then for whatever the top 8,000, recomputed over all sources, adds. Only the final selection's results are written to data/stage_b/results.jsonl; the overlap costs at most about $0.50 and saves roughly 30 minutes.
-- Shard renderings are redacted for provider key formats (OpenAI, Anthropic, Hugging Face, GitHub, GitLab, Slack, Stripe, AWS, Google, npm, PyPI and others), private keys, bearer tokens, assigned secrets and passwords in connection URLs: GitHub push protection rejected the first full handoff push for a database URL password and a GitLab feed token, and nothing secret-shaped was pushed.
-- The local origin fetch URL is set to https://github.com/sid-in-the-loop/steward-bench.git, with the SSH alias kept as the push URL: `claude --cloud` did not recognize the github-sid alias, so cloud sessions got a snapshot with no git remote and every push failed with "'origin' does not appear to be a git repository". A probe session pushed claude/c2-probe3 and results/c2-probe3 after the change.
-- The first pilot launch log is archived as data/handoff/c2_pilot_launches_attempt1.jsonl so the two pilot shards could be relaunched.
+## Models and cost
 
-## 2026-10-29, owner-directed extension to 120 per domain
+- Stage B and C1 use Claude Haiku 5.5 on the OpenRouter Batch API, capped at $15 combined; $8.77 was spent. Requests stay under 99k prompt tokens because the price is five times higher above 100k.
+- Stage B runs without reasoning; C1 runs with low-effort reasoning, because it is the scoring pass the C2 selection rests on.
+- Stage C2 runs Opus in `claude --cloud` sessions, at most six at a time. The origin fetch URL is the plain HTTPS address, because cloud sessions do not recognise SSH host aliases.
 
-- The owner asked for the 120 highest-quality trajectories in each of swe, terminal_devops and workplace, so ai_rnd, data and tool_use are left out of C2 and of the final lists; their per-axis C1 lists stay.
-- Toolathlon (hkust-nlp/Toolathlon-Trajectories, CC-BY-4.0) is ingested as a workplace source after the owner accepted the access forms: its agents act on email, Notion, Canvas, spreadsheets and cloud consoles. Toolathlon-Verified_Trajectories is not used, because its terms forbid redistribution and C2 shards go to a public branch.
-- AppWorld, ScaleAI/mrt and WorkSurface-Bench were measured and not added: AppWorld runs are short (median 25 API calls, about 10k tokens) and its license allows redistribution only encrypted; MRT adds about 17 staged-sabotage tasks; WorkSurface runs are about 600 tokens.
-- Stage A check A2 recognises MCP tool names of the form `<server>-<operation>` with a write operation (send, create, update and similar). No earlier A2 rejection changes under the rule, so other sources were not re-run.
-- Stage B and C1 take every Stage A survivor and every B pass in terminal_devops and workplace, beyond the brief's top 8,000 and top 1,500, so these smaller domains have enough scored tasks to fill 120.
-- C2 reads a pool of up to 180 distinct tasks per domain (one trajectory per task: task environment, else repository and commit), and the final list keeps the best 120 by C2 score. Choosing 120 out of a larger reread pool lets C2 drop C1's false positives; the pilot showed C1 overscoring self-modification, absent supervisor and interruptibility.
-- Stage C1 for the extension scores 2,489 new trajectories under --max-usd 7 (estimate $6.48, upper bound): the owner approved it at 2026-10-29 after seeing that the B and C1 total could pass the $10 in CLAUDE.md while staying under the $15 run cap.
-- Shard redaction now covers Notion tokens (ntn_ and secret_ formats) and every string in the C1 output, not only the rendering: push protection rejected the extension handoff for a Notion token from a Toolathlon run that C1 had quoted in an excerpt.
+## After the run
+
+- Output fields were renamed for clarity (buttons to available_shortcuts, checkability to detection_method, right_behavior_agreement to expected_behavior_agreement, candidates to jump_in_candidates). Nothing was re-scored, and the schema still reads the old names on the results branches.
+- The per-axis top-40 lists were replaced by one list per domain that carries every axis score.
