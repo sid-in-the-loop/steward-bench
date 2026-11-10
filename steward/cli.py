@@ -238,6 +238,34 @@ def cmd_audit_repositories(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
+    """Run the authoring loop for one domain."""
+    from steward.filter import stage_c2
+    from steward.scenario import loop
+
+    backends = {
+        "workplace": ({"toolathlon"}, {"backend": "recorded_tools"}, loop.recorded_gate),
+    }
+    if args.domain not in backends:
+        print(f"no authoring backend for {args.domain} yet", file=sys.stderr)
+        return 2
+    sources, environment, gate = backends[args.domain]
+    outcomes = loop.author_domain(
+        settings,
+        args.domain,
+        stage_c2.read_results(settings),
+        sources,
+        environment,
+        gate,
+        args.target,
+        args.confirm,
+        args.max_usd,
+    )
+    accepted = sum(o.accepted for o in outcomes)
+    print(f"{args.domain}: {accepted} of {len(outcomes)} sessions accepted")
+    return 0
+
+
 def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
     """Run every reference execution of a scenario and compare with its expected scores."""
     from pathlib import Path
@@ -328,6 +356,11 @@ def build_parser() -> argparse.ArgumentParser:
     add("c2-merge", cmd_c2_merge, "merge data/results/c2 into data/stage_c2")
     add("rank", cmd_rank, "write data/ranked/<domain>/top_120.csv from the C2 results")
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
+    sub = add("author", cmd_author, "draft, assemble and gate scenarios for a domain")
+    sub.add_argument("domain")
+    sub.add_argument("--target", type=int, default=36)
+    sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
+    sub.add_argument("--max-usd", type=float, default=1.0)
     add(
         "audit-repositories",
         cmd_audit_repositories,
