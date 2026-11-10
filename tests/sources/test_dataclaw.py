@@ -8,7 +8,7 @@ import pytest
 from steward.config import Settings
 from steward.schema import Trajectory
 from steward.sources.dataclaw import DataClaw, dataset_dir_name, dataset_from_dir
-from steward.sources.hf_card import card_license
+from steward.sources.raw_files import card_license
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "dataclaw"
 

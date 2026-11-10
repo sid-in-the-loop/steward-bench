@@ -13,7 +13,7 @@ from steward.config import Settings
 from steward.schema import Trajectory
 from steward.sources.base import Source, SourceInfo
 from steward.sources.domain_rule import assign_domain
-from steward.sources.hf import download_hf
+from steward.sources.raw_files import download_hf
 from steward.sources.transcripts import parse_records, read_jsonl_records
 
 LABEL_COLUMNS = (

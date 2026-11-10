@@ -6,8 +6,12 @@ import pytest
 
 from steward.config import Settings
 from steward.schema import Trajectory
-from steward.sources.the_agent_company import TheAgentCompany, parse_submission, trajectory_files
-from steward.sources.the_agent_company_formats import redact_credentials
+from steward.sources.the_agent_company import (
+    TheAgentCompany,
+    parse_submission,
+    redact_credentials,
+    trajectory_files,
+)
 
 FIXTURE = Path(__file__).resolve().parent.parent / "fixtures" / "the_agent_company"
 OPENHANDS = "20250510_OpenHands-0.28.1-sonnet-20250219"

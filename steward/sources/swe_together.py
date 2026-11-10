@@ -22,15 +22,15 @@ from pydantic import BaseModel
 from steward.config import Settings
 from steward.schema import Step, Trajectory
 from steward.sources.base import Source, SourceInfo
-from steward.sources.domain_rule import assign_domain
-from steward.sources.hf import download_hf
-from steward.sources.session_export_formats import (
+from steward.sources.chat_formats import (
     clean_model,
     has_tool_markup,
     infer_harness,
     parse_markup_messages,
     parse_session_messages,
 )
+from steward.sources.domain_rule import assign_domain
+from steward.sources.raw_files import download_hf
 from steward.sources.swe_chat import github_slug
 
 log = logging.getLogger(__name__)

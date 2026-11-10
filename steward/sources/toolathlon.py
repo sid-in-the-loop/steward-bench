@@ -18,8 +18,8 @@ from typing import Any
 from steward.config import Settings
 from steward.schema import Trajectory
 from steward.sources.base import Source, SourceInfo
-from steward.sources.chat_messages import parse_openai_messages
-from steward.sources.hf import download_hf
+from steward.sources.chat_formats import parse_openai_messages
+from steward.sources.raw_files import download_hf
 
 log = logging.getLogger(__name__)
 

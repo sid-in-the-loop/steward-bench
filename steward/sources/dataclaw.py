@@ -23,15 +23,14 @@ from pydantic import BaseModel
 from steward.config import Settings
 from steward.schema import Trajectory
 from steward.sources.base import Source, SourceInfo
-from steward.sources.domain_rule import assign_domain
-from steward.sources.hf import download_hf
-from steward.sources.hf_card import card_license
-from steward.sources.session_export_formats import (
+from steward.sources.chat_formats import (
     clean_model,
     infer_harness,
     parse_session_messages,
     steps_hash,
 )
+from steward.sources.domain_rule import assign_domain
+from steward.sources.raw_files import card_license, download_hf
 
 log = logging.getLogger(__name__)
 

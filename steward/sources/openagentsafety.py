@@ -11,9 +11,8 @@ from typing import Any
 from steward.config import Settings
 from steward.schema import Trajectory
 from steward.sources.base import Source, SourceInfo
-from steward.sources.git_sparse import sparse_checkout
-from steward.sources.json_files import json_files_by_stem, json_stem, read_json
 from steward.sources.openhands_events import parse_openhands_events
+from steward.sources.raw_files import json_files_by_stem, json_stem, read_json, sparse_checkout
 
 log = logging.getLogger(__name__)
 

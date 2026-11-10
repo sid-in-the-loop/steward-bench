@@ -1,4 +1,4 @@
-from steward.sources.chat_messages import parse_chatml_tool_markup, parse_openai_messages
+from steward.sources.chat_formats import parse_chatml_tool_markup, parse_openai_messages
 
 
 def test_openai_messages() -> None:
