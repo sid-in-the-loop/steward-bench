@@ -219,6 +219,25 @@ def cmd_analyze(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_repositories(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.environment.audit import audit_repositories
+    from steward.filter import stage_c2
+    from steward.store import read_meta, written_sources
+
+    metas = {
+        m.trajectory_id: m
+        for source in written_sources(settings.paths.normalized)
+        for m in read_meta(settings.paths.normalized, source)
+    }
+    reports = audit_repositories(settings, stage_c2.read_results(settings), metas)
+    built = [r for r in reports if r.checked_out]
+    exact = [r for r in built if r.edits and r.edits_applied == r.edits]
+    print(
+        f"{len(reports)} sessions, {len(built)} checked out, {len(exact)} with every edit applied"
+    )
+    return 0
+
+
 def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
     """Run every reference execution of a scenario and compare with its expected scores."""
     from pathlib import Path
@@ -309,6 +328,11 @@ def build_parser() -> argparse.ArgumentParser:
     add("c2-merge", cmd_c2_merge, "merge data/results/c2 into data/stage_c2")
     add("rank", cmd_rank, "write data/ranked/<domain>/top_120.csv from the C2 results")
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
+    add(
+        "audit-repositories",
+        cmd_audit_repositories,
+        "rebuild every repository session in the deep-read pool and record how faithful it is",
+    )
     add(
         "scenario-check",
         cmd_scenario_check,
