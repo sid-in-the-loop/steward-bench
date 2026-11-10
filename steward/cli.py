@@ -239,27 +239,45 @@ def cmd_audit_repositories(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
-    """Run the authoring loop for one domain."""
+    """Run the authoring loop for one domain and one kind of environment."""
+    from steward.environment.audit import audit_path
+    from steward.environment.repository import ReplayReport
     from steward.filter import stage_c2
     from steward.scenario import loop
+    from steward.schema import Trajectory
+    from steward.store import read_jsonl
 
-    backends = {
-        "workplace": ({"toolathlon"}, {"backend": "recorded_tools"}, loop.recorded_gate),
-    }
-    if args.domain not in backends:
-        print(f"no authoring backend for {args.domain} yet", file=sys.stderr)
-        return 2
-    sources, environment, gate = backends[args.domain]
+    def recorded_tools(trajectory: Trajectory) -> dict[str, object]:
+        return {"backend": "recorded_tools"}
+
+    def repository(trajectory: Trajectory) -> dict[str, object]:
+        return {
+            "backend": "repository",
+            "repository": trajectory.repo,
+            "commit": trajectory.base_commit,
+        }
+
+    eligible = None
+    if args.environment == "recorded_tools":
+        sources, environment_of = {"toolathlon"}, recorded_tools
+    else:
+        # Only sessions whose working tree rebuilds exactly at the takeover step.
+        sources, environment_of = {"swe_chat", "dataclaw", "swe_together"}, repository
+        reports = read_jsonl(audit_path(settings), ReplayReport)
+        eligible = {
+            r.trajectory_id for r in reports if r.checked_out and r.edits_applied == r.edits
+        }
     outcomes = loop.author_domain(
         settings,
         args.domain,
         stage_c2.read_results(settings),
         sources,
-        environment,
-        gate,
+        environment_of,
+        loop.recorded_gate,
         args.target,
         args.confirm,
         args.max_usd,
+        eligible=eligible,
     )
     accepted = sum(o.accepted for o in outcomes)
     print(f"{args.domain}: {accepted} of {len(outcomes)} sessions accepted")
@@ -358,6 +376,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
     sub = add("author", cmd_author, "draft, assemble and gate scenarios for a domain")
     sub.add_argument("domain")
+    sub.add_argument("environment", choices=["recorded_tools", "repository"])
     sub.add_argument("--target", type=int, default=36)
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)

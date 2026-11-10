@@ -15,6 +15,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from steward.config import Settings
+from steward.execution.record import Action
 from steward.filter.batch import Estimate, check_budget
 from steward.filter.rank import best_candidate, selection_score
 from steward.filter.render import estimate_tokens
@@ -41,6 +42,7 @@ DIRECT_PRICE_FACTOR = 2.0
 DRAFT_COMPLETION_TOKENS = 1500
 
 Gate = Callable[[ScenarioSpec, Trajectory], list[str]]
+EnvironmentOf = Callable[[Trajectory], Mapping[str, object]]
 
 
 class Outcome(BaseModel):
@@ -108,6 +110,7 @@ def author_one(
     category: Axis,
     environment: Mapping[str, object],
     gate: Gate,
+    compliant_actions: list[Action] | None,
 ) -> tuple[ScenarioSpec | None, Outcome]:
     """Draft, assemble, lint and gate one session, feeding each failure back to the drafter."""
     brief = session_brief(trajectory, candidate.result, candidate.step, category)
@@ -121,7 +124,7 @@ def author_one(
             draft, usage = request_draft(client, model, prompt, brief, feedback)
             outcome.prompt_tokens += int(usage.get("prompt_tokens", 0))
             outcome.completion_tokens += int(usage.get("completion_tokens", 0))
-            spec = build(trajectory, candidate, category, draft, environment)
+            spec = build(trajectory, candidate, category, draft, environment, compliant_actions)
             problems = lint(spec) or gate(spec, trajectory)
         except (ValidationError, ValueError, KeyError, re.error, httpx.HTTPError) as error:
             problems = [describe_failure(error)]
@@ -140,9 +143,18 @@ def build(
     category: Axis,
     draft: Draft,
     environment: Mapping[str, object],
+    compliant_actions: list[Action] | None,
 ) -> ScenarioSpec:
     evidence = candidate.result.output.scores[category].steps
-    return assemble(trajectory, candidate.step, category, evidence, draft, dict(environment))
+    return assemble(
+        trajectory,
+        candidate.step,
+        category,
+        evidence,
+        draft,
+        dict(environment),
+        compliant_actions,
+    )
 
 
 def author_domain(
@@ -150,17 +162,29 @@ def author_domain(
     domain: str,
     results: list[StageC2Result],
     sources: set[str],
-    environment: Mapping[str, object],
+    environment_of: EnvironmentOf,
     gate: Gate,
     target: int,
     confirm: bool,
     max_usd: float,
+    eligible: set[str] | None = None,
+    compliant_actions: list[Action] | None = None,
     workers: int = 12,
 ) -> list[Outcome]:
-    """Author scenarios for one domain until `target` are accepted or the pool is exhausted."""
-    domain_of = {r.trajectory_id: r.domain for r in results}
-    done = {s.source.trajectory_id for s in iter_specs(settings.paths.scenarios)}
-    have = sum(1 for t in done if domain_of.get(t) and t.split(":")[0] in sources)
+    """Author scenarios for one domain until `target` are accepted or the pool is exhausted.
+
+    `eligible` limits the pool to sessions whose environment can be rebuilt. When
+    `compliant_actions` is given it is the compliant reference for every session, as for task
+    images that ship their own solution.
+    """
+    results = [
+        r
+        for r in results
+        if r.domain == domain and (eligible is None or r.trajectory_id in eligible)
+    ]
+    specs = iter_specs(settings.paths.scenarios)
+    done = {s.source.trajectory_id for s in specs}
+    have = sum(1 for s in specs if s.source.domain == domain)
     previous = outcomes_path(settings, domain)
     tried: dict[str, set[str]] = {}
     for outcome in read_jsonl(previous, Outcome) if previous.exists() else []:
@@ -203,7 +227,15 @@ def author_domain(
         candidate, category = item
         trajectory = trajectories[candidate.result.trajectory_id]
         return author_one(
-            client, settings.model.model, prompt, trajectory, candidate, category, environment, gate
+            client,
+            settings.model.model,
+            prompt,
+            trajectory,
+            candidate,
+            category,
+            environment_of(trajectory),
+            gate,
+            compliant_actions,
         )
 
     outcomes: list[Outcome] = []
