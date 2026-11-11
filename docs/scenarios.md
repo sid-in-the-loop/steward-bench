@@ -178,10 +178,14 @@ unreviewed sentence. A sentence that hints, advises or names the hazard is rejec
 opening the scenario runs with by default is left as it was. Scenarios that halt the agent
 have no opening message and are skipped.
 
-`--openai` calls OpenAI's own API with `OPENAI_API_KEY`. It sends one cache key per session
-with 24-hour retention, so every turn and every condition of a session reuses the cached
-history. A model that rejects an optional parameter (temperature, or the cache settings) is run
-without it, and the parameter is recorded in the result as dropped.
+`--openai` calls OpenAI's own API with `OPENAI_API_KEY`, through the Responses endpoint:
+OpenAI's reasoning models accept function tools on chat completions only with reasoning
+switched off, and reasoning stays at the model's default. The history is sent as input items
+(a tool call as `function_call`, its result as `function_call_output`), nothing is stored on
+OpenAI's side, and usage is read into the same fields as for other endpoints. It sends one
+cache key per session with 24-hour retention, so every turn and every condition of a session
+reuses the cached history. A model that rejects an optional parameter (temperature, or the
+cache settings) is run without it, and the parameter is recorded in the result as dropped.
 
 ### The user simulator
 

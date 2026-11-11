@@ -239,24 +239,114 @@ def test_openai_dialect_sends_a_cache_key_and_drops_rejected_parameters() -> Non
 
     from steward.execution.policy import ModelPolicy
 
-    sent: list[dict] = []
+    sent: list[tuple[str, dict]] = []
+    text_reply = {
+        "output": [
+            {"type": "reasoning", "summary": []},
+            {"type": "message", "content": [{"type": "output_text", "text": "ok"}]},
+        ],
+        "usage": {
+            "input_tokens": 900,
+            "output_tokens": 40,
+            "input_tokens_details": {"cached_tokens": 800},
+        },
+    }
 
     def handler(request: httpx.Request) -> httpx.Response:
         body = json.loads(request.content)
-        sent.append(body)
+        sent.append((request.url.path, body))
         if "temperature" in body:
             return httpx.Response(400, json={"error": {"message": "Unsupported: temperature"}})
-        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+        return httpx.Response(200, json=text_reply)
 
     client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test")
-    policy = ModelPolicy(client, "gpt", [], dialect="openai", cache_key="abc123")
-    assert policy.next_turn([{"role": "user", "content": "hi"}]).message == "ok"
+    tools = [
+        {
+            "type": "function",
+            "function": {"name": "Bash", "description": "d", "parameters": {"type": "object"}},
+        }
+    ]
+    policy = ModelPolicy(client, "gpt", tools, dialect="openai", cache_key="abc123")
+    history = [
+        {"role": "user", "content": "go"},
+        {
+            "role": "assistant",
+            "content": "Looking.",
+            "tool_calls": [
+                {
+                    "id": "call_2",
+                    "type": "function",
+                    "function": {"name": "Bash", "arguments": "{}"},
+                }
+            ],
+        },
+        {"role": "tool", "tool_call_id": "call_2", "content": "a.py"},
+        {
+            "role": "assistant",
+            "content": "",
+            "action": {"tool": "Bash", "arguments": {"command": "ls"}},
+        },
+        {"role": "tool", "content": "b.py"},
+        {"role": "user", "content": "stop", "steward_event": "halt"},
+    ]
+    assert policy.next_turn(history).message == "ok"
     assert policy.dropped == ["temperature"]
-    first, second = sent
-    assert first["prompt_cache_key"] == "abc123" and first["max_completion_tokens"] == 4000
-    assert "max_tokens" not in first and "provider" not in first
-    assert "temperature" not in second and second["prompt_cache_key"] == "abc123"
+    (first_path, first), (_, second) = sent
+    assert first_path == "/responses"
+    assert first["prompt_cache_key"] == "abc123" and first["max_output_tokens"] == 4000
+    assert first["store"] is False and "messages" not in first and "provider" not in first
+    assert first["tools"] == [
+        {
+            "type": "function",
+            "strict": False,
+            "name": "Bash",
+            "description": "d",
+            "parameters": {"type": "object"},
+        }
+    ]
+    assert first["input"] == [
+        {"role": "user", "content": "go"},
+        {"role": "assistant", "content": "Looking."},
+        {"type": "function_call", "call_id": "call_2", "name": "Bash", "arguments": "{}"},
+        {"type": "function_call_output", "call_id": "call_2", "output": "a.py"},
+        {
+            "type": "function_call",
+            "call_id": "live_3",
+            "name": "Bash",
+            "arguments": '{"command": "ls"}',
+        },
+        {"type": "function_call_output", "call_id": "live_3", "output": "b.py"},
+        {"role": "user", "content": "stop"},
+    ]
+    assert "temperature" not in second and second["input"] == first["input"]
+    usage = policy.usage
+    assert (usage.prompt_tokens, usage.cached_tokens, usage.completion_tokens) == (900, 800, 40)
+
+    def reply_with(item: dict) -> ModelPolicy:
+        def answer(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"output": [{"type": "reasoning"}, item]})
+
+        transport = httpx.MockTransport(answer)
+        other = httpx.Client(transport=transport, base_url="https://example.test")
+        return ModelPolicy(other, "gpt", tools, dialect="openai")
+
+    call = {
+        "type": "function_call",
+        "call_id": "c1",
+        "name": "Bash",
+        "arguments": '{"command": "ls"}',
+    }
+    action = reply_with(call).next_turn([]).action
+    assert action is not None and action.text == "ls"
+    report = {
+        "type": "function_call",
+        "call_id": "c2",
+        "name": "submit_report",
+        "arguments": '{"report": "done"}',
+    }
+    assert reply_with(report).next_turn([]).report == "done"
 
     plain = ModelPolicy(client, "open", [], provider="Relace")
     body = plain.request_body([])
     assert body["provider"]["order"] == ["Relace"] and "prompt_cache_key" not in body
+    assert "messages" in body and body["max_tokens"] == 4000
