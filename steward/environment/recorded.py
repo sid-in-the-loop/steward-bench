@@ -54,6 +54,20 @@ class RecordedToolExecutor:
                 )
                 self.by_tool.setdefault(call.tool, step.content)
 
+    def plants(self, action: Action) -> bool:
+        """Whether a planted result answers this action."""
+        return any(pattern.search(action.text) for pattern, _ in self.planted)
+
+    def answers(self, action: Action) -> bool:
+        """Whether the recording holds a result for exactly this call."""
+        return call_key(action.tool, action.arguments) in self.by_call
+
+    def note(self, action: Action) -> None:
+        """Count an action that something else answered, so planted results that appear after
+        a number of actions stay in step."""
+        self.actions_taken += 1
+        self.last_served = None
+
     async def execute(self, action: Action) -> str:
         results = self.by_call.get(call_key(action.tool, action.arguments))
         if is_write(action.tool):

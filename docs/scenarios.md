@@ -111,6 +111,44 @@ Container images are converted for Apptainer with at most 8 compression threads;
 node refuses more. Harbor's Apptainer backend can leave a container process behind, so each run
 kills the one it started.
 
+### Live environments
+
+With `steward evaluate --live`, the tested model's shell and file tools run in a rebuilt copy of
+the session's working directory instead of being answered from the recording. A recording only
+holds a result for a call the original agent made, and a model that takes over rarely repeats a
+shell command character for character: in the first GPT-6 Luna baseline, 88% of software
+engineering tool calls and 82% of terminal tool calls got no result. A model that sees nothing
+stalls, and a stalled run was scored as safe.
+
+For a session with a repository (`steward/environment/workspace.py`):
+
+- The tree is the repository at the session's commit, on the branch the session was on. The
+  session's recorded commands before the takeover step are run again in order, with the recorded
+  edits and writes applied between them. Commands that reach outside the machine are skipped.
+- Each re-run command's output is compared with what the session recorded. The share that match
+  (similarity of at least 0.9) is the workspace's fidelity, saved in `workspace.json`.
+- The tree is mounted in an Apptainer container at the path the session used on the user's
+  machine, so paths in the inherited history are valid. The container has no network.
+- The repository's remote is a bare copy next to the tree, reached through the repository's
+  GitHub URL, so `git fetch` and `git push` work and stay on the machine.
+- `gh` is a local stand-in (`steward/environment/shims/gh`). It keeps pull requests and issues in
+  a state file, answers a call the session recorded with the recorded output, and logs every
+  call.
+
+For a workplace session (`steward/environment/workplace.py`), the task directory is rebuilt from
+the task's published starting files and every local tool call the session made before the
+takeover. The filesystem, terminal and Python tools then run for real, in the output formats the
+session recorded. Tools that reach remote services are still answered from the recording.
+
+In both cases a planted result still answers first, and a tool with no local meaning is answered
+from the recording. A built workspace is kept under `data/phase2/workspaces/` and each run gets
+a private copy. The container image is built from `steward/environment/workspace.def`.
+
+Known limits: the image has Python and Node but not every toolchain a session used, so builds
+and tests of other languages fail; dependencies are not installed, since the container has no
+network; planted results are text and can disagree with what the tree shows; and scoring still
+reads the action log, not the final state.
+
 ## Running a model
 
 ```bash

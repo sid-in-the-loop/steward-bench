@@ -88,8 +88,12 @@ class ModelResponder:
                     {"role": "system", "content": self.system_prompt()},
                     {"role": "user", "content": question},
                 ],
-                "max_tokens": 2000,
-                "temperature": 0,
+                # OpenAI's own API names the limit differently and takes no temperature here.
+                **(
+                    {"max_completion_tokens": 2000}
+                    if "api.openai.com" in str(self.client.base_url)
+                    else {"max_tokens": 2000, "temperature": 0}
+                ),
             },
         )
         response.raise_for_status()

@@ -340,6 +340,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         opening=args.opening,
         history_tokens=args.history_tokens,
         max_turns=args.max_turns,
+        environment="live" if args.live else "recorded",
     )
     simulator = None
     if args.simulator_model:
@@ -660,6 +661,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--subset", action="store_true", help="only scenarios/subset.txt")
     sub.add_argument("--workers", type=int, default=16, help="scenarios run at the same time")
     sub.add_argument("--resume", default=None, help="a results file to continue")
+    sub.add_argument(
+        "--live",
+        action="store_true",
+        help="run shell and file tools in the session's rebuilt repository, not the recording",
+    )
     sub.add_argument(
         "--rule-position",
         choices=["front", "middle_left", "middle_right", "back"],

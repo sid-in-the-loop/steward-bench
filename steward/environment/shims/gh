@@ -1,0 +1,252 @@
+#!/usr/bin/env python3
+"""A local stand-in for the GitHub CLI.
+
+It keeps pull requests and issues in a state file, answers an invocation the session recorded
+with the recorded output, and logs every call. Nothing leaves the machine.
+"""
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+HOME = Path(os.environ.get("HOME", "/root")) / ".config" / "gh"
+STATE = HOME / "state.json"
+LOG = HOME / "calls.jsonl"
+
+
+def load():
+    if STATE.exists():
+        return json.loads(STATE.read_text())
+    return {"repository": "owner/repo", "next_number": 1, "pulls": {}, "issues": {}, "recorded": {}}
+
+
+def save(state):
+    HOME.mkdir(parents=True, exist_ok=True)
+    STATE.write_text(json.dumps(state, indent=1))
+
+
+def git(*args):
+    done = subprocess.run(["git", *args], capture_output=True, text=True)
+    return done.stdout.strip()
+
+
+def flag(args, *names, default=None):
+    for index, arg in enumerate(args):
+        for name in names:
+            if arg == name and index + 1 < len(args):
+                return args[index + 1]
+            if arg.startswith(name + "="):
+                return arg.split("=", 1)[1]
+    return default
+
+
+def positional(args):
+    takes_value = {"--json", "-q", "--jq", "-t", "--title", "-b", "--body", "-B", "--base", "-H",
+                   "--head", "-R", "--repo", "-L", "--limit", "--state", "-s", "-F", "--body-file",
+                   "--template", "-l", "--label", "-a", "--assignee", "-r", "--reviewer", "-m"}
+    found, skip = [], False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in takes_value:
+            skip = True
+        elif not arg.startswith("-"):
+            found.append(arg)
+    return found
+
+
+def fail(message, status=1):
+    print(message, file=sys.stderr)
+    sys.exit(status)
+
+
+def find(state, kind, args):
+    """The pull request or issue an argument names: a number, a URL, a branch, or the
+    current branch when nothing is named."""
+    items = state[kind]
+    named = positional(args)
+    if named:
+        key = named[0].rstrip("/").rsplit("/", 1)[-1].lstrip("#")
+        if key in items:
+            return items[key]
+        for item in items.values():
+            if item.get("head") == named[0]:
+                return item
+        what = "pull request" if kind == "pulls" else "issue"
+        fail(f"GraphQL: Could not resolve to a {what.title().replace(' ', '')} with the number of {key}.")
+    if kind == "pulls":
+        branch = git("branch", "--show-current")
+        for item in items.values():
+            if item.get("head") == branch and item["state"] == "OPEN":
+                return item
+        fail(f'no pull requests found for branch "{branch}"')
+    fail("argument required")
+
+
+def show(item, args, kind):
+    fields = flag(args, "--json")
+    if fields:
+        full = {"number": item["number"], "title": item["title"], "body": item["body"],
+                "state": item["state"], "url": item["url"], "headRefName": item.get("head"),
+                "baseRefName": item.get("base"), "isDraft": item.get("draft", False),
+                "author": {"login": "developer"}, "comments": item.get("comments", []),
+                "mergeable": "MERGEABLE", "reviewDecision": item.get("review", ""),
+                "statusCheckRollup": [], "labels": [], "mergedAt": item.get("merged_at")}
+        print(json.dumps({name: full.get(name) for name in fields.split(",")}))
+        return
+    print(f"{item['title']} #{item['number']}")
+    print(f"{item['state'].capitalize()} • developer wants to merge into {item.get('base')} from {item.get('head')}"
+          if kind == "pulls" else f"{item['state'].capitalize()} • developer opened")
+    print()
+    print(item["body"] or "  No description provided")
+    print()
+    print(f"View this {'pull request' if kind == 'pulls' else 'issue'} on GitHub: {item['url']}")
+
+
+def listing(state, kind, args):
+    wanted = (flag(args, "--state", "-s", default="open") or "open").upper()
+    rows = [i for i in state[kind].values() if wanted == "ALL" or i["state"] == wanted]
+    fields = flag(args, "--json")
+    if fields:
+        full = [{"number": i["number"], "title": i["title"], "state": i["state"], "url": i["url"],
+                 "headRefName": i.get("head"), "baseRefName": i.get("base"),
+                 "isDraft": i.get("draft", False)} for i in rows]
+        print(json.dumps([{name: row.get(name) for name in fields.split(",")} for row in full]))
+        return
+    if not rows:
+        what = "pull requests" if kind == "pulls" else "issues"
+        print(f"no {wanted.lower()} {what} in {state['repository']}", file=sys.stderr)
+        return
+    for item in rows:
+        print(f"{item['number']}\t{item['title']}\t{item.get('head', '')}\t{item['state']}")
+
+
+def create(state, kind, args):
+    title = flag(args, "--title", "-t")
+    body = flag(args, "--body", "-b", default="")
+    body_file = flag(args, "--body-file", "-F")
+    if body_file and body_file != "-" and Path(body_file).exists():
+        body = Path(body_file).read_text()
+    head = flag(args, "--head", "-H") or git("branch", "--show-current")
+    if kind == "pulls":
+        base = flag(args, "--base", "-B") or git("symbolic-ref", "--short", "refs/remotes/origin/HEAD").removeprefix("origin/") or "main"
+        if not git("ls-remote", "--heads", "origin", head):
+            fail(f"aborted: you must first push the current branch to a remote, or use the --head flag")
+        for item in state["pulls"].values():
+            if item.get("head") == head and item["state"] == "OPEN":
+                fail(f'a pull request for branch "{head}" into branch "{base}" already exists:\n{item["url"]}')
+        if title is None and "--fill" in args or title is None and "-f" in args:
+            title = git("log", "-1", "--format=%s")
+        if title is None:
+            fail("must provide `--title` and `--body` (or `--fill` or `fill-first` or `--fillverbose`) when not running interactively")
+    elif title is None:
+        fail("must provide `--title` and `--body` when not running interactively")
+    number = state["next_number"]
+    state["next_number"] = number + 1
+    path = "pull" if kind == "pulls" else "issues"
+    item = {"number": number, "title": title, "body": body, "state": "OPEN",
+            "url": f"https://github.com/{state['repository']}/{path}/{number}",
+            "draft": "--draft" in args or "-d" in args, "comments": []}
+    if kind == "pulls":
+        item.update(head=head, base=base)
+    state[kind][str(number)] = item
+    print(item["url"])
+
+
+def change(state, kind, verb, args):
+    item = find(state, kind, args)
+    what = "pull request" if kind == "pulls" else "issue"
+    label = f"{what} {state['repository']}#{item['number']} ({item['title']})"
+    if verb == "comment":
+        item.setdefault("comments", []).append({"body": flag(args, "--body", "-b", default="")})
+        print(f"{item['url']}#issuecomment-{1000 + len(item['comments'])}")
+    elif verb == "close":
+        item["state"] = "CLOSED"
+        print(f"✓ Closed {label}")
+    elif verb == "reopen":
+        item["state"] = "OPEN"
+        print(f"✓ Reopened {label}")
+    elif verb == "ready":
+        item["draft"] = False
+        print(f"✓ Pull request {state['repository']}#{item['number']} is marked as \"ready for review\"")
+    elif verb == "edit":
+        item["title"] = flag(args, "--title", "-t", default=item["title"])
+        item["body"] = flag(args, "--body", "-b", default=item["body"])
+        print(item["url"])
+    elif verb == "review":
+        item["review"] = "APPROVED" if "--approve" in args or "-a" in args else item.get("review", "")
+        print(f"✓ Reviewed {label}")
+    elif verb == "merge":
+        if item["state"] != "OPEN":
+            fail(f"! Pull request {state['repository']}#{item['number']} was already {item['state'].lower()}")
+        item["state"] = "MERGED"
+        item["merged_by_admin"] = "--admin" in args
+        print(f"✓ Merged {label}")
+    elif verb == "checks":
+        fail(f"no checks reported on the '{item.get('head')}' branch")
+    elif verb in ("diff",):
+        print(git("diff", f"origin/{item.get('base')}...origin/{item.get('head')}"))
+    else:
+        show(item, args, kind)
+
+
+def main():
+    args = sys.argv[1:]
+    state = load()
+    HOME.mkdir(parents=True, exist_ok=True)
+    with LOG.open("a") as log:
+        log.write(json.dumps({"argv": args, "cwd": os.getcwd()}) + "\n")
+    recorded = state["recorded"].get(json.dumps(args))
+    if recorded:
+        print(recorded[0] if len(recorded) == 1 else recorded.pop(0), end="")
+        save(state)
+        return
+    if not args or args[0] in ("--version", "version"):
+        print("gh version 2.62.0 (2024-11-14)\nhttps://github.com/cli/cli/releases/tag/v2.62.0")
+        return
+    group, rest = args[0], args[1:]
+    verb = rest[0] if rest else ""
+    if group == "auth":
+        print("github.com\n  ✓ Logged in to github.com account developer (keyring)\n"
+              "  - Active account: true\n  - Git operations protocol: https\n  - Token scopes: 'repo', 'workflow'")
+    elif group in ("pr", "issue"):
+        kind = "pulls" if group == "pr" else "issues"
+        if verb == "create":
+            create(state, kind, rest[1:])
+        elif verb == "list":
+            listing(state, kind, rest[1:])
+        elif verb == "status":
+            print(f"\nRelevant {'pull requests' if kind == 'pulls' else 'issues'} in {state['repository']}\n")
+            listing(state, kind, [])
+        else:
+            change(state, kind, verb, rest[1:])
+    elif group == "repo" and verb == "view":
+        fields = flag(rest, "--json")
+        if fields:
+            owner, name = state["repository"].split("/")
+            full = {"name": name, "nameWithOwner": state["repository"], "owner": {"login": owner},
+                    "url": f"https://github.com/{state['repository']}",
+                    "defaultBranchRef": {"name": git("symbolic-ref", "--short", "refs/remotes/origin/HEAD").removeprefix("origin/") or "main"},
+                    "isPrivate": False, "visibility": "PUBLIC"}
+            print(json.dumps({f: full.get(f) for f in fields.split(",")}))
+        else:
+            print(f"{state['repository']}\nNo description provided\n\nView this repository on GitHub: https://github.com/{state['repository']}")
+    elif group in ("run", "workflow"):
+        if verb == "list":
+            if flag(rest, "--json"):
+                print("[]")
+            else:
+                print("no runs found", file=sys.stderr)
+        else:
+            fail("could not find any workflow run")
+    elif group == "api":
+        fail("gh: Not Found (HTTP 404)")
+    else:
+        fail(f'unknown command "{group}" for "gh"')
+    save(state)
+
+
+if __name__ == "__main__":
+    main()

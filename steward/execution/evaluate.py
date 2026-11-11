@@ -12,6 +12,8 @@ import json
 import logging
 import os
 import re
+import shutil
+import tempfile
 import threading
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
@@ -22,7 +24,17 @@ import httpx
 from pydantic import BaseModel
 
 from steward.config import Settings
+from steward.environment.audit import checkout_dir
 from steward.environment.recorded import RecordedToolExecutor
+from steward.environment.workplace import MOUNT, WorkplaceExecutor, build_task_workspace
+from steward.environment.workspace import (
+    LiveExecutor,
+    Workspace,
+    build_workspace,
+    copy_workspace,
+    load_workspace,
+    workspace_directory,
+)
 from steward.execution.history import to_messages, tool_definitions
 from steward.execution.policy import Dialect, Message, ModelPolicy, RunSettings, Usage
 from steward.execution.record import ExecutionRecord
@@ -66,6 +78,8 @@ class Condition(BaseModel):
     opening: Opening = "as_written"
     history_tokens: int = 150_000
     max_turns: int = 25
+    # live: shell and file tools run in the session's rebuilt repository where there is one.
+    environment: Literal["recorded", "live"] = "recorded"
 
 
 class Endpoint(BaseModel):
@@ -128,6 +142,7 @@ class RunResult(BaseModel):
     score: Score
     history_messages: int
     history_truncated: bool
+    live_actions: int | None = None
     record: ExecutionRecord
 
 
@@ -206,6 +221,56 @@ def saw_change_first(spec: ScenarioSpec, record: ExecutionRecord) -> bool | None
     return False
 
 
+BUILD_LOCKS: dict[Path, threading.Lock] = {}
+BUILD_LOCKS_GUARD = threading.Lock()
+
+
+def workspace_image(settings: Settings) -> Path:
+    return settings.paths.data / "apptainer" / "workspace.sif"
+
+
+def live_workspace(
+    settings: Settings, spec: ScenarioSpec, trajectory: Trajectory
+) -> Workspace | None:
+    """A private copy of the session's rebuilt working directory for one run: its repository,
+    or for a workplace session its task files. The directory is built once per session and
+    takeover step and kept. None when the session has neither."""
+    environment = spec.environment
+    task = trajectory.meta.get("task_name") if trajectory.source == "toolathlon" else None
+    if environment.backend != "repository" and task is None:
+        return None
+    built = workspace_directory(
+        settings.paths.data, spec.source.trajectory_id, spec.source.takeover_step
+    )
+    with BUILD_LOCKS_GUARD:
+        lock = BUILD_LOCKS.setdefault(built, threading.Lock())
+    with lock:
+        workspace = load_workspace(built)
+        if workspace is None and environment.backend == "repository":
+            assert environment.repository is not None and environment.commit is not None
+            workspace = build_workspace(
+                spec.source.trajectory_id,
+                environment.repository,
+                environment.commit,
+                trajectory.steps,
+                spec.source.takeover_step,
+                checkout_dir(settings, spec.source.trajectory_id),
+                built,
+                workspace_image(settings),
+            )
+        elif workspace is None:
+            starting = settings.paths.upstream_tasks / "toolathlon" / str(task)
+            workspace = build_task_workspace(
+                spec.source.trajectory_id,
+                starting / "initial_workspace",
+                trajectory.steps,
+                spec.source.takeover_step,
+                built,
+                workspace_image(settings),
+            )
+    return copy_workspace(workspace, Path(tempfile.mkdtemp(prefix="steward-run-")) / "workspace")
+
+
 def run_scenario(
     client: httpx.Client,
     model: str,
@@ -217,6 +282,8 @@ def run_scenario(
     provider: str | None = None,
     pricing: Pricing | None = None,
     dialect: Dialect = "openrouter",
+    workspace: Workspace | None = None,
+    image: Path | None = None,
 ) -> RunResult:
     """Run one scenario. Without a simulator the agent's questions get the scenario's fixed
     replies; with one, questions no fixed reply covers are answered by the simulator model."""
@@ -229,9 +296,14 @@ def run_scenario(
     settings = RunSettings()
     cache_key = hashlib.sha1(spec.source.trajectory_id.encode()).hexdigest()[:16]
     policy = ModelPolicy(client, model, tools, settings, provider, dialect, cache_key)
+    recorded = RecordedToolExecutor(trajectory.steps, variant.planted_results)
+    executor: RecordedToolExecutor | LiveExecutor | WorkplaceExecutor = recorded
+    if workspace is not None and image is not None:
+        live = WorkplaceExecutor if workspace.mount == MOUNT else LiveExecutor
+        executor = live(workspace, recorded, image)
     session = Session(
         variant,
-        RecordedToolExecutor(trajectory.steps, variant.planted_results),
+        executor,
         policy,
         responder,
         history=messages,
@@ -259,6 +331,7 @@ def run_scenario(
         score=score(variant, record),
         history_messages=len(messages),
         history_truncated=truncated,
+        live_actions=getattr(executor, "live_actions", None),
         record=record,
     )
 
@@ -377,7 +450,10 @@ def evaluate(
 
     def work(spec: ScenarioSpec) -> RunResult | None:
         trajectory = trajectories[spec.source.trajectory_id]
+        workspace = None
         try:
+            if condition.environment == "live":
+                workspace = live_workspace(settings, spec, trajectory)
             result = run_scenario(
                 client,
                 model,
@@ -389,12 +465,17 @@ def evaluate(
                 endpoint.provider,
                 pricing,
                 endpoint.dialect,
+                workspace,
+                workspace_image(settings),
             )
         except Exception as error:
             # One scenario failing, for whatever reason, must not end a long run. It is left
             # out of the results and a later --resume tries it again.
             log.warning("run failed for %s: %s: %s", spec.scenario_id, type(error).__name__, error)
             return None
+        finally:
+            if workspace is not None:
+                shutil.rmtree(workspace.directory.parent, ignore_errors=True)
         with write_lock:
             append_jsonl(out, [result])
         log.info(
