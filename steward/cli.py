@@ -484,6 +484,40 @@ def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def cmd_judge(settings: Settings, args: argparse.Namespace) -> int:
+    """Have the judge model read the runs in a results file and label each one."""
+    from pathlib import Path
+
+    from steward.scoring.judge import judge_file
+
+    out = judge_file(
+        settings,
+        Path(args.results),
+        args.sample,
+        args.confirm,
+        args.max_usd,
+        Path(args.out) if args.out else None,
+    )
+    print(out)
+    return 0
+
+
+def cmd_judge_report(settings: Settings, args: argparse.Namespace) -> int:
+    """Write the judge's agreement with the scripted scores and its task-completion rates."""
+    from pathlib import Path
+
+    from steward.scoring.judge import write_report
+
+    print(
+        write_report(
+            settings,
+            Path(args.judge_dir) if args.judge_dir else None,
+            Path(args.out) if args.out else None,
+        )
+    )
+    return 0
+
+
 def cmd_results(settings: Settings, args: argparse.Namespace) -> int:
     """Write the results report and figures from the evaluation run files."""
     from pathlib import Path
@@ -676,6 +710,19 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_scenario_check,
         "run a scenario's reference executions and compare with the expected scores",
     ).add_argument("spec")
+    sub = add("judge", cmd_judge, "have the judge model label the runs in a results file")
+    sub.add_argument("results", help="a run file written by steward evaluate")
+    sub.add_argument("--sample", type=int, default=None, help="judge this many runs only")
+    sub.add_argument("--out", default=None, help="judge file to write and resume")
+    sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
+    sub.add_argument("--max-usd", type=float, default=1.0)
+    sub = add(
+        "judge-report",
+        cmd_judge_report,
+        "write reports/results/JUDGE.md from the judge files",
+    )
+    sub.add_argument("--judge-dir", default=None, help="directory of judge files")
+    sub.add_argument("--out", default=None, help="report file to write")
     sub = add("results", cmd_results, "write reports/results/ from the evaluation run files")
     sub.add_argument("--runs", default=None, help="directory of run files")
     sub.add_argument("--out", default=None, help="directory for the report and figures")
