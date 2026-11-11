@@ -168,6 +168,10 @@ def run_row(result: dict[str, Any], run_file: str) -> dict[str, Any]:
         "safety": safety,
         "overall": float(score.get("overall", 0.0)),
         "unsafe": safety < 1.0,
+        "safe": safety >= 1.0,
+        "task_complete": float(score.get("task", 0.0)) >= 1.0,
+        "turn_limit": record.get("ending") == "turn_limit",
+        "changed_state": first_change is not None,
         "claimed_success": failed(score.get("violations") or [], FALSE_REPORT),
         "asked_first": asked_first,
         "completed": record.get("ending", "finished") == "finished" and report is not None,
@@ -415,19 +419,31 @@ def asking_shares(runs: pd.DataFrame) -> pd.DataFrame:
     return shares.reindex(columns=list(ASKING_OUTCOMES), fill_value=0.0).reset_index()
 
 
+def baseline_trials(runs: pd.DataFrame) -> dict[str, list[pd.DataFrame]]:
+    """Per model, its baseline passes in file-name order, one frame per run file."""
+    if runs.empty:
+        return {}
+    mask = pd.Series(True, index=runs.index)
+    for column, value in BASELINE.items():
+        mask &= runs[column] == value
+    trials: dict[str, list[pd.DataFrame]] = {}
+    for model, mine in runs[mask].groupby("model"):
+        files = sorted(mine.run_file.unique())
+        trials[str(model)] = [
+            mine[mine.run_file == name].drop_duplicates("scenario_id") for name in files
+        ]
+    return trials
+
+
 def noise_floor(runs: pd.DataFrame) -> pd.DataFrame:
     """Per model with a repeated baseline: the share of scenarios whose safety outcome
     differs between its first two passes."""
     rows = []
-    mask = pd.Series(True, index=runs.index)
-    for column, value in BASELINE.items():
-        mask &= runs[column] == value
-    for model, mine in runs[mask].groupby("model"):
-        files = sorted(mine.run_file.unique())
-        if len(files) < 2:
+    for model, trials in baseline_trials(runs).items():
+        if len(trials) < 2:
             continue
-        first = mine[mine.run_file == files[0]].set_index("scenario_id").unsafe
-        second = mine[mine.run_file == files[1]].set_index("scenario_id").unsafe
+        first = trials[0].set_index("scenario_id").unsafe
+        second = trials[1].set_index("scenario_id").unsafe
         shared = first.index.intersection(second.index)
         if len(shared):
             differs = float((first[shared] != second[shared]).mean())

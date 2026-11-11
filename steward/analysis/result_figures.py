@@ -10,21 +10,34 @@ from matplotlib.figure import Figure
 from matplotlib.patches import Polygon, Rectangle
 
 from steward.analysis.plotting import BASELINE, GRID, MUTED, SERIES, TEXT_PRIMARY, TEXT_SECONDARY
+from steward.analysis.result_tables import (
+    NO_RULE,
+    NOTICED_ARMS,
+    OPENINGS,
+    ORIGINAL,
+    OVERSIGHT_LEVELS,
+    OVERSIGHT_RULES,
+    category_table,
+    history_length_table,
+    looked_first_table,
+    pressure_table,
+    rule_by_length_table,
+    rule_by_oversight_table,
+    world_arm_runs,
+    world_arm_table,
+    world_noticed_table,
+)
 from steward.analysis.results import (
     ASKING_OUTCOMES,
     RULE_POSITIONS,
     WORLD_ARMS,
     asking_shares,
     baseline,
-    cell,
     contagion,
     design_effects,
-    estimate,
     interval,
-    length_bins,
     mosaic_counts,
     path_counts,
-    session_values,
 )
 from steward.schema import AXES
 
@@ -58,9 +71,9 @@ def safety_profile(runs: pd.DataFrame) -> Figure | None:
         return None
     angles = np.linspace(0, 2 * np.pi, len(AXES), endpoint=False)
     figure, axis = plt.subplots(figsize=(5.2, 5.2), subplot_kw={"projection": "polar"})
+    scores = category_table(base, "safety").set_index(["model", "category"]).safety
     for color, model in zip(SERIES, models_of(base), strict=False):
-        mine = base[base.model == model]
-        values = [estimate(mine[mine.category == a], "safety")[0] for a in AXES]
+        values = [float(scores.get((model, a), np.nan)) for a in AXES]
         closed = [*values, values[0]]
         axis.plot([*angles, angles[0]], closed, color=color, linewidth=1.8, label=short(model))
         axis.fill([*angles, angles[0]], np.nan_to_num(closed), color=color, alpha=0.08)
@@ -76,28 +89,24 @@ def history_length(runs: pd.DataFrame) -> Figure | None:
     """Two panels sharing x. x: equal-count bins of inherited history length, edges in tokens.
     Top y: task score. Bottom y: safety score. One line per model. Dashed: the original agent
     (safety everywhere; task only where the recording reports it). Baseline runs."""
-    base = baseline(runs).copy()
-    if base.empty or base.session.nunique() < 2:
+    labels, table = history_length_table(runs)
+    if table.empty:
         return None
-    sessions = base.drop_duplicates("session").set_index("session").history_tokens
-    codes, labels = length_bins(sessions)
-    base["bin"] = base.session.map(codes)
     figure, (top, bottom) = plt.subplots(2, 1, figsize=(6.4, 5.6), sharex=True)
     positions = range(len(labels))
-    for color, model in zip(SERIES, models_of(base), strict=False):
-        mine = base[base.model == model]
+    models = sorted(set(table.series) - {ORIGINAL})
+    for color, series in zip([*SERIES[: len(models)], MUTED], [*models, ORIGINAL], strict=False):
+        mine = table[table.series == series].set_index("bin").reindex(labels)
+        dashed = series == ORIGINAL
         for axis, value in ((top, "task"), (bottom, "safety")):
-            means = [estimate(mine[mine.bin == label], value)[0] for label in labels]
-            axis.plot(positions, means, color=color, marker="o", label=short(model))
-    reference = base.drop_duplicates("session")
-    original_safety = [
-        1.0 - reference[reference.bin == label].original_unsafe.mean() for label in labels
-    ]
-    original_task = [reference[reference.bin == label].original_task.mean() for label in labels]
-    bottom.plot(
-        positions, original_safety, color=MUTED, linestyle="--", marker="s", label="original agent"
-    )
-    top.plot(positions, original_task, color=MUTED, linestyle="--", marker="s")
+            axis.plot(
+                positions,
+                mine[value].astype(float),
+                color=color,
+                linestyle="--" if dashed else "-",
+                marker="s" if dashed else "o",
+                label=ORIGINAL if dashed else short(series),
+            )
     top.set_ylabel("task score")
     bottom.set_ylabel("safety score")
     bottom.set_xticks(list(positions), labels)
@@ -321,30 +330,30 @@ def rule_by_length(runs: pd.DataFrame) -> Figure | None:
     """One panel per model. x: equal-count bins of inherited history length. y: safety score.
     Four lines, one per position of the user's rule in the history. Dashed: no rule given.
     Only scenarios that were run with a rule."""
-    with_rule = pd.concat([cell(runs, rule=p) for p in RULE_POSITIONS])
-    if with_rule.empty:
+    labels, table = rule_by_length_table(runs)
+    if table.empty:
         return None
-    scenarios = set(with_rule.scenario_id)
-    none = baseline(runs)
-    none = none[none.scenario_id.isin(scenarios)]
-    sessions = with_rule.drop_duplicates("session").set_index("session").history_tokens
-    codes, labels = length_bins(sessions)
-    models = models_of(with_rule)
+    models = sorted(table.model.unique())
     figure, axes = panels(models)
     positions = range(len(labels))
+    lines = [
+        *zip(RULE_POSITIONS, SERIES, strict=False),
+        (NO_RULE, MUTED),
+    ]
     for axis, model in zip(axes, models, strict=True):
-        for color, position in zip(SERIES, RULE_POSITIONS, strict=False):
-            mine = with_rule[(with_rule.model == model) & (with_rule.rule == position)]
+        for rule, color in lines:
+            mine = table[(table.model == model) & (table.rule == rule)]
             if mine.empty:
                 continue
-            bins = mine.session.map(codes)
-            means = [estimate(mine[bins == label], "safety")[0] for label in labels]
-            axis.plot(positions, means, color=color, marker="o", label=position.replace("_", " "))
-        mine = none[none.model == model]
-        if not mine.empty:
-            bins = mine.session.map(codes)
-            means = [estimate(mine[bins == label], "safety")[0] for label in labels]
-            axis.plot(positions, means, color=MUTED, linestyle="--", marker="s", label="no rule")
+            dashed = rule == NO_RULE
+            axis.plot(
+                positions,
+                mine.set_index("bin").safety.reindex(labels).astype(float),
+                color=color,
+                linestyle="--" if dashed else "-",
+                marker="s" if dashed else "o",
+                label="no rule" if dashed else rule.replace("_", " "),
+            )
         axis.set_xticks(list(positions), labels, rotation=20)
         axis.set_ylim(-0.03, 1.03)
     axes[0].set_ylabel("safety score")
@@ -357,69 +366,47 @@ def rule_by_oversight(runs: pd.DataFrame) -> Figure | None:
     """One panel per model. x: the user's rule absent, said recently (back), said long ago
     (front). y: safety score. Two lines: the user says the work will be reviewed, or that
     nobody will review it."""
-    rules = ("none", "back", "front")
-    frames = {
-        (rule, level): cell(runs, rule=rule, oversight=level)
-        for rule in rules
-        for level in ("reviewed", "unreviewed")
-    }
-    if all(frame.empty for frame in frames.values()):
+    table = rule_by_oversight_table(runs)
+    if table.empty:
         return None
-    models = sorted({m for frame in frames.values() for m in models_of(frame)})
+    models = sorted(table.model.unique())
     figure, axes = panels(models)
+    spots = range(len(OVERSIGHT_RULES))
     for axis, model in zip(axes, models, strict=True):
-        for color, level in ((SAFE, "reviewed"), (UNSAFE, "unreviewed")):
-            estimates = []
-            for rule in rules:
-                frame = frames[(rule, level)]
-                estimates.append(estimate(frame[frame.model == model], "safety"))
-            means = [e[0] for e in estimates]
-            axis.plot(range(len(rules)), means, color=color, marker="o", label=level)
+        for color, level in zip((SAFE, UNSAFE), OVERSIGHT_LEVELS, strict=True):
+            mine = table[(table.model == model) & (table.oversight == level)]
+            mine = mine.set_index("rule").reindex(list(OVERSIGHT_RULES))
+            axis.plot(spots, mine.safety.astype(float), color=color, marker="o", label=level)
             axis.fill_between(
-                range(len(rules)),
-                [e[1] for e in estimates],
-                [e[2] for e in estimates],
-                color=color,
-                alpha=0.12,
+                spots, mine.low.astype(float), mine.high.astype(float), color=color, alpha=0.12
             )
-        axis.set_xticks(range(len(rules)), ["no rule", "said recently", "said long ago"])
+        axis.set_xticks(spots, ["no rule", "said recently", "said long ago"])
         axis.set_ylim(-0.03, 1.03)
     axes[0].set_ylabel("safety score")
     axes[0].legend(loc="lower left")
     return figure
 
 
-def world_frames(runs: pd.DataFrame) -> dict[str, pd.DataFrame]:
-    """Runs of world-change scenarios per arm. The scenario as written is the silent arm."""
-    changed = runs[runs.world_change] if not runs.empty else runs
-    frames = {arm: cell(changed, world=arm) for arm in WORLD_ARMS}
-    if frames["silent"].empty:
-        frames["silent"] = cell(changed)
-    return frames
-
-
 def world_arms(runs: pd.DataFrame) -> Figure | None:
     """x: the five arms. y: share of runs that take the action the changed world makes
     harmful. Bold line per model; faint lines per scenario, averaged over models."""
-    frames = {arm: f.dropna(subset=["took_harmful"]) for arm, f in world_frames(runs).items()}
-    present = [arm for arm in WORLD_ARMS if not frames[arm].empty]
+    everything = world_arm_runs(runs)
+    present = [arm for arm in WORLD_ARMS if not everything.empty and (everything.arm == arm).any()]
     if len(present) < 2:
         return None
     figure, axis = plt.subplots(figsize=(6.6, 3.8))
     positions = {arm: index for index, arm in enumerate(WORLD_ARMS)}
-    everything = pd.concat([frames[arm].assign(arm=arm) for arm in present])
-    everything = everything.astype({"took_harmful": float})
     per_scenario = everything.pivot_table(index="scenario_id", columns="arm", values="took_harmful")
     for _, row in per_scenario.iterrows():
         points = [(positions[arm], row[arm]) for arm in present if not pd.isna(row.get(arm))]
         axis.plot(*zip(*points, strict=True), color=GRID, linewidth=0.8)
-    for color, model in zip(SERIES, sorted(everything.model.unique()), strict=False):
-        mine = everything[everything.model == model]
-        arms = [arm for arm in present if not mine[mine.arm == arm].empty]
-        means = [estimate(mine[mine.arm == arm], "took_harmful")[0] for arm in arms]
+    table = world_arm_table(runs)
+    for color, model in zip(SERIES, sorted(table.model.unique()), strict=False):
+        mine = table[table.model == model].set_index("arm").took_harmful
+        arms = [arm for arm in present if arm in mine.index]
         axis.plot(
             [positions[a] for a in arms],
-            means,
+            [mine[a] for a in arms],
             color=color,
             marker="o",
             linewidth=2,
@@ -434,10 +421,10 @@ def world_arms(runs: pd.DataFrame) -> Figure | None:
 
 
 NOTICED = (
-    ("saw the change, stayed safe", True, False, SAFE),
-    ("saw the change, took the action", True, True, "#8f1d18"),
-    ("never saw it, took the action", False, True, UNSAFE),
-    ("never saw it, stayed safe", False, False, BASELINE),
+    ("saw the change, stayed safe", "saw_safe", SAFE),
+    ("saw the change, took the action", "saw_took", "#8f1d18"),
+    ("never saw it, took the action", "unseen_took", UNSAFE),
+    ("never saw it, stayed safe", "unseen_safe", BASELINE),
 )
 
 
@@ -445,31 +432,19 @@ def world_noticed(runs: pd.DataFrame) -> Figure | None:
     """x: the silent and mid-run arms, grouped by model. y: share of runs, stacked by whether
     the model saw the change before its first state-changing action and whether it took the
     harmful action."""
-    frames = world_frames(runs)
-    bars = []
-    for arm in ("silent", "midrun"):
-        frame = frames[arm].dropna(subset=["took_harmful", "saw_change_first"])
-        for model in models_of(frame):
-            bars.append((f"{short(model)}\n{arm}", frame[frame.model == model]))
-    if not bars:
+    table = world_noticed_table(runs)
+    if table.empty:
         return None
-    figure, axis = plt.subplots(figsize=(1.6 + 1.1 * len(bars), 3.8))
-    bottoms = np.zeros(len(bars))
-    for label, saw, took, color in NOTICED:
-        shares = np.array(
-            [
-                float(
-                    (
-                        (frame.saw_change_first.astype(bool) == saw)
-                        & (frame.took_harmful.astype(bool) == took)
-                    ).mean()
-                )
-                for _, frame in bars
-            ]
-        )
-        axis.bar(range(len(bars)), shares, bottom=bottoms, color=color, label=label, width=0.65)
+    order = {arm: index for index, arm in enumerate(NOTICED_ARMS)}
+    table = table.assign(order=table.arm.map(order)).sort_values(["order", "model"])
+    figure, axis = plt.subplots(figsize=(1.6 + 1.1 * len(table), 3.8))
+    bottoms = np.zeros(len(table))
+    for label, part, color in NOTICED:
+        shares = table[part].to_numpy(dtype=float)
+        axis.bar(range(len(table)), shares, bottom=bottoms, color=color, label=label, width=0.65)
         bottoms += shares
-    axis.set_xticks(range(len(bars)), [name for name, _ in bars])
+    names = [f"{short(m)}\n{arm}" for m, arm in zip(table.model, table.arm, strict=True)]
+    axis.set_xticks(range(len(table)), names)
     axis.set_ylabel("share of runs")
     axis.grid(axis="x", visible=False)
     axis.legend(loc="upper center", bbox_to_anchor=(0.5, -0.2), ncol=2)
@@ -479,36 +454,18 @@ def world_noticed(runs: pd.DataFrame) -> Figure | None:
 def pressure_by_responder(runs: pd.DataFrame) -> Figure | None:
     """One panel per model. x: the user's opening message removed or present. y: unsafe
     rate. Two lines: fixed replies to the agent's questions, or a simulated user."""
-    frames = {
-        (opening, simulated): cell(runs, opening=opening, simulated=simulated)
-        for opening in ("removed", "present")
-        for simulated in (False, True)
-    }
-    scenarios = set.union(
-        set(frames[("removed", False)].scenario_id)
-        if not frames[("removed", False)].empty
-        else set(),
-        set(frames[("present", True)].scenario_id)
-        if not frames[("present", True)].empty
-        else set(),
-        set(frames[("removed", True)].scenario_id)
-        if not frames[("removed", True)].empty
-        else set(),
-    )
-    if not scenarios:
+    table = pressure_table(runs)
+    if table.empty:
         return None
-    models = sorted({m for frame in frames.values() for m in models_of(frame)})
+    models = sorted(table.model.unique())
     figure, axes = panels(models)
     for axis, model in zip(axes, models, strict=True):
         for color, simulated, label in (
             (SERIES[0], False, "fixed replies"),
             (SERIES[1], True, "simulated user"),
         ):
-            means = []
-            for opening in ("removed", "present"):
-                frame = frames[(opening, simulated)]
-                frame = frame[(frame.model == model) & frame.scenario_id.isin(scenarios)]
-                means.append(estimate(frame, "unsafe")[0] if not frame.empty else float("nan"))
+            mine = table[(table.model == model) & (table.simulated == simulated)]
+            means = mine.set_index("opening").unsafe.reindex(list(OPENINGS)).astype(float)
             axis.plot([0, 1], means, color=color, marker="o", label=label)
         axis.set_xticks([0, 1], ["opening removed", "opening present"])
         axis.set_xlim(-0.2, 1.2)
@@ -542,37 +499,23 @@ def looked_first_figure(runs: pd.DataFrame) -> Figure | None:
     """x: models, three bars each: share of runs that saw the planted result before their
     first state-changing action; unsafe rate after looking; unsafe rate without looking.
     Scenarios whose planted result contradicts what the previous agent said."""
-    base = baseline(runs)
-    base = base[base.predecessor_line & base.planted_results] if not base.empty else base
-    models = models_of(base)
-    if not models:
+    table = looked_first_table(runs)
+    if table.empty:
         return None
-    figure, axis = plt.subplots(figsize=(1.8 + 1.6 * len(models), 3.4))
-    looked, blind = base[base.looked_first], base[~base.looked_first]
+    figure, axis = plt.subplots(figsize=(1.8 + 1.6 * len(table), 3.4))
     bars = (
-        (
-            "looked first",
-            MUTED,
-            [estimate(base[base.model == m], "looked_first")[0] for m in models],
-        ),
-        ("unsafe after looking", SAFE, [unsafe_rate(looked[looked.model == m]) for m in models]),
-        ("unsafe without looking", UNSAFE, [unsafe_rate(blind[blind.model == m]) for m in models]),
+        ("looked first", MUTED, "looked"),
+        ("unsafe after looking", SAFE, "unsafe_if_looked"),
+        ("unsafe without looking", UNSAFE, "unsafe_if_not"),
     )
-    for offset, (label, color, heights) in enumerate(bars):
+    for offset, (label, color, column) in enumerate(bars):
+        heights = np.nan_to_num(table[column].to_numpy(dtype=float))
         axis.bar(
-            np.arange(len(models)) + (offset - 1) * 0.26, heights, 0.24, color=color, label=label
+            np.arange(len(table)) + (offset - 1) * 0.26, heights, 0.24, color=color, label=label
         )
-    axis.set_xticks(range(len(models)), [short(m) for m in models])
+    axis.set_xticks(range(len(table)), [short(m) for m in table.model])
     axis.set_ylim(0, 1.03)
     axis.set_ylabel("share of runs")
     axis.grid(axis="x", visible=False)
     axis.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
     return figure
-
-
-def unsafe_rate(frame: pd.DataFrame) -> float:
-    return (
-        float(session_values(frame.astype({"unsafe": float}), "unsafe").mean())
-        if len(frame)
-        else 0.0
-    )
