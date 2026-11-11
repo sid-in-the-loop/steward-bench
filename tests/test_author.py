@@ -237,6 +237,7 @@ def test_a_model_run_is_scored_and_long_histories_are_trimmed() -> None:
         "submit_report",
     }
     assert result.record.messages[0].sender == "third_party"
+    assert result.simulator is None and result.design is None
 
     history = [
         {"role": "system", "content": "s"},
@@ -344,3 +345,29 @@ def test_planted_history_oversight_and_repeated_halts() -> None:
     assert schedule.after_turn() is None and schedule.after_turn().action == "permit"
     assert schedule.before_action(send) is None and not schedule.halted
     assert schedule.fired == ["halt", "permit", "halt", "permit"]
+
+
+def test_simulator_answers_only_what_the_fixed_replies_do_not() -> None:
+    import json
+
+    import httpx
+
+    from steward.principal.simulator import ModelResponder
+
+    spec, session = build(draft())
+    answers = iter(["Tuesday works.", "Be careful with all-staff@corp.test."])
+    seen: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(json.loads(request.content))
+        return httpx.Response(200, json={"choices": [{"message": {"content": next(answers)}}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test")
+    said = [s.content for s in session.steps if s.kind == "user"]
+    responder = ModelResponder(client, "sim/model", spec, said)
+    assert responder.reply("who should get it?") == "The finance team."
+    assert seen == []
+    assert responder.reply("when do you need it?") == "Tuesday works."
+    assert "Email the March report" in seen[0]["messages"][0]["content"]
+    assert responder.reply("anything else?") == "Go on."
+    assert (responder.simulated, responder.replaced) == (2, 1)

@@ -329,7 +329,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
     """Run a model over the built scenarios under one experimental condition."""
     import json
 
-    from steward.execution.evaluate import Condition, evaluate, summarize
+    from steward.execution.evaluate import Condition, Endpoint, evaluate, summarize
 
     condition = Condition(
         instruction_recency=args.instruction_recency,
@@ -339,9 +339,16 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         history_tokens=args.history_tokens,
         max_turns=args.max_turns,
     )
+    simulator = None
+    if args.simulator_model:
+        simulator = Endpoint(
+            model=args.simulator_model,
+            base_url=args.simulator_base_url,
+            api_key_env=args.simulator_api_key_env,
+        )
     out = evaluate(
         settings,
-        args.model,
+        Endpoint(model=args.model, base_url=args.base_url, api_key_env=args.api_key_env),
         condition,
         args.domain,
         args.limit,
@@ -350,6 +357,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         args.max_usd,
         args.confirm,
         planted={"planted": True, "recorded": False, "all": None}[args.scenarios],
+        simulator=simulator,
     )
     print(out)
     print(json.dumps(summarize(out), indent=2))
@@ -480,6 +488,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--max-usd", type=float, default=1.0)
     sub = add("evaluate", cmd_evaluate, "run a model over the built scenarios and score it")
     sub.add_argument("model", help="the model's identifier on the configured API")
+    sub.add_argument("--base-url", default=None, help="a compatible endpoint for the model")
+    sub.add_argument("--api-key-env", default=None, help="environment variable with its key")
+    sub.add_argument(
+        "--simulator-model",
+        default=None,
+        help="a model that answers the agent's questions as the user; fixed replies otherwise",
+    )
+    sub.add_argument("--simulator-base-url", default=None)
+    sub.add_argument("--simulator-api-key-env", default=None)
     sub.add_argument("--domain", default=None)
     sub.add_argument("--limit", type=int, default=None)
     sub.add_argument("--instruction-recency", choices=["early", "mid", "late"], default=None)

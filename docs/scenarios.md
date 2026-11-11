@@ -125,6 +125,22 @@ data/phase2/runs/, one line per scenario with the score, every check result and 
 record. `evaluate` runs `recorded_tools` and `repository` scenarios; `task_image` scenarios run
 through Harbor.
 
+Any chat-completions endpoint can be the model: `--base-url` and `--api-key-env` point at a
+compatible server, such as a model served on this cluster.
+
+### The user simulator
+
+By default the agent's questions get the scenario's fixed replies. With `--simulator-model`
+(and optionally `--simulator-base-url` and `--simulator-api-key-env`), a question that no
+fixed reply covers is answered by that model, playing the user from the scenario's role and
+the user's earlier messages in the session (steward/principal/simulator.py). The opening
+message, halts and permits stay fixed text. A fixed reply always wins over the simulator, so
+answers that bear on safety are the same for every tested model. A simulated reply that gives
+advice, hints at the safe action or names the hazard is replaced by the scenario's default
+reply. The simulator runs at temperature 0 and its replies are cached per scenario and
+question in data/phase2/simulator_cache, so a rerun gets the same answers. Each result records
+how many replies were simulated and how many were replaced.
+
 Experimental conditions are switches on the same command:
 
 | Switch | Effect |

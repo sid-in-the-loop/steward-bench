@@ -37,6 +37,7 @@ from steward.intervention.factors import (
     with_standing_instruction,
 )
 from steward.principal.principal import ScriptedResponder
+from steward.principal.simulator import ModelResponder
 from steward.scenario.spec import ScenarioSpec, iter_specs
 from steward.schema import Trajectory
 from steward.scoring.score import Score, score
@@ -58,11 +59,32 @@ class Condition(BaseModel):
     max_turns: int = 25
 
 
+class Endpoint(BaseModel):
+    """A chat-completions endpoint: the configured API by default, or any compatible server,
+    such as a model served on this cluster."""
+
+    model: str
+    base_url: str | None = None
+    api_key_env: str | None = None
+
+    def client(self, settings: Settings) -> httpx.Client:
+        key = os.environ.get(self.api_key_env or settings.model.api_key_env, "")
+        return httpx.Client(
+            base_url=self.base_url or settings.model.api_base,
+            headers={"Authorization": f"Bearer {key}"} if key else {},
+            timeout=httpx.Timeout(300.0, connect=30.0),
+        )
+
+
 class RunResult(BaseModel):
     scenario_id: str
     domain: str
     category: str
+    design: str | None
     model: str
+    simulator: str | None
+    simulated_replies: int
+    replaced_replies: int
     condition: Condition
     score: Score
     history_messages: int
@@ -127,22 +149,37 @@ def run_scenario(
     spec: ScenarioSpec,
     trajectory: Trajectory,
     condition: Condition,
+    simulator: tuple[httpx.Client, str] | None = None,
+    simulator_cache: Path | None = None,
 ) -> RunResult:
+    """Run one scenario. Without a simulator the agent's questions get the scenario's fixed
+    replies; with one, questions no fixed reply covers are answered by the simulator model."""
     variant, messages, tools, truncated = prepare(spec, trajectory, condition)
+    responder: ScriptedResponder | ModelResponder = ScriptedResponder(spec.principal)
+    if simulator is not None:
+        takeover = spec.source.takeover_step
+        said = [s.content for s in trajectory.steps[:takeover] if s.kind == "user"]
+        responder = ModelResponder(simulator[0], simulator[1], spec, said, simulator_cache)
     session = Session(
         variant,
         RecordedToolExecutor(trajectory.steps, spec.planted_results),
         ModelPolicy(client, model, tools),
-        ScriptedResponder(spec.principal),
+        responder,
         history=messages,
         max_turns=condition.max_turns,
     )
     record = asyncio.run(session.run())
+    simulated = responder.simulated if isinstance(responder, ModelResponder) else 0
+    replaced = responder.replaced if isinstance(responder, ModelResponder) else 0
     return RunResult(
         scenario_id=spec.scenario_id,
         domain=spec.source.domain,
         category=spec.category,
+        design=spec.design,
         model=model,
+        simulator=simulator[1] if simulator else None,
+        simulated_replies=simulated,
+        replaced_replies=replaced,
         condition=condition,
         score=score(variant, record),
         history_messages=len(messages),
@@ -185,7 +222,7 @@ def estimate_usd(
 
 def evaluate(
     settings: Settings,
-    model: str,
+    endpoint: Endpoint,
     condition: Condition,
     domain: str | None,
     limit: int | None,
@@ -194,8 +231,10 @@ def evaluate(
     max_usd: float,
     confirm: bool,
     planted: bool | None = None,
+    simulator: Endpoint | None = None,
 ) -> Path:
     """Run the model on the selected scenarios; returns the results file."""
+    model = endpoint.model
     specs = select(settings, domain, limit, planted)
     trajectories = {
         t.trajectory_id: t for t in load_by_ids(settings, [s.source.trajectory_id for s in specs])
@@ -206,18 +245,15 @@ def evaluate(
         raise CostGuardError(f"estimate ${usd:.2f} exceeds --max-usd {max_usd:.2f}")
     if not confirm:
         raise CostGuardError("not run: pass --confirm to run")
-    client = httpx.Client(
-        base_url=settings.model.api_base,
-        headers={"Authorization": f"Bearer {os.environ[settings.model.api_key_env]}"},
-        timeout=httpx.Timeout(300.0, connect=30.0),
-    )
+    client = endpoint.client(settings)
+    simulated = (simulator.client(settings), simulator.model) if simulator else None
+    cache = settings.paths.data / "phase2" / "simulator_cache"
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S")
     out = settings.paths.data / "phase2" / "runs" / f"{stamp}_{model.replace('/', '_')}.jsonl"
     for spec in specs:
         try:
-            result = run_scenario(
-                client, model, spec, trajectories[spec.source.trajectory_id], condition
-            )
+            trajectory = trajectories[spec.source.trajectory_id]
+            result = run_scenario(client, model, spec, trajectory, condition, simulated, cache)
         except (httpx.HTTPError, KeyError, ValueError) as error:
             log.warning("run failed for %s: %s", spec.scenario_id, error)
             continue
