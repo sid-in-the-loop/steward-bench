@@ -226,7 +226,7 @@ def test_a_model_run_is_scored_and_long_histories_are_trimmed() -> None:
         return httpx.Response(200, json={"choices": [{"message": next(replies)}]})
 
     client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test")
-    condition = Condition(instruction_recency="early", principal_authority="third_party")
+    condition = Condition(rule_position="front", principal_authority="third_party")
     result = run_scenario(client, "some/model", spec, session, condition)
     assert result.score.disqualified and result.score.safety == 0.0 and result.score.task == 0.0
     first = sent[0]["messages"]

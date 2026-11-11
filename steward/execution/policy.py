@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import time
+from collections.abc import Callable
 from typing import Any, Protocol
 
 import httpx
@@ -57,20 +59,94 @@ class ScriptedPolicy:
         return Turn(report=self.report)
 
 
+class RunSettings(BaseModel):
+    """What every model is run with. The takeover is silent: the model gets the history and no
+    statement that another agent wrote it. Reasoning is left at each model's default."""
+
+    temperature: float = 0.0
+    max_tokens_per_turn: int = 4000
+    reasoning: str = "model default"
+    takeover_framing: str = "silent"
+    attempts_per_scenario: int = 1
+
+
+class Usage(BaseModel):
+    """Token counts as the provider reported them, summed over a run's requests."""
+
+    requests: int = 0
+    prompt_tokens: int = 0
+    cached_tokens: int = 0
+    completion_tokens: int = 0
+    providers: list[str] = []
+
+    def add(self, body: dict[str, Any]) -> None:
+        usage = body.get("usage") or {}
+        details = usage.get("prompt_tokens_details") or {}
+        self.requests += 1
+        self.prompt_tokens += int(usage.get("prompt_tokens") or 0)
+        self.cached_tokens += int(details.get("cached_tokens") or 0)
+        self.completion_tokens += int(usage.get("completion_tokens") or 0)
+        provider = body.get("provider")
+        if isinstance(provider, str) and provider not in self.providers:
+            self.providers.append(provider)
+
+
+class RequestFailedError(RuntimeError):
+    """A request that still failed after every retry."""
+
+
+RETRY_ATTEMPTS = 5
+RETRY_BASE_SECONDS = 2.0
+
+
+def post_with_retry(
+    client: httpx.Client, body: dict[str, Any], sleep: Callable[[float], None] = time.sleep
+) -> dict[str, Any]:
+    """POST a chat completion, retrying rate limits, server errors and transport errors with
+    exponential backoff. An error object in a 200 reply is retried as a server error."""
+    problem = ""
+    for attempt in range(RETRY_ATTEMPTS):
+        if attempt:
+            sleep(RETRY_BASE_SECONDS * 2 ** (attempt - 1))
+        try:
+            response = client.post("/chat/completions", json=body)
+        except httpx.TransportError as error:
+            problem = f"{type(error).__name__}: {error}"
+            continue
+        if response.status_code == 429 or response.status_code >= 500:
+            problem = f"HTTP {response.status_code}: {response.text[:200]}"
+            continue
+        response.raise_for_status()
+        reply: dict[str, Any] = response.json()
+        if "choices" not in reply:
+            problem = f"no choices in reply: {str(reply.get('error'))[:200]}"
+            continue
+        return reply
+    raise RequestFailedError(f"gave up after {RETRY_ATTEMPTS} attempts: {problem}")
+
+
 class ModelPolicy:
     """Asks a chat-completions model for the next turn.
 
     A call to the report tool ends the run, any other tool call is an action, and plain text is
-    a message to the principal.
+    a message to the principal. The request starts with the tools and the inherited history,
+    which do not change between turns, so a provider's prefix cache can serve them.
     """
 
     def __init__(
-        self, client: httpx.Client, model: str, tools: list[Message], max_tokens: int = 4000
+        self,
+        client: httpx.Client,
+        model: str,
+        tools: list[Message],
+        settings: RunSettings | None = None,
+        provider: str | None = None,
     ) -> None:
         self.client = client
         self.model = model
         self.tools = tools
-        self.max_tokens = max_tokens
+        self.settings = settings or RunSettings()
+        self.provider = provider
+        self.usage = Usage()
 
     @staticmethod
     def wire_messages(messages: list[Message]) -> list[Message]:
@@ -95,23 +171,33 @@ class ModelPolicy:
                 wire.append({k: v for k, v in message.items() if k != "steward_event"})
         return wire
 
+    def request_body(self, messages: list[Message]) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "model": self.model,
+            "tools": self.tools,
+            "messages": self.wire_messages(messages),
+            "max_tokens": self.settings.max_tokens_per_turn,
+            "temperature": self.settings.temperature,
+        }
+        if self.provider:
+            # One provider only, so every run is served at the same precision.
+            body["provider"] = {"order": [self.provider], "allow_fallbacks": False}
+        return body
+
     def next_turn(self, messages: list[Message]) -> Turn:
-        response = self.client.post(
-            "/chat/completions",
-            json={
-                "model": self.model,
-                "messages": self.wire_messages(messages),
-                "tools": self.tools,
-                "max_tokens": self.max_tokens,
-            },
-        )
-        response.raise_for_status()
-        reply = response.json()["choices"][0]["message"]
+        reply_body = post_with_retry(self.client, self.request_body(messages))
+        self.usage.add(reply_body)
+        reply = reply_body["choices"][0]["message"]
         calls = reply.get("tool_calls") or []
         if not calls:
             return Turn(message=reply.get("content") or "")
         function = calls[0]["function"]
-        arguments = json.loads(function.get("arguments") or "{}")
+        try:
+            arguments = json.loads(function.get("arguments") or "{}")
+        except json.JSONDecodeError:
+            arguments = {}
+        if not isinstance(arguments, dict):
+            arguments = {}
         if function["name"] == REPORT_TOOL:
             return Turn(report=str(arguments.get("report", "")))
         return Turn(action=Action(tool=function["name"], arguments=arguments))

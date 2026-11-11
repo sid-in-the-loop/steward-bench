@@ -120,14 +120,46 @@ uv run steward evaluate <model> ... --confirm --max-usd 5
 ```
 
 The model receives the history before the takeover step as chat messages, with every tool the
-session used, and continues. Histories over `--history-tokens` are trimmed to the system
-message, the first user message and the most recent whole turns. Results go to
-data/phase2/runs/, one line per scenario with the score, every check result and the full
-record. `evaluate` runs `recorded_tools` and `repository` scenarios; `task_image` scenarios run
-through Harbor.
+session used, and continues. Results go to data/phase2/runs/, one line per scenario with the
+score, every check result, the token usage, the cost and the full record. `evaluate` runs
+`recorded_tools` and `repository` scenarios; `task_image` scenarios run through Harbor.
 
-Any chat-completions endpoint can be the model: `--base-url` and `--api-key-env` point at a
-compatible server, such as a model served on this cluster.
+Every model is run the same way, and each result line records these settings:
+
+| Setting | Value |
+|---|---|
+| Takeover framing | Silent: the model gets the history and is never told another agent wrote it. No system prompt is added |
+| Temperature | 0 |
+| Output limit | 4,000 tokens per turn |
+| Reasoning | Each model's default; no reasoning parameter is sent |
+| Turns | At most 25 (`--max-turns`) |
+| History | At most 150,000 tokens (`--history-tokens`); longer histories keep the system message, the first user message and the most recent whole turns |
+| Attempts | One per scenario |
+
+Options for where and how the run happens:
+
+| Option | Effect |
+|---|---|
+| `--base-url`, `--api-key-env` | Any chat-completions endpoint, such as a model served on this cluster |
+| `--provider NAME` | On OpenRouter, every request is served by that one provider, with no fallback, so all runs use the same precision. Each result lists the providers that served it |
+| `--workers N` | Scenarios run at the same time (default 16). Each result is appended as its scenario finishes |
+| `--resume FILE` | Continue a results file: scenarios already in it under the same condition and model are skipped |
+| `--subset` | Only the scenarios in scenarios/subset.txt |
+| `--usd-per-mtok-cached` | The price of cached input, used with the provider's reported cached tokens to compute cost |
+| `--max-usd` | No new scenario starts once the spend computed from reported usage reaches this |
+
+Requests are retried up to five times, with exponential backoff, on rate limits, server
+errors and transport errors. A scenario that still fails is left out of the results, and a
+later `--resume` tries it again. The request starts with the tools and the inherited history,
+which are the same on every turn and in every condition that does not change the history, so a
+provider's prefix cache can serve them.
+
+### The fixed subset
+
+scenarios/subset.txt lists the scenarios the paired analyses run on: up to five for each
+domain and category, at most one per session, scenarios on a library design first, then by
+key. `uv run steward subset` rewrites it from the scenarios on disk; it is meant to be written
+once and kept.
 
 ### The user simulator
 
@@ -146,10 +178,11 @@ Experimental conditions are switches on the same command:
 
 | Switch | Effect |
 |---|---|
-| `--instruction-recency early\|mid\|late` | Adds the scenario's standing instruction to the history at that distance from the takeover |
+| `--rule-position front\|middle_left\|middle_right\|back` | Adds the scenario's standing instruction to the history: just after the first user message, one third or two thirds of the way through, or just before the takeover |
+| `--opening removed` | Runs without the message the principal sends at the takeover. Scenarios that halt the agent are left out |
 | `--principal-authority third_party` | The intervention's messages come from someone without authority |
 | `--world unchanged\|silent\|announced\|midrun\|unrelated` | Runs only the scenarios with a world change, in that arm (see below) |
-| `--oversight reviewed\|unreviewed\|unstated` | For scenarios with both openings: the user says they will review the work, says nobody will, or says nothing |
+| `--oversight reviewed\|unreviewed\|unstated` | For scenarios with both openings: the user says they will review the work, says nobody will, or says nothing about review. The three openings are otherwise the same text |
 | `--scenarios planted\|recorded` | Only the scenarios on a library design, or only the as-recorded ones |
 
 ## A changing world

@@ -328,14 +328,16 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
     """Run a model over the built scenarios under one experimental condition."""
     import json
+    from pathlib import Path
 
-    from steward.execution.evaluate import Condition, Endpoint, evaluate, summarize
+    from steward.execution.evaluate import Condition, Endpoint, Pricing, evaluate, summarize
 
     condition = Condition(
-        instruction_recency=args.instruction_recency,
+        rule_position=args.rule_position,
         principal_authority=args.principal_authority,
         world=args.world,
         oversight=args.oversight,
+        opening=args.opening,
         history_tokens=args.history_tokens,
         max_turns=args.max_turns,
     )
@@ -346,18 +348,31 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
             base_url=args.simulator_base_url,
             api_key_env=args.simulator_api_key_env,
         )
+    endpoint = Endpoint(
+        model=args.model,
+        base_url=args.base_url,
+        api_key_env=args.api_key_env,
+        provider=args.provider,
+    )
+    pricing = Pricing(
+        prompt=args.usd_per_mtok_prompt,
+        completion=args.usd_per_mtok_completion,
+        cached=args.usd_per_mtok_cached,
+    )
     out = evaluate(
         settings,
-        Endpoint(model=args.model, base_url=args.base_url, api_key_env=args.api_key_env),
+        endpoint,
         condition,
         args.domain,
         args.limit,
-        args.usd_per_mtok_prompt,
-        args.usd_per_mtok_completion,
+        pricing,
         args.max_usd,
         args.confirm,
         planted={"planted": True, "recorded": False, "all": None}[args.scenarios],
         simulator=simulator,
+        subset=args.subset,
+        workers=args.workers,
+        resume=Path(args.resume) if args.resume else None,
     )
     print(out)
     print(json.dumps(summarize(out), indent=2))
@@ -393,6 +408,23 @@ def cmd_world(settings: Settings, args: argparse.Namespace) -> int:
     print(f"{args.domain}: {accepted} of {len(outcomes)} scenarios have a world change")
     for reason, count in world.reasons(outcomes).items():
         print(f"  {count}  {reason[:160]}")
+    return 0
+
+
+def cmd_subset(settings: Settings, args: argparse.Namespace) -> int:
+    """Choose the fixed subset the paired analyses run on and write scenarios/subset.txt."""
+    from collections import Counter
+
+    from steward.scenario.spec import iter_specs
+    from steward.scenario.subset import choose_subset, write_subset
+
+    chosen = choose_subset(iter_specs(settings.paths.scenarios))
+    print(write_subset(settings.paths.scenarios, chosen))
+    for (domain, category), count in sorted(
+        Counter((s.source.domain, s.category) for s in chosen).items()
+    ):
+        print(f"{domain:16} {category:22} {count}")
+    print(f"{len(chosen)} scenarios, {sum(1 for s in chosen if s.design)} on a library design")
     return 0
 
 
@@ -512,7 +544,26 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--simulator-api-key-env", default=None)
     sub.add_argument("--domain", default=None)
     sub.add_argument("--limit", type=int, default=None)
-    sub.add_argument("--instruction-recency", choices=["early", "mid", "late"], default=None)
+    sub.add_argument(
+        "--provider",
+        default=None,
+        help="on OpenRouter, the one provider every request must be served by",
+    )
+    sub.add_argument("--subset", action="store_true", help="only scenarios/subset.txt")
+    sub.add_argument("--workers", type=int, default=16, help="scenarios run at the same time")
+    sub.add_argument("--resume", default=None, help="a results file to continue")
+    sub.add_argument(
+        "--rule-position",
+        choices=["front", "middle_left", "middle_right", "back"],
+        default=None,
+        help="add the scenario's standing instruction at this position in the history",
+    )
+    sub.add_argument(
+        "--opening",
+        choices=["as_written", "removed"],
+        default="as_written",
+        help="removed runs without the takeover message; scenarios that halt are left out",
+    )
     sub.add_argument(
         "--principal-authority", choices=["principal", "third_party"], default="principal"
     )
@@ -537,7 +588,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--max-turns", type=int, default=25)
     sub.add_argument("--usd-per-mtok-prompt", type=float, required=True)
     sub.add_argument("--usd-per-mtok-completion", type=float, required=True)
-    sub.add_argument("--max-usd", type=float, default=1.0)
+    sub.add_argument(
+        "--usd-per-mtok-cached",
+        type=float,
+        default=None,
+        help="the price of cached input; the full input price when omitted",
+    )
+    sub.add_argument(
+        "--max-usd", type=float, default=1.0, help="stop starting scenarios at this spend"
+    )
     sub.add_argument("--confirm", action="store_true", help="run after the estimate")
     sub = add("plant", cmd_plant, "fit library designs to sessions that already have a scenario")
     sub.add_argument("domain")
@@ -553,6 +612,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("domain")
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
+    add("subset", cmd_subset, "choose the fixed subset and write scenarios/subset.txt")
     add("scenario-report", cmd_scenario_report, "write reports/PHASE2.md from scenarios/")
     add(
         "audit-repositories",

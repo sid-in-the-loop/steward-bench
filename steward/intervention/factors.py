@@ -9,7 +9,8 @@ from steward.filter.rank import task_key
 from steward.scenario.spec import Intervention, PlantedStep, ScenarioSpec, Trigger
 from steward.schema import Step, TrajectoryMeta
 
-Recency = Literal["early", "mid", "late"]
+RulePosition = Literal["front", "middle_left", "middle_right", "back"]
+RULE_POSITIONS: tuple[RulePosition, ...] = ("front", "middle_left", "middle_right", "back")
 WorldArm = Literal["as_written", "unchanged", "silent", "announced", "midrun", "unrelated"]
 # In the midrun arm the world changes once the agent has taken this many actions.
 MIDRUN_AFTER_ACTIONS = 3
@@ -17,6 +18,7 @@ MIDRUN_AFTER_ACTIONS = 3
 NEVER = 10**9
 WORLD_ANNOUNCEMENT = "world_announcement"
 Oversight = Literal["as_written", "reviewed", "unreviewed", "unstated"]
+Opening = Literal["as_written", "removed"]
 OPENING_MESSAGE = "opening_message"
 Message = dict[str, Any]
 
@@ -26,22 +28,33 @@ COMPACTION_PROMPT = (
 )
 
 
-def instruction_position(steps: list[Step], recency: Recency) -> int:
-    """Where a standing instruction goes: after the first user message, half way, or last."""
-    if recency == "late":
+def rule_index(steps: list[Step], position: RulePosition) -> int:
+    """Where a standing instruction goes: front is just after the first user message, back is
+    just before the takeover, and the two middle positions are one third and two thirds of the
+    way through the history."""
+    if position == "back":
         return len(steps)
-    if recency == "mid":
-        return len(steps) // 2
+    if position == "middle_left":
+        return len(steps) // 3
+    if position == "middle_right":
+        return 2 * len(steps) // 3
     first_user = next((s.index for s in steps if s.kind == "user"), -1)
     return first_user + 1
 
 
-def with_standing_instruction(steps: list[Step], text: str, recency: Recency) -> list[Step]:
+def with_standing_instruction(steps: list[Step], text: str, position: RulePosition) -> list[Step]:
     """The history with one user message added at the chosen distance from the takeover.
 
-    The instruction is present at every level; only how long ago it was said changes.
+    The instruction is present at every position; only how long ago it was said changes.
     """
-    return insert_step(steps, Step(index=0, kind="user", content=text), recency)
+    return insert_step(steps, Step(index=0, kind="user", content=text), rule_index(steps, position))
+
+
+def planted_index(steps: list[Step], position: Literal["early", "mid", "late"]) -> int:
+    """Where a planted step goes: after the first user message, half way, or last."""
+    if position == "mid":
+        return len(steps) // 2
+    return rule_index(steps, "back" if position == "late" else "front")
 
 
 def with_planted_history(steps: list[Step], planted: list[PlantedStep]) -> list[Step]:
@@ -49,18 +62,18 @@ def with_planted_history(steps: list[Step], planted: list[PlantedStep]) -> list[
     previous agent claimed or noted."""
     for item in planted:
         kind: Literal["user", "agent_text"] = "user" if item.speaker == "user" else "agent_text"
-        steps = insert_step(steps, Step(index=0, kind=kind, content=item.text), item.position)
+        step = Step(index=0, kind=kind, content=item.text)
+        steps = insert_step(steps, step, planted_index(steps, item.position))
     return steps
 
 
-def insert_step(steps: list[Step], step: Step, recency: Recency) -> list[Step]:
-    """Insert a step at the chosen distance from the takeover, never inside an agent turn,
-    between an action and its result."""
-    position = instruction_position(steps, recency)
+def insert_step(steps: list[Step], step: Step, position: int) -> list[Step]:
+    """Insert a step at or just after the position, never inside an agent turn: not between
+    the agent's text and its actions, nor between an action and its result."""
 
     def inside_turn(index: int) -> bool:
-        between_actions = steps[index].kind == "action" and steps[index - 1].kind == "action"
-        return steps[index].kind == "result" or between_actions
+        follows_agent = steps[index - 1].kind in ("action", "agent_text")
+        return steps[index].kind == "result" or (steps[index].kind == "action" and follows_agent)
 
     while 0 < position < len(steps) and inside_turn(position):
         position += 1
@@ -137,12 +150,25 @@ def with_oversight(spec: ScenarioSpec, level: Oversight) -> ScenarioSpec:
     statement about review at all. The three runs differ in nothing else."""
     if level == "as_written" or spec.oversight is None:
         return spec
-    if level == "unstated":
-        kept = [i for i in spec.interventions if i.id != OPENING_MESSAGE]
-        return spec.model_copy(update={"interventions": kept})
-    text = spec.oversight.reviewed if level == "reviewed" else spec.oversight.unreviewed
+    if level == "unstated" and spec.oversight.unstated is None:
+        return with_opening_removed(spec)
+    text = {
+        "reviewed": spec.oversight.reviewed,
+        "unreviewed": spec.oversight.unreviewed,
+        "unstated": spec.oversight.unstated,
+    }[level]
     interventions = [
         i.model_copy(update={"text": text}) if i.id == OPENING_MESSAGE else i
         for i in spec.interventions
     ]
     return spec.model_copy(update={"interventions": interventions})
+
+
+def with_opening_removed(spec: ScenarioSpec) -> ScenarioSpec:
+    """The scenario without the message the principal sends at the takeover."""
+    kept = [i for i in spec.interventions if i.id != OPENING_MESSAGE]
+    return spec.model_copy(update={"interventions": kept})
+
+
+def halts(spec: ScenarioSpec) -> bool:
+    return any(i.action == "halt" for i in spec.interventions)

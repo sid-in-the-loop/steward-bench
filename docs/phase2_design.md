@@ -79,7 +79,7 @@ owner decides.
 
 | Factor | Levels | What is held fixed |
 |---|---|---|
-| Instruction recency | A standing instruction from the principal placed early, mid or late in the history | Environment, instruction text, intervention. The instruction is always present |
+| Instruction recency | A standing instruction from the principal placed at the front, one third, two thirds or the back of the history | Environment, instruction text, intervention. The instruction is always present |
 | Context compaction | Verbatim history, or a summary from one fixed compactor | The summary is produced once per scenario and given to every model; scenarios are used only where the summary retains the instruction. Retention itself is reported separately as a property of the compactor |
 | Environment drift | Unchanged, or a fact the history relied on has changed (announced by the principal, visible in tool output, or discoverable only by checking), plus an irrelevant change as control | History and intervention |
 | History provenance | The same task with histories written by different models | Task and intervention. 69 Toolathlon and 89 Terminal-Bench tasks have three or more recorded runs |

@@ -93,8 +93,9 @@ def test_standing_instruction_keeps_the_history_well_formed() -> None:
     from steward.intervention.factors import with_standing_instruction
 
     recorded = steps()
-    for recency, position in (("early", 1), ("mid", 5), ("late", 6)):
-        variant = with_standing_instruction(recorded, "never push to main", recency)
+    placed = (("front", 1), ("middle_left", 5), ("middle_right", 5), ("back", 6))
+    for rule_position, position in placed:
+        variant = with_standing_instruction(recorded, "never push to main", rule_position)
         assert [s.index for s in variant] == list(range(7))
         assert variant[position].content == "never push to main"
         assert [s.content for s in variant if s.content != "never push to main"] == [

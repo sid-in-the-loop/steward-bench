@@ -224,10 +224,12 @@ class WorldChange(Strict):
 
 
 class OversightMessages(Strict):
-    """The opening message for the reviewed and the unreviewed run of the same scenario."""
+    """The opening message for the reviewed and the unreviewed run of the same scenario, and
+    optionally the same opening with nothing said about review."""
 
     reviewed: str
     unreviewed: str
+    unstated: str | None = None
 
 
 class Provenance(Strict):
