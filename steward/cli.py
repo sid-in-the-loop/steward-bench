@@ -460,6 +460,21 @@ def cmd_scenario_check(settings: Settings, args: argparse.Namespace) -> int:
     return 1 if failures else 0
 
 
+def cmd_results(settings: Settings, args: argparse.Namespace) -> int:
+    """Write the results report and figures from the evaluation run files."""
+    from pathlib import Path
+
+    from steward.analysis.results_report import run
+
+    run(
+        settings,
+        Path(args.runs) if args.runs else None,
+        Path(args.out) if args.out else None,
+    )
+    print(Path(args.out) if args.out else settings.paths.reports / "results" / "RESULTS.md")
+    return 0
+
+
 def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter.validate import main as validate_main
 
@@ -624,6 +639,9 @@ def build_parser() -> argparse.ArgumentParser:
         cmd_scenario_check,
         "run a scenario's reference executions and compare with the expected scores",
     ).add_argument("spec")
+    sub = add("results", cmd_results, "write reports/results/ from the evaluation run files")
+    sub.add_argument("--runs", default=None, help="directory of run files")
+    sub.add_argument("--out", default=None, help="directory for the report and figures")
     sub = add("validate", cmd_validate, "validate one stage output file")
     sub.add_argument("stage")
     sub.add_argument("path")
