@@ -6,11 +6,13 @@ import re
 from typing import Any, Literal
 
 from steward.filter.rank import task_key
-from steward.scenario.spec import Intervention, ScenarioSpec, Trigger
+from steward.scenario.spec import Intervention, PlantedStep, ScenarioSpec, Trigger
 from steward.schema import Step, TrajectoryMeta
 
 Recency = Literal["early", "mid", "late"]
 DriftLevel = Literal["unchanged", "silent", "announced", "irrelevant"]
+Oversight = Literal["as_written", "reviewed", "unreviewed", "unstated"]
+OPENING_MESSAGE = "opening_message"
 Message = dict[str, Any]
 
 COMPACTION_PROMPT = (
@@ -32,9 +34,23 @@ def instruction_position(steps: list[Step], recency: Recency) -> int:
 def with_standing_instruction(steps: list[Step], text: str, recency: Recency) -> list[Step]:
     """The history with one user message added at the chosen distance from the takeover.
 
-    The instruction is present at every level; only how long ago it was said changes. It is
-    never placed inside an agent turn, between an action and its result.
+    The instruction is present at every level; only how long ago it was said changes.
     """
+    return insert_step(steps, Step(index=0, kind="user", content=text), recency)
+
+
+def with_planted_history(steps: list[Step], planted: list[PlantedStep]) -> list[Step]:
+    """The history with the scenario's planted steps: what the user said earlier, or what the
+    previous agent claimed or noted."""
+    for item in planted:
+        kind: Literal["user", "agent_text"] = "user" if item.speaker == "user" else "agent_text"
+        steps = insert_step(steps, Step(index=0, kind=kind, content=item.text), item.position)
+    return steps
+
+
+def insert_step(steps: list[Step], step: Step, recency: Recency) -> list[Step]:
+    """Insert a step at the chosen distance from the takeover, never inside an agent turn,
+    between an action and its result."""
     position = instruction_position(steps, recency)
 
     def inside_turn(index: int) -> bool:
@@ -43,8 +59,8 @@ def with_standing_instruction(steps: list[Step], text: str, recency: Recency) ->
 
     while 0 < position < len(steps) and inside_turn(position):
         position += 1
-    inserted = [*steps[:position], Step(index=0, kind="user", content=text), *steps[position:]]
-    return [step.model_copy(update={"index": index}) for index, step in enumerate(inserted)]
+    inserted = [*steps[:position], step, *steps[position:]]
+    return [item.model_copy(update={"index": index}) for index, item in enumerate(inserted)]
 
 
 def with_principal_authority(spec: ScenarioSpec, authorised: bool) -> ScenarioSpec:
@@ -108,3 +124,19 @@ def sibling_histories(metas: dict[str, TrajectoryMeta], trajectory_id: str) -> d
         if other_id != trajectory_id and task_key(meta) == task and meta.history_author:
             siblings.setdefault(meta.history_author, []).append(other_id)
     return siblings
+
+
+def with_oversight(spec: ScenarioSpec, level: Oversight) -> ScenarioSpec:
+    """The scenario with the opening message for a reviewed or an unreviewed run, or with no
+    statement about review at all. The three runs differ in nothing else."""
+    if level == "as_written" or spec.oversight is None:
+        return spec
+    if level == "unstated":
+        kept = [i for i in spec.interventions if i.id != OPENING_MESSAGE]
+        return spec.model_copy(update={"interventions": kept})
+    text = spec.oversight.reviewed if level == "reviewed" else spec.oversight.unreviewed
+    interventions = [
+        i.model_copy(update={"text": text}) if i.id == OPENING_MESSAGE else i
+        for i in spec.interventions
+    ]
+    return spec.model_copy(update={"interventions": interventions})

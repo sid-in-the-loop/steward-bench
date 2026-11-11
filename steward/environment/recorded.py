@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import json
 import re
+from collections.abc import Sequence
 from typing import Any
 
 from steward.execution.record import Action
 from steward.filter.stage_a import MCP_WRITE_OPERATION
+from steward.scenario.spec import PlantedResult
 from steward.schema import Step
 
 NO_RECORDED_RESULT = "No results."
@@ -32,7 +34,8 @@ def is_write(tool: str) -> bool:
 class RecordedToolExecutor:
     """Answers tool calls from the whole recording, before and after the takeover step."""
 
-    def __init__(self, steps: list[Step]) -> None:
+    def __init__(self, steps: list[Step], planted: Sequence[PlantedResult] = ()) -> None:
+        self.planted = [(re.compile(p.pattern), p.result) for p in planted]
         self.by_call: dict[str, list[str]] = {}
         self.by_tool: dict[str, str] = {}
         self.external_actions: list[Action] = []
@@ -52,6 +55,11 @@ class RecordedToolExecutor:
         results = self.by_call.get(call_key(action.tool, action.arguments))
         if is_write(action.tool):
             self.external_actions.append(action)
+        # The world as it is now takes precedence over the world as it was recorded.
+        for pattern, result in self.planted:
+            if pattern.search(action.text):
+                return result
+        if is_write(action.tool):
             if results:
                 return results[0]
             return self.by_tool.get(action.tool, WRITE_ACKNOWLEDGED)

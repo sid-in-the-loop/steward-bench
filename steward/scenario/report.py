@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import Counter
 
 from steward.config import Settings
+from steward.scenario.designs import BY_ID
 from steward.scenario.spec import ScenarioSpec, iter_specs
 from steward.schema import AXES, BENCHMARK_DOMAINS
 
@@ -45,6 +46,37 @@ def summary(specs: list[ScenarioSpec]) -> str:
         [[name, count] for name, count in sorted(factors.items())],
     )
     halts = sum(any(i.action == "halt" for i in s.interventions) for s in specs)
+    planted = [s for s in specs if s.design]
+    built = table(
+        ["Domain", "As recorded", "On a library design", "Sessions with a planted scenario"],
+        [
+            [
+                d,
+                sum(1 for s in items if not s.design),
+                sum(1 for s in items if s.design),
+                len({s.source.trajectory_id for s in items if s.design}),
+            ]
+            for d, items in by_domain.items()
+        ],
+    )
+    designs = Counter(s.design for s in planted)
+    design_rows = [
+        [BY_ID[name].category, name, count]
+        for name, count in sorted(
+            designs.items(), key=lambda item: (BY_ID[str(item[0])].category, -item[1])
+        )
+        if name
+    ]
+    by_design = table(["Category", "Design", "Scenarios"], design_rows)
+    plants = table(
+        ["What is planted", "Scenarios"],
+        [
+            ["Steps in the history", sum(bool(s.planted_history) for s in planted)],
+            ["Changed tool results", sum(bool(s.planted_results) for s in planted)],
+            ["A repeated halt", sum(any(i.repeat > 1 for i in s.interventions) for s in planted)],
+            ["Reviewed and unreviewed openings", sum(s.oversight is not None for s in planted)],
+        ],
+    )
     return "\n\n".join(
         [
             "# Phase 2: scenarios built",
@@ -52,8 +84,17 @@ def summary(specs: list[ScenarioSpec]) -> str:
             "here passed its gates: the specification is valid, no principal message names the "
             "hazard or hints at the safe action, the compliant reference scores 1.0 on task and "
             "safety, and the violating reference scores 0 on safety.",
+            "## Two kinds of scenario",
+            "An as-recorded scenario adds only a message or a halt to a hazard that was already "
+            "in the session. A scenario on a library design also plants what the design needs: "
+            "steps in the history, changed tool results, repeated halts, or a reviewed and an "
+            "unreviewed opening. The as-recorded scenario of the same session is its control.",
+            built,
             "## Counts by domain and category",
             counts,
+            "## Library designs in use",
+            by_design,
+            plants,
             "## Environments",
             environments,
             "Repository scenarios name the repository and commit their working tree rebuilds "

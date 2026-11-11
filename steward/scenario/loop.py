@@ -21,17 +21,20 @@ from steward.filter.rank import best_candidate, selection_score
 from steward.filter.render import estimate_tokens
 from steward.filter.selection import load_by_ids
 from steward.scenario.author import (
+    UNSCRIPTED_DESIGNS,
     Draft,
     assemble,
     best_category,
     describe_failure,
+    design_prompt,
     gate_recorded,
     lint,
-    request_draft,
+    request_drafts,
     session_brief,
 )
+from steward.scenario.designs import BY_ID, LIBRARY
 from steward.scenario.spec import ScenarioSpec, iter_specs, save_spec
-from steward.schema import Axis, C2Candidate, CostRecord, StageC2Result, Trajectory
+from steward.schema import AXES, Axis, C2Candidate, CostRecord, StageC2Result, Trajectory
 from steward.store import append_jsonl, read_jsonl
 
 log = logging.getLogger(__name__)
@@ -40,6 +43,9 @@ ATTEMPTS = 3
 # Direct calls cost twice the batch price the model settings record.
 DIRECT_PRICE_FACTOR = 2.0
 DRAFT_COMPLETION_TOKENS = 1500
+DESIGNS_PER_SESSION = 2
+LEAST_USED_DESIGNS = 12
+PLANT_BRIEF_TOKENS = 9000
 
 Gate = Callable[[ScenarioSpec, Trajectory], list[str]]
 EnvironmentOf = Callable[[Trajectory], Mapping[str, object]]
@@ -133,10 +139,10 @@ def author_one(
     for _ in range(ATTEMPTS):
         outcome.attempts += 1
         try:
-            draft, usage = request_draft(client, model, prompt, brief, feedback)
+            drafts, usage = request_drafts(client, model, prompt, brief, feedback)
             outcome.prompt_tokens += int(usage.get("prompt_tokens", 0))
             outcome.completion_tokens += int(usage.get("completion_tokens", 0))
-            spec = build(trajectory, candidate, category, draft, environment, compliant_actions)
+            spec = build(trajectory, candidate, category, drafts[0], environment, compliant_actions)
             problems = lint(spec) or gate(spec, trajectory)
         except (
             ValidationError,
@@ -318,3 +324,171 @@ def outcomes_path(settings: Settings, domain: str) -> Path:
 
 def recorded_gate(spec: ScenarioSpec, trajectory: Trajectory) -> list[str]:
     return gate_recorded(spec, trajectory)
+
+
+def plant_one(
+    client: httpx.Client,
+    model: str,
+    prompt: str,
+    trajectory: Trajectory,
+    result: StageC2Result,
+    base: ScenarioSpec,
+    supported: list[Axis],
+    only_designs: list[str] | None = None,
+) -> tuple[list[ScenarioSpec], list[Outcome]]:
+    """Fit one or two library designs to a session that already has a scenario.
+
+    The takeover step and environment are the existing scenario's. Each drafted scenario is
+    assembled, linted and gated on its own; the problems of rejected ones go back to the
+    drafter until at least one is accepted.
+    """
+    step = next(
+        (c for c in result.output.jump_in_candidates if c.step == base.source.takeover_step),
+        best_candidate(result),
+    )
+    assert step is not None
+    brief = session_brief(trajectory, result, step, supported[0], supported)
+    if only_designs:
+        brief += f"\n\nGive one scenario. Choose only from these designs: {', '.join(only_designs)}"
+    environment = base.environment.model_dump(exclude_none=True)
+    accepted: list[ScenarioSpec] = []
+    outcomes: list[Outcome] = []
+    feedback = ""
+    for attempt in range(1, ATTEMPTS + 1):
+        outcomes = []
+        try:
+            drafts, usage = request_drafts(client, model, prompt, brief, feedback)
+        except (ValidationError, ValueError, KeyError, re.error, httpx.HTTPError) as error:
+            feedback = describe_failure(error)
+            outcomes = [
+                Outcome(
+                    trajectory_id=trajectory.trajectory_id,
+                    category="",
+                    accepted=False,
+                    attempts=attempt,
+                    problems=[feedback],
+                )
+            ]
+            continue
+        for draft in drafts[:DESIGNS_PER_SESSION]:
+            design = BY_ID.get(draft.design)
+            category = design.category if design else supported[0]
+            outcome = Outcome(
+                trajectory_id=trajectory.trajectory_id,
+                category=f"{category}:{draft.design}",
+                accepted=False,
+                attempts=attempt,
+                prompt_tokens=int(usage.get("prompt_tokens", 0)) // len(drafts),
+                completion_tokens=int(usage.get("completion_tokens", 0)) // len(drafts),
+            )
+            try:
+                if category not in supported:
+                    raise ValueError(f"{category} is not a category this session supports")
+                if only_designs and draft.design not in only_designs:
+                    raise ValueError(f"choose one of {only_designs}, not {draft.design!r}")
+                evidence = result.output.scores[category].steps
+                spec = assemble(trajectory, step, category, evidence, draft, environment)
+                outcome.problems = lint(spec) or gate_recorded(spec, trajectory)
+            except (ValidationError, ValueError, KeyError, re.error) as error:
+                outcome.problems = [describe_failure(error)]
+            outcome.accepted = not outcome.problems
+            if outcome.accepted and spec.key not in {a.key for a in accepted}:
+                accepted.append(spec)
+            outcomes.append(outcome)
+        if accepted:
+            break
+        feedback = describe_failure([p for o in outcomes for p in o.problems])
+    return accepted, outcomes
+
+
+def plant_domain(
+    settings: Settings,
+    domain: str,
+    results: list[StageC2Result],
+    confirm: bool,
+    max_usd: float,
+    widen: bool = False,
+    workers: int = 12,
+) -> list[Outcome]:
+    """Build library designs on the sessions of the domain that have an as-recorded scenario.
+
+    By default a session gets the design that fits it best, from the categories Phase 1 found
+    in it, if it has no planted scenario yet. With `widen`, each session that has fewer than
+    two planted scenarios is asked for one more from the least used designs, in any category:
+    what a design plants is what creates the situation, so the session need not already
+    contain it.
+    """
+    specs = [s for s in iter_specs(settings.paths.scenarios) if s.source.domain == domain]
+    every = iter_specs(settings.paths.scenarios)
+    planted = Counter(s.source.trajectory_id for s in specs if s.design)
+    used = Counter(s.design for s in every if s.design)
+    offered = [d.id for d in LIBRARY if d.id not in UNSCRIPTED_DESIGNS]
+    least_used = sorted(offered, key=lambda d: (used[d], offered.index(d)))[:LEAST_USED_DESIGNS]
+    limit = DESIGNS_PER_SESSION if widen else 1
+    todo = [
+        s
+        for s in specs
+        if s.design is None
+        and s.environment.backend != "task_image"
+        and planted[s.source.trajectory_id] < limit
+    ]
+    own = {t: {s.design for s in specs if s.source.trajectory_id == t} for t in planted}
+    by_id = {r.trajectory_id: r for r in results}
+    counts = Counter(s.category for s in specs if s.design)
+    prompt = design_prompt((settings.paths.prompts / "scenario_design.md").read_text())
+    trajectories = {
+        t.trajectory_id: t for t in load_by_ids(settings, [s.source.trajectory_id for s in todo])
+    }
+    price = DIRECT_PRICE_FACTOR / 1_000_000
+    prompt_tokens = len(todo) * ATTEMPTS * (estimate_tokens(prompt) + PLANT_BRIEF_TOKENS)
+    completion_tokens = len(todo) * ATTEMPTS * DRAFT_COMPLETION_TOKENS * DESIGNS_PER_SESSION
+    usd = price * (
+        prompt_tokens * settings.model.usd_per_mtok_prompt
+        + completion_tokens * settings.model.usd_per_mtok_completion
+    )
+    check_budget(
+        settings,
+        Estimate(
+            requests=len(todo) * ATTEMPTS,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            usd=usd,
+        ),
+        max_usd,
+        confirm,
+    )
+    client = httpx.Client(
+        base_url=settings.model.api_base,
+        headers={"Authorization": f"Bearer {os.environ[settings.model.api_key_env]}"},
+        timeout=httpx.Timeout(240.0, connect=30.0),
+    )
+
+    def work(base: ScenarioSpec) -> tuple[list[ScenarioSpec], list[Outcome]]:
+        result = by_id[base.source.trajectory_id]
+        # Rare categories first, so common ones do not crowd them out.
+        supported = sorted(AXES if widen else best_category(result), key=lambda c: counts[c])
+        session = base.source.trajectory_id
+        only = [d for d in least_used if d not in own.get(session, set())] if widen else None
+        return plant_one(
+            client,
+            settings.model.model,
+            prompt,
+            trajectories[session],
+            result,
+            base,
+            supported,
+            only,
+        )
+
+    outcomes: list[Outcome] = []
+    log_path = settings.paths.data / "phase2" / f"planting_{domain}.jsonl"
+    with ThreadPoolExecutor(max_workers=workers) as pool_executor:
+        for future in as_completed([pool_executor.submit(work, base) for base in todo]):
+            accepted, session_outcomes = future.result()
+            for spec in accepted:
+                save_spec(settings.paths.scenarios, spec)
+                counts[spec.category] += 1
+            outcomes.extend(session_outcomes)
+            append_jsonl(log_path, session_outcomes)
+    record_spend(settings, outcomes)
+    return outcomes

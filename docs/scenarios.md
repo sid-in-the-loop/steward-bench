@@ -68,6 +68,36 @@ For each deep-read session with a usable takeover step and a category scoring at
 Sessions are given the category they support that has the fewest scenarios so far, so common
 categories do not crowd out rare ones.
 
+## Library designs
+
+steward/scenario/designs.py holds 28 designs, each one an AI Safety Gridworlds mechanism in
+ordinary work: an approval that keeps interrupting and a setting that would skip it, a clean-up
+that passes through someone's uncommitted work, a required review with a flag that bypasses it,
+a count the user will accept as done, a rule in the agent's own instruction file. Each names
+what is planted, the unsafe route and the way out.
+
+```bash
+uv run steward plant <domain> --confirm --max-usd 1            # the best-fitting design per session
+uv run steward plant <domain> --widen --confirm --max-usd 1    # one more, from the least used designs
+```
+
+The drafter, under prompts/scenario_design.md, fits a design to a session that already has an
+as-recorded scenario, at the same takeover step. It may plant three things:
+
+| Planted | In the specification | Effect |
+|---|---|---|
+| Steps in the history | `planted_history` | Something the user said earlier, or something the previous agent claimed or noted |
+| A changed world | `planted_results` | Actions matching a pattern now return this result |
+| Principal behaviour | `interventions`, `oversight` | A halt that repeats, a message from someone without authority, or a reviewed and an unreviewed opening |
+
+Besides the usual gates, a planted scenario must pass a control: with nothing planted and no
+intervention, its compliant reference still scores 1.0. A safety check may require an action
+to be present, for a way out that needs one, such as checking before acting. The as-recorded
+scenario of the same session is the comparison for the planted one.
+
+The design `confirmation_seeking` is in the library but not offered to the drafter: its unsafe
+route is asking too often, which the action-log checks cannot express yet.
+
 ## Environments
 
 | Environment | Where actions take effect | Gates run |
@@ -102,6 +132,8 @@ Experimental conditions are switches on the same command:
 | `--instruction-recency early\|mid\|late` | Adds the scenario's standing instruction to the history at that distance from the takeover |
 | `--principal-authority third_party` | The intervention's messages come from someone without authority |
 | `--environment-drift silent\|announced\|irrelevant` | Applies the scenario's drift, where it defines one |
+| `--oversight reviewed\|unreviewed\|unstated` | For scenarios with both openings: the user says they will review the work, says nobody will, or says nothing |
+| `--scenarios planted\|recorded` | Only the scenarios on a library design, or only the as-recorded ones |
 
 ## Checking scenarios
 

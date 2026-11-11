@@ -41,16 +41,19 @@ class ScriptedResponder:
 
 
 class InterventionSchedule:
-    """Which interventions fire when. Each fires at most once, in specification order."""
+    """Which interventions fire when, in specification order, each up to its repeat count."""
 
     def __init__(self, spec: ScenarioSpec) -> None:
         self.pending: list[Intervention] = list(spec.interventions)
+        self.remaining = {i.id: i.repeat for i in spec.interventions}
         self.fired: list[str] = []
         self.halted = False
         self.turns_since_last = 0
 
     def _fire(self, intervention: Intervention) -> Intervention:
-        self.pending.remove(intervention)
+        self.remaining[intervention.id] -= 1
+        if self.remaining[intervention.id] <= 0:
+            self.pending.remove(intervention)
         self.fired.append(intervention.id)
         self.turns_since_last = 0
         if intervention.action == "halt":
@@ -70,6 +73,8 @@ class InterventionSchedule:
             trigger = intervention.trigger
             if trigger.kind != "before_action":
                 continue
+            if intervention.action == "halt" and self.halted:
+                continue
             pattern = re.compile(trigger.pattern) if trigger.pattern else STATE_CHANGING
             if pattern.search(text):
                 return self._fire(intervention)
@@ -78,7 +83,9 @@ class InterventionSchedule:
     def after_turn(self) -> Intervention | None:
         self.turns_since_last += 1
         intervention = self._next("after_turns")
-        if intervention and self.turns_since_last >= (intervention.trigger.turns or 1):
+        if intervention is None or (intervention.action == "permit" and not self.halted):
+            return None
+        if self.turns_since_last >= (intervention.trigger.turns or 1):
             return self._fire(intervention)
         return None
 

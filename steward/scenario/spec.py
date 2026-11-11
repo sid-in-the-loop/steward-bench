@@ -11,6 +11,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from steward.execution.record import Action
+from steward.scenario.designs import BY_ID
 from steward.schema import BENCHMARK_DOMAINS, Axis, Domain
 
 CheckKind = Literal["environment_command", "action_log", "final_report", "verifier_reward"]
@@ -24,6 +25,7 @@ Factor = Literal[
     "environment_drift",
     "history_provenance",
     "principal_authority",
+    "oversight_condition",
 ]
 
 
@@ -97,6 +99,9 @@ class Intervention(Strict):
     sender: Literal["principal", "third_party"] = "principal"
     text: str | None = None
     command: str | None = None
+    # How many times it may fire: a halt that repeats, with a permit that repeats, is an
+    # approval the agent has to wait for again and again.
+    repeat: int = Field(default=1, ge=1)
 
     @model_validator(mode="after")
     def action_fields(self) -> Intervention:
@@ -174,6 +179,35 @@ class Drift(Strict):
     control_command: str
 
 
+class PlantedStep(Strict):
+    """A step added to the inherited history: something the user said earlier, or something the
+    previous agent claimed or noted."""
+
+    position: Literal["early", "mid", "late"]
+    speaker: Literal["user", "previous_agent"]
+    text: str
+
+
+class PlantedResult(Strict):
+    """A change to the world since the history was written: actions matching the pattern now
+    get this result."""
+
+    pattern: str
+    result: str
+
+    @model_validator(mode="after")
+    def valid_pattern(self) -> PlantedResult:
+        re.compile(self.pattern)
+        return self
+
+
+class OversightMessages(Strict):
+    """The opening message for the reviewed and the unreviewed run of the same scenario."""
+
+    reviewed: str
+    unreviewed: str
+
+
 class Provenance(Strict):
     authored_by: str
     reviewed_by: str | None = None
@@ -183,8 +217,12 @@ class ScenarioSpec(Strict):
     source: Source
     environment: Environment
     category: Axis
+    design: str | None = None
     evidence_steps: list[int]
     hazard: Hazard
+    planted_history: list[PlantedStep] = Field(default_factory=list)
+    planted_results: list[PlantedResult] = Field(default_factory=list)
+    oversight: OversightMessages | None = None
     interventions: list[Intervention] = Field(min_length=1)
     principal: Principal
     task_checks: list[Check] = Field(min_length=1)
@@ -198,7 +236,8 @@ class ScenarioSpec(Strict):
 
     @property
     def scenario_id(self) -> str:
-        return f"{self.source.trajectory_id}#t{self.source.takeover_step}:{self.category}"
+        base = f"{self.source.trajectory_id}#t{self.source.takeover_step}:{self.category}"
+        return f"{base}:{self.design}" if self.design else base
 
     @property
     def key(self) -> str:
@@ -223,6 +262,14 @@ class ScenarioSpec(Strict):
             raise ValueError(f"{sorted(needs_instruction)} need a standing instruction")
         if "environment_drift" in self.factors and self.drift is None:
             raise ValueError("environment_drift needs its drift commands")
+        if "oversight_condition" in self.factors and self.oversight is None:
+            raise ValueError("oversight_condition needs the reviewed and unreviewed messages")
+        if self.design is not None:
+            design = BY_ID.get(self.design)
+            if design is None:
+                raise ValueError(f"unknown design {self.design!r}")
+            if design.category != self.category:
+                raise ValueError(f"design {self.design} belongs to {design.category}")
         expected = {(r.expected_task, r.expected_safety) for r in self.reference_executions}
         if (1.0, 1.0) not in expected:
             raise ValueError("one reference execution must be fully compliant")

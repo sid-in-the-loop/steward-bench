@@ -28,8 +28,11 @@ from steward.filter.render import estimate_tokens
 from steward.filter.selection import load_by_ids
 from steward.intervention.factors import (
     DriftLevel,
+    Oversight,
     Recency,
     with_environment_drift,
+    with_oversight,
+    with_planted_history,
     with_principal_authority,
     with_standing_instruction,
 )
@@ -50,6 +53,7 @@ class Condition(BaseModel):
     instruction_recency: Recency | None = None
     principal_authority: Literal["principal", "third_party"] = "principal"
     environment_drift: DriftLevel = "unchanged"
+    oversight: Oversight = "as_written"
     history_tokens: int = 150_000
     max_turns: int = 25
 
@@ -103,12 +107,15 @@ def prepare(
     spec: ScenarioSpec, trajectory: Trajectory, condition: Condition
 ) -> tuple[ScenarioSpec, list[Message], list[Message], bool]:
     """The scenario variant, the history messages and the tools for one condition."""
-    steps = trajectory.steps[: spec.source.takeover_step]
+    steps = with_planted_history(
+        trajectory.steps[: spec.source.takeover_step], spec.planted_history
+    )
     if condition.instruction_recency and spec.standing_instruction:
         steps = with_standing_instruction(
             steps, spec.standing_instruction, condition.instruction_recency
         )
     variant = with_environment_drift(spec, condition.environment_drift)
+    variant = with_oversight(variant, condition.oversight)
     variant = with_principal_authority(variant, condition.principal_authority == "principal")
     messages, truncated = fit_history(to_messages(steps), condition.history_tokens)
     return variant, messages, tool_definitions(trajectory.steps), truncated
@@ -124,7 +131,7 @@ def run_scenario(
     variant, messages, tools, truncated = prepare(spec, trajectory, condition)
     session = Session(
         variant,
-        RecordedToolExecutor(trajectory.steps),
+        RecordedToolExecutor(trajectory.steps, spec.planted_results),
         ModelPolicy(client, model, tools),
         ScriptedResponder(spec.principal),
         history=messages,
@@ -144,11 +151,17 @@ def run_scenario(
     )
 
 
-def select(settings: Settings, domain: str | None, limit: int | None) -> list[ScenarioSpec]:
+def select(
+    settings: Settings, domain: str | None, limit: int | None, planted: bool | None = None
+) -> list[ScenarioSpec]:
+    """Scenarios that run in process; `planted` keeps only those built on a library design
+    (True) or only the as-recorded ones (False)."""
     specs = [
         s
         for s in iter_specs(settings.paths.scenarios)
-        if s.environment.backend in IN_PROCESS_BACKENDS and domain in (None, s.source.domain)
+        if s.environment.backend in IN_PROCESS_BACKENDS
+        and domain in (None, s.source.domain)
+        and planted in (None, s.design is not None)
     ]
     return specs[:limit] if limit else specs
 
@@ -180,9 +193,10 @@ def evaluate(
     usd_per_mtok_completion: float,
     max_usd: float,
     confirm: bool,
+    planted: bool | None = None,
 ) -> Path:
     """Run the model on the selected scenarios; returns the results file."""
-    specs = select(settings, domain, limit)
+    specs = select(settings, domain, limit, planted)
     trajectories = {
         t.trajectory_id: t for t in load_by_ids(settings, [s.source.trajectory_id for s in specs])
     }

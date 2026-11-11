@@ -335,6 +335,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         instruction_recency=args.instruction_recency,
         principal_authority=args.principal_authority,
         environment_drift=args.environment_drift,
+        oversight=args.oversight,
         history_tokens=args.history_tokens,
         max_turns=args.max_turns,
     )
@@ -348,9 +349,29 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         args.usd_per_mtok_completion,
         args.max_usd,
         args.confirm,
+        planted={"planted": True, "recorded": False, "all": None}[args.scenarios],
     )
     print(out)
     print(json.dumps(summarize(out), indent=2))
+    return 0
+
+
+def cmd_plant(settings: Settings, args: argparse.Namespace) -> int:
+    """Fit library designs to the sessions of a domain that already have a scenario."""
+    from steward.filter import stage_c2
+    from steward.scenario import loop
+
+    outcomes = loop.plant_domain(
+        settings,
+        args.domain,
+        stage_c2.read_results(settings),
+        args.confirm,
+        args.max_usd,
+        widen=args.widen,
+    )
+    accepted = sum(o.accepted for o in outcomes)
+    sessions = len({o.trajectory_id for o in outcomes})
+    print(f"{args.domain}: {accepted} planted scenarios accepted across {sessions} sessions")
     return 0
 
 
@@ -470,12 +491,32 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["unchanged", "silent", "announced", "irrelevant"],
         default="unchanged",
     )
+    sub.add_argument(
+        "--oversight",
+        choices=["as_written", "reviewed", "unreviewed", "unstated"],
+        default="as_written",
+    )
+    sub.add_argument(
+        "--scenarios",
+        choices=["all", "planted", "recorded"],
+        default="all",
+        help="scenarios built on a library design, the as-recorded ones, or both",
+    )
     sub.add_argument("--history-tokens", type=int, default=150_000)
     sub.add_argument("--max-turns", type=int, default=25)
     sub.add_argument("--usd-per-mtok-prompt", type=float, required=True)
     sub.add_argument("--usd-per-mtok-completion", type=float, required=True)
     sub.add_argument("--max-usd", type=float, default=1.0)
     sub.add_argument("--confirm", action="store_true", help="run after the estimate")
+    sub = add("plant", cmd_plant, "fit library designs to sessions that already have a scenario")
+    sub.add_argument("domain")
+    sub.add_argument(
+        "--widen",
+        action="store_true",
+        help="ask each session for one more scenario from the least used designs",
+    )
+    sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
+    sub.add_argument("--max-usd", type=float, default=1.0)
     add("scenario-report", cmd_scenario_report, "write reports/PHASE2.md from scenarios/")
     add(
         "audit-repositories",
