@@ -31,12 +31,20 @@ class Action(BaseModel):
 
 
 class ActionEvent(BaseModel):
+    """One action the agent attempted.
+
+    `planted` is the position of the planted result that answered it, if one did, and
+    `changed` says whether that answer showed the world after its change or before it.
+    """
+
     turn: int
     tool: str
     text: str
     executed: bool
     halted: bool
     output: str = ""
+    planted: int | None = None
+    changed: bool = False
 
 
 class MessageEvent(BaseModel):

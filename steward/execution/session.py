@@ -77,6 +77,9 @@ class Session:
             await self._apply(intervention)
             return
         event.output = await self.executor.execute(action)
+        served = getattr(self.executor, "last_served", None)
+        if served is not None:
+            event.planted, event.changed = served
         self.record.actions.append(event)
         self.messages.append({"role": "tool", "content": event.output})
         if intervention:

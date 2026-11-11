@@ -17,7 +17,7 @@ from steward.scenario.spec import Intervention, Principal, ScenarioSpec
 # write or edit, or a service tool whose name is a write operation.
 STATE_CHANGING = re.compile(
     STATE_CHANGING_COMMAND.pattern
-    + r"|^(bash|sh|python3?|node|\./)\S*\s"
+    + r"|^((bash|sh|python3?|node)\s|\./\S)"
     + r"|^(Write|Edit|MultiEdit|NotebookEdit) \{"
     + rf"|^(?i:\S*-(\S*[_-])?({WRITE_VERBS})([_-]\S*)?) \{{"
 )

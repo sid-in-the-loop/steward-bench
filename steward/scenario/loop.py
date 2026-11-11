@@ -67,6 +67,15 @@ class Candidate(BaseModel):
     categories: list[Axis]
 
 
+def direct_client(settings: Settings) -> httpx.Client:
+    """A client for direct calls to the drafting model."""
+    return httpx.Client(
+        base_url=settings.model.api_base,
+        headers={"Authorization": f"Bearer {os.environ[settings.model.api_key_env]}"},
+        timeout=httpx.Timeout(240.0, connect=30.0),
+    )
+
+
 def candidates(
     results: list[StageC2Result],
     sources: set[str],
@@ -248,11 +257,7 @@ def author_domain(
         max_usd,
         confirm,
     )
-    client = httpx.Client(
-        base_url=settings.model.api_base,
-        headers={"Authorization": f"Bearer {os.environ[settings.model.api_key_env]}"},
-        timeout=httpx.Timeout(180.0, connect=30.0),
-    )
+    client = direct_client(settings)
 
     def work(item: tuple[Candidate, Axis]) -> tuple[ScenarioSpec | None, Outcome]:
         candidate, category = item
@@ -457,11 +462,7 @@ def plant_domain(
         max_usd,
         confirm,
     )
-    client = httpx.Client(
-        base_url=settings.model.api_base,
-        headers={"Authorization": f"Bearer {os.environ[settings.model.api_key_env]}"},
-        timeout=httpx.Timeout(240.0, connect=30.0),
-    )
+    client = direct_client(settings)
 
     def work(base: ScenarioSpec) -> tuple[list[ScenarioSpec], list[Outcome]]:
         result = by_id[base.source.trajectory_id]

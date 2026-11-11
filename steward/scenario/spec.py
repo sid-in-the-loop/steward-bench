@@ -171,14 +171,6 @@ class ReferenceExecution(Strict):
     expected_safety: float = Field(ge=0, le=1)
 
 
-class Drift(Strict):
-    """A fact the history relied on that has changed since, and an irrelevant change as control."""
-
-    command: str
-    announcement: str
-    control_command: str
-
-
 class PlantedStep(Strict):
     """A step added to the inherited history: something the user said earlier, or something the
     previous agent claimed or noted."""
@@ -190,14 +182,44 @@ class PlantedStep(Strict):
 
 class PlantedResult(Strict):
     """A change to the world since the history was written: actions matching the pattern now
-    get this result."""
+    get this result.
+
+    With `after_actions`, the change only takes effect once the agent has taken that many
+    actions. Until then a matching action gets `before`, what it returned while the world was
+    still as the history says, or the recorded result when `before` is not given.
+    """
 
     pattern: str
     result: str
+    after_actions: int = Field(default=0, ge=0)
+    before: str | None = None
 
     @model_validator(mode="after")
     def valid_pattern(self) -> PlantedResult:
         re.compile(self.pattern)
+        return self
+
+
+class WorldChange(Strict):
+    """What the changing-world arms of a scenario need.
+
+    Some planted results are the world having changed since the history was written (a
+    teammate pushed, an approval was withdrawn), as opposed to a tool simply failing. `changed`
+    lists those, by position in `planted_results`. Each must say what a matching action
+    returned before the change, so the same command answers in both worlds, and
+    `reveal_examples` gives at least two different ways of looking that show the change.
+    """
+
+    relied_on: str
+    announcement: str
+    harmful_action: str
+    changed: list[int] = Field(min_length=1)
+    reveal_examples: list[Action] = Field(min_length=2)
+    unrelated: PlantedResult
+
+    @model_validator(mode="after")
+    def valid_pattern(self) -> WorldChange:
+        re.compile(self.harmful_action)
         return self
 
 
@@ -231,7 +253,7 @@ class ScenarioSpec(Strict):
     reference_executions: list[ReferenceExecution] = Field(min_length=2)
     factors: list[Factor] = Field(default_factory=list)
     standing_instruction: str | None = None
-    drift: Drift | None = None
+    world_change: WorldChange | None = None
     provenance: Provenance
 
     @property
@@ -260,8 +282,18 @@ class ScenarioSpec(Strict):
         needs_instruction = {"instruction_recency", "context_compaction"} & set(self.factors)
         if needs_instruction and not self.standing_instruction:
             raise ValueError(f"{sorted(needs_instruction)} need a standing instruction")
-        if "environment_drift" in self.factors and self.drift is None:
-            raise ValueError("environment_drift needs its drift commands")
+        if "environment_drift" in self.factors and self.world_change is None:
+            raise ValueError("environment_drift needs a world_change block")
+        if self.world_change is not None:
+            for index in self.world_change.changed:
+                if not 0 <= index < len(self.planted_results):
+                    raise ValueError(f"world_change names planted result {index}, which is absent")
+                planted = self.planted_results[index]
+                if not planted.before or planted.before == planted.result:
+                    raise ValueError(
+                        f"planted result {index} is a world change, so it needs a `before` "
+                        "that differs from its result"
+                    )
         if "oversight_condition" in self.factors and self.oversight is None:
             raise ValueError("oversight_condition needs the reviewed and unreviewed messages")
         if self.design is not None:

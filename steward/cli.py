@@ -334,7 +334,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
     condition = Condition(
         instruction_recency=args.instruction_recency,
         principal_authority=args.principal_authority,
-        environment_drift=args.environment_drift,
+        world=args.world,
         oversight=args.oversight,
         history_tokens=args.history_tokens,
         max_turns=args.max_turns,
@@ -380,6 +380,18 @@ def cmd_plant(settings: Settings, args: argparse.Namespace) -> int:
     accepted = sum(o.accepted for o in outcomes)
     sessions = len({o.trajectory_id for o in outcomes})
     print(f"{args.domain}: {accepted} planted scenarios accepted across {sessions} sessions")
+    return 0
+
+
+def cmd_world(settings: Settings, args: argparse.Namespace) -> int:
+    """Give a domain's scenarios with planted results the changing-world arms."""
+    from steward.scenario import world
+
+    outcomes = world.world_domain(settings, args.domain, args.confirm, args.max_usd)
+    accepted = sum(o.accepted for o in outcomes)
+    print(f"{args.domain}: {accepted} of {len(outcomes)} scenarios have a world change")
+    for reason, count in world.reasons(outcomes).items():
+        print(f"  {count}  {reason[:160]}")
     return 0
 
 
@@ -504,9 +516,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--principal-authority", choices=["principal", "third_party"], default="principal"
     )
     sub.add_argument(
-        "--environment-drift",
-        choices=["unchanged", "silent", "announced", "irrelevant"],
-        default="unchanged",
+        "--world",
+        choices=["as_written", "unchanged", "silent", "announced", "midrun", "unrelated"],
+        default="as_written",
+        help="the state of the world relative to the history, for scenarios with a world change",
     )
     sub.add_argument(
         "--oversight",
@@ -532,6 +545,10 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask each session for one more scenario from the least used designs",
     )
+    sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
+    sub.add_argument("--max-usd", type=float, default=1.0)
+    sub = add("world", cmd_world, "add the changing-world arms to scenarios with planted results")
+    sub.add_argument("domain")
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
     add("scenario-report", cmd_scenario_report, "write reports/PHASE2.md from scenarios/")

@@ -148,11 +148,11 @@ def session_brief(
     return "\n".join(lines)
 
 
-def request_drafts(
+def request_reply(
     client: httpx.Client, model: str, prompt: str, brief: str, feedback: str = ""
-) -> tuple[list[Draft], dict[str, int]]:
-    """One direct call to the drafting model; returns its drafts and the token usage. The
-    reply is one draft, or an object with a `scenarios` list of them."""
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """One direct call to the drafting model; returns the JSON object in its reply and the
+    token usage."""
     user = brief if not feedback else f"{brief}\n\nYOUR PREVIOUS ANSWER FAILED:\n{feedback}"
     response = client.post(
         "/chat/completions",
@@ -168,9 +168,16 @@ def request_drafts(
     response.raise_for_status()
     body = response.json()
     text = body["choices"][0]["message"].get("content") or ""
-    reply = parse_reply(text)
+    return parse_reply(text), body.get("usage") or {}
+
+
+def request_drafts(
+    client: httpx.Client, model: str, prompt: str, brief: str, feedback: str = ""
+) -> tuple[list[Draft], dict[str, int]]:
+    """The drafts in one reply: a single draft, or an object with a `scenarios` list of them."""
+    reply, usage = request_reply(client, model, prompt, brief, feedback)
     drafts = reply["scenarios"] if isinstance(reply.get("scenarios"), list) else [reply]
-    return [Draft.model_validate(d) for d in drafts], body.get("usage") or {}
+    return [Draft.model_validate(d) for d in drafts], usage
 
 
 def parse_reply(text: str) -> dict[str, Any]:

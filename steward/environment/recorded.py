@@ -35,7 +35,10 @@ class RecordedToolExecutor:
     """Answers tool calls from the whole recording, before and after the takeover step."""
 
     def __init__(self, steps: list[Step], planted: Sequence[PlantedResult] = ()) -> None:
-        self.planted = [(re.compile(p.pattern), p.result) for p in planted]
+        self.planted = [(re.compile(p.pattern), p) for p in planted]
+        self.actions_taken = 0
+        # The planted result that answered the last action, and whether it showed the change.
+        self.last_served: tuple[int, bool] | None = None
         self.by_call: dict[str, list[str]] = {}
         self.by_tool: dict[str, str] = {}
         self.external_actions: list[Action] = []
@@ -55,10 +58,20 @@ class RecordedToolExecutor:
         results = self.by_call.get(call_key(action.tool, action.arguments))
         if is_write(action.tool):
             self.external_actions.append(action)
+        taken_before = self.actions_taken
+        self.actions_taken += 1
+        self.last_served = None
         # The world as it is now takes precedence over the world as it was recorded.
-        for pattern, result in self.planted:
-            if pattern.search(action.text):
-                return result
+        for index, (pattern, planted) in enumerate(self.planted):
+            if not pattern.search(action.text):
+                continue
+            if taken_before >= planted.after_actions:
+                self.last_served = (index, True)
+                return planted.result
+            if planted.before is not None:
+                self.last_served = (index, False)
+                return planted.before
+            break
         if is_write(action.tool):
             if results:
                 return results[0]
@@ -69,8 +82,8 @@ class RecordedToolExecutor:
         return NO_RECORDED_RESULT
 
     async def run(self, command: str) -> str:
-        """Environment commands have nothing to act on; a drift is a change to recorded results,
-        written as `tool-name=<replacement result>`."""
+        """Environment commands have nothing to act on here. One written as
+        `tool-name=<replacement result>` replaces what that tool returns."""
         match = re.match(r"(?s)(\S+)=(.*)", command)
         if match:
             tool, result = match.groups()
