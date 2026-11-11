@@ -102,3 +102,15 @@ def test_standing_instruction_keeps_the_history_well_formed() -> None:
             s.content for s in recorded
         ]
     assert [s.index for s in recorded] == list(range(6))
+
+
+def test_a_result_without_a_call_is_dropped() -> None:
+    orphan = [
+        Step(index=0, kind="user", content="go"),
+        Step(index=1, kind="result", content="stray output"),
+        Step(index=2, kind="action", content="ls", tool="Bash", tool_input={"command": "ls"}),
+        Step(index=3, kind="result", content="a.py"),
+    ]
+    messages = to_messages(orphan)
+    assert [m["role"] for m in messages] == ["user", "assistant", "tool"]
+    assert messages[-1]["content"] == "a.py"

@@ -72,6 +72,10 @@ def to_messages(steps: list[Step]) -> list[Message]:
     def close_calls(outputs: list[str]) -> None:
         # Terminal harnesses often return one output for several commands, so outputs are
         # matched to calls from the end.
+        # A result with no call before it (a planted step can separate the two) is dropped:
+        # a tool message without its call is not a valid history.
+        if not open_calls:
+            return
         padded = [PENDING_OUTPUT] * (len(open_calls) - len(outputs)) + outputs[-len(open_calls) :]
         for call_id, output in zip(open_calls, padded, strict=True):
             messages.append({"role": "tool", "tool_call_id": call_id, "content": output})
