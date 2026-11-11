@@ -270,9 +270,17 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
         return gate_container(settings, spec, settings.paths.data / "phase2" / "gating")
 
     eligible = None
+    latest_step: dict[str, int] = {}
     gate, compliant_actions, workers = loop.recorded_gate, None, 12
     if args.environment == "recorded_tools":
-        sources, environment_of = {"toolathlon"}, recorded_tools
+        # Workplace sessions act on hosted services; other sessions that cannot be rebuilt
+        # exactly can also run on their recorded tool results.
+        environment_of = recorded_tools
+        sources = (
+            {"toolathlon"}
+            if args.domain == "workplace"
+            else {"swe_chat", "dataclaw", "swe_together"}
+        )
     elif args.environment == "task_image":
         # The task's own solution is the compliant reference; references run in the container.
         sources, environment_of = {"terminal_bench"}, task_image
@@ -289,9 +297,13 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
     else:
         # Only sessions whose working tree rebuilds exactly at the takeover step.
         sources, environment_of = {"swe_chat", "dataclaw", "swe_together"}, repository
-        reports = read_jsonl(audit_path(settings), ReplayReport)
-        eligible = {
-            r.trajectory_id for r in reports if r.checked_out and r.edits_applied == r.edits
+        # A session with a mismatch is still exact before its first mismatching edit.
+        reports = [r for r in read_jsonl(audit_path(settings), ReplayReport) if r.checked_out]
+        eligible = {r.trajectory_id for r in reports}
+        latest_step = {
+            r.trajectory_id: r.first_mismatch_step
+            for r in reports
+            if r.first_mismatch_step is not None
         }
     outcomes = loop.author_domain(
         settings,
@@ -304,6 +316,7 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
         args.confirm,
         args.max_usd,
         eligible=eligible,
+        latest_step=latest_step,
         compliant_actions=compliant_actions,
         workers=workers,
     )

@@ -7,7 +7,7 @@ import os
 import re
 from collections import Counter
 from collections.abc import Callable, Mapping
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -62,19 +62,31 @@ class Candidate(BaseModel):
 
 
 def candidates(
-    results: list[StageC2Result], sources: set[str], tried: dict[str, set[str]]
+    results: list[StageC2Result],
+    sources: set[str],
+    tried: dict[str, set[str]],
+    latest_step: Mapping[str, int] | None = None,
 ) -> list[Candidate]:
     """Deep-read sessions from the given sources with a usable takeover step and a category
     scoring at least 2, strongest first.
 
     A session that was rejected before is repaired in order: a category it has not been tried
-    with, then its next takeover step.
+    with, then its next takeover step. `latest_step` gives, for sessions whose environment is
+    only faithful up to some step, the last step a takeover may use.
     """
     found = []
     for result in sorted(results, key=lambda r: (-selection_score(r), r.trajectory_id)):
         if result.source not in sources:
             continue
         step = best_candidate(result)
+        limit = (latest_step or {}).get(result.trajectory_id)
+        if limit is not None:
+            early = [
+                c
+                for c in result.output.jump_in_candidates
+                if not c.unsafe_precedent and c.step <= limit
+            ]
+            step = min(early, key=lambda c: c.step) if early else None
         categories = best_category(result)
         attempted = tried.get(result.trajectory_id, set())
         untried = [c for c in categories if c not in attempted]
@@ -176,6 +188,7 @@ def author_domain(
     confirm: bool,
     max_usd: float,
     eligible: set[str] | None = None,
+    latest_step: Mapping[str, int] | None = None,
     compliant_actions: list[Action] | None = None,
     workers: int = 12,
 ) -> list[Outcome]:
@@ -197,7 +210,11 @@ def author_domain(
     tried: dict[str, set[str]] = {}
     for outcome in read_jsonl(previous, Outcome) if previous.exists() else []:
         tried.setdefault(outcome.trajectory_id, set()).add(outcome.category)
-    pool = [c for c in candidates(results, sources, tried) if c.result.trajectory_id not in done]
+    pool = [
+        c
+        for c in candidates(results, sources, tried, latest_step)
+        if c.result.trajectory_id not in done
+    ]
     plan = allocate(pool)
     prompt = (settings.paths.prompts / "scenario_author.md").read_text()
     trajectories = {
@@ -246,10 +263,14 @@ def author_domain(
             compliant_actions,
         )
 
+    # Results are taken as they finish and recorded at once, so a slow session neither holds
+    # the others back nor loses their outcomes if the run is stopped.
     outcomes: list[Outcome] = []
     with ThreadPoolExecutor(max_workers=workers) as pool_executor:
-        for spec, outcome in pool_executor.map(work, plan):
+        for future in as_completed([pool_executor.submit(work, item) for item in plan]):
+            spec, outcome = future.result()
             outcomes.append(outcome)
+            append_jsonl(previous, [outcome])
             if spec is not None and have < target:
                 save_spec(settings.paths.scenarios, spec)
                 have += 1
@@ -262,7 +283,6 @@ def author_domain(
                 outcome.problems[:1],
             )
     record_spend(settings, outcomes)
-    append_jsonl(previous, outcomes)
     return outcomes
 
 

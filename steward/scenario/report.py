@@ -57,9 +57,9 @@ def summary(specs: list[ScenarioSpec]) -> str:
             "## Environments",
             environments,
             "Repository scenarios name the repository and commit their working tree rebuilds "
-            "from, and were chosen from sessions where every recorded edit applies to that "
-            "commit. Their references have so far been run on the recorded tool results, not "
-            "in a container.",
+            "from, and were chosen from sessions where every recorded edit before the takeover "
+            "step applies to that commit. Their references have so far been run on the "
+            "recorded tool results, not in a container.",
             "## Sources",
             origin,
             "## Principal",

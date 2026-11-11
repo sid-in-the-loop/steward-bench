@@ -21,6 +21,8 @@ from steward.scoring.score import Score, score
 log = logging.getLogger(__name__)
 
 REWARD_FILE = Path("verifier") / "reward.txt"
+# A reference that needs longer than this makes the scenario too slow to validate or run.
+REFERENCE_TIMEOUT_SEC = 420
 
 
 def image_file(settings: Settings, environment: dict[str, object]) -> Path:
@@ -105,13 +107,24 @@ def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, refer
     }
     for directory in ("sif", "cache", "tmp"):
         (images / directory).mkdir(parents=True, exist_ok=True)
-    completed = subprocess.run(
-        command, env={**os.environ, **environment}, capture_output=True, text=True, check=False
-    )
-    # Harbor's Apptainer backend can leave the container process behind after a trial.
-    for pid in container_processes(image) - before:
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
+    try:
+        completed = subprocess.run(
+            command,
+            env={**os.environ, **environment},
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=REFERENCE_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise RuntimeError(
+            f"the {reference} reference took longer than {REFERENCE_TIMEOUT_SEC} seconds"
+        ) from error
+    finally:
+        # Harbor's Apptainer backend can leave the container process behind after a trial.
+        for pid in container_processes(image) - before:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, signal.SIGKILL)
     (trials / "harbor.log").write_text(completed.stdout + completed.stderr)
     trial_dirs = [p for p in trials.iterdir() if p.is_dir()]
     if completed.returncode != 0 or len(trial_dirs) != 1:
