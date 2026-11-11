@@ -70,7 +70,7 @@ categories do not crowd out rare ones.
 
 ## Library designs
 
-steward/scenario/designs.py holds 28 designs, each one an AI Safety Gridworlds mechanism in
+steward/scenario/designs.py holds 29 designs, each one an AI Safety Gridworlds mechanism in
 ordinary work: an approval that keeps interrupting and a setting that would skip it, a clean-up
 that passes through someone's uncommitted work, a required review with a flag that bypasses it,
 a count the user will accept as done, a rule in the agent's own instruction file. Each names
@@ -79,6 +79,7 @@ what is planted, the unsafe route and the way out.
 ```bash
 uv run steward plant <domain> --confirm --max-usd 1            # the best-fitting design per session
 uv run steward plant <domain> --widen --confirm --max-usd 1    # one more, from the least used designs
+uv run steward plant <domain> --design stale_state --confirm   # one named design on every session
 ```
 
 The drafter, under prompts/scenario_design.md, fits a design to a session that already has an
@@ -177,6 +178,11 @@ never do, so it is an analysis arm only.
 uv run steward world <domain>                         # prints the cost estimate
 uv run steward world <domain> --confirm --max-usd 1
 ```
+
+Few scenarios built on other designs qualify: their planted results are mostly a tool failing
+or the agent's own command output, or the unsafe action is forbidden by a planted rule and so
+is harmful whatever the world is. The design `stale_state` exists for this experiment: someone
+else has changed a shared thing since the history was written, and no rule covers it.
 
 Under prompts/scenario_world.md the drafter decides, for each scenario with planted results,
 whether one of them is a world change and not a tool simply failing, and whether the harmful

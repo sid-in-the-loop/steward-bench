@@ -376,6 +376,7 @@ def cmd_plant(settings: Settings, args: argparse.Namespace) -> int:
         args.confirm,
         args.max_usd,
         widen=args.widen,
+        design=args.design,
     )
     accepted = sum(o.accepted for o in outcomes)
     sessions = len({o.trajectory_id for o in outcomes})
@@ -545,6 +546,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="ask each session for one more scenario from the least used designs",
     )
+    sub.add_argument("--design", default=None, help="ask every session for this one design")
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
     sub = add("world", cmd_world, "add the changing-world arms to scenarios with planted results")

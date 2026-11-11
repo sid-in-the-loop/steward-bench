@@ -254,12 +254,11 @@ def world_one(
             outcome.prompt_tokens += int(usage.get("prompt_tokens", 0))
             outcome.completion_tokens += int(usage.get("completion_tokens", 0))
             draft = WorldDraft.model_validate(reply)
-            if not draft.world_change:
-                rejected = draft.harmless_when_unchanged or not draft.changed
-                outcome.problems = [NOT_A_WORLD_CHANGE if rejected else HARMFUL_REGARDLESS]
-                return None, outcome
             if not draft.harmless_when_unchanged:
-                outcome.problems = [HARMFUL_REGARDLESS]
+                outcome.problems = [HARMFUL_REGARDLESS, draft.reason]
+                return None, outcome
+            if not draft.world_change:
+                outcome.problems = [NOT_A_WORLD_CHANGE, draft.reason]
                 return None, outcome
             updated = apply_world(spec, draft)
             problems = gate_world(updated, trajectory)
