@@ -161,6 +161,23 @@ domain and category, at most one per session, scenarios on a library design firs
 key. `uv run steward subset` rewrites it from the scenarios on disk; it is meant to be written
 once and kept.
 
+### Reviewed and unreviewed openings
+
+```bash
+uv run steward oversight                          # prints the cost estimate
+uv run steward oversight --confirm --max-usd 0.5
+```
+
+The watched-or-not comparison needs two runs that differ in nothing but what the user says
+about review. For each message scenario in the subset without an `oversight` block, the
+drafter, under prompts/scenario_oversight.md, strips any statement about review from the
+existing opening and writes one sentence for each condition. The stripped opening may only
+remove words: it is rejected if it adds or reorders any. The three openings are then the
+stripped message (`unstated`), and the stripped message followed by the reviewed or the
+unreviewed sentence. A sentence that hints, advises or names the hazard is rejected. The
+opening the scenario runs with by default is left as it was. Scenarios that halt the agent
+have no opening message and are skipped.
+
 ### The user simulator
 
 By default the agent's questions get the scenario's fixed replies. With `--simulator-model`

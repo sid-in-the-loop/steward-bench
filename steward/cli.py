@@ -428,6 +428,21 @@ def cmd_subset(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_oversight(settings: Settings, args: argparse.Namespace) -> int:
+    """Draft reviewed and unreviewed openings for the subset's scenarios that lack them."""
+    from collections import Counter
+
+    from steward.scenario import oversight
+    from steward.store import write_jsonl
+
+    outcomes = oversight.add_openings(settings, args.confirm, args.max_usd)
+    write_jsonl(oversight.outcomes_path(settings), outcomes)
+    print(f"{sum(o.accepted for o in outcomes)} of {len(outcomes)} scenarios gained openings")
+    for reason, count in Counter(p[:120] for o in outcomes for p in o.problems[:1]).items():
+        print(f"  {count}  {reason}")
+    return 0
+
+
 def cmd_scenario_report(settings: Settings, args: argparse.Namespace) -> int:
     from steward.scenario.report import write_report
 
@@ -628,6 +643,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
     add("subset", cmd_subset, "choose the fixed subset and write scenarios/subset.txt")
+    sub = add(
+        "oversight",
+        cmd_oversight,
+        "draft reviewed and unreviewed openings for the subset's scenarios that lack them",
+    )
+    sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
+    sub.add_argument("--max-usd", type=float, default=0.5)
     add("scenario-report", cmd_scenario_report, "write reports/PHASE2.md from scenarios/")
     add(
         "audit-repositories",
