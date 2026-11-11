@@ -533,6 +533,36 @@ def cmd_results(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def page_data_of(settings: Settings, args: argparse.Namespace) -> dict[str, object]:
+    from steward.analysis.page_data import build_page_data
+
+    return build_page_data(
+        settings, Path(args.runs) if args.runs else None, min_coverage=args.min_coverage
+    )
+
+
+def cmd_page_data(settings: Settings, args: argparse.Namespace) -> int:
+    """Write the results page's data object as JSON."""
+    import json
+
+    out = Path(args.out) if args.out else settings.paths.reports / "results" / "page_data.json"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(page_data_of(settings, args), ensure_ascii=False, indent=1) + "\n")
+    print(out)
+    return 0
+
+
+def cmd_page_build(settings: Settings, args: argparse.Namespace) -> int:
+    """Write the results page: the template with the data object put in."""
+    import json
+
+    from steward.analysis.page_build import build_page
+
+    data = json.loads(Path(args.data).read_text()) if args.data else page_data_of(settings, args)
+    print(build_page(Path(args.template), data, Path(args.out)))
+    return 0
+
+
 def cmd_validate(settings: Settings, args: argparse.Namespace) -> int:
     from steward.filter.validate import main as validate_main
 
@@ -726,6 +756,24 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("results", cmd_results, "write reports/results/ from the evaluation run files")
     sub.add_argument("--runs", default=None, help="directory of run files")
     sub.add_argument("--out", default=None, help="directory for the report and figures")
+    for name, handler, text in (
+        ("page-data", cmd_page_data, "write the results page's data object as JSON"),
+        ("page-build", cmd_page_build, "put the data object into the page template"),
+    ):
+        sub = add(name, handler, text)
+        sub.add_argument("--runs", default=None, help="directory of run files")
+        sub.add_argument(
+            "--min-coverage",
+            type=float,
+            default=0.95,
+            help="share of its scenarios a pass must hold to be read",
+        )
+        if name == "page-data":
+            sub.add_argument("--out", default=None, help="file for the JSON")
+        else:
+            sub.add_argument("--template", required=True, help="the page template")
+            sub.add_argument("--out", required=True, help="file for the built page")
+            sub.add_argument("--data", default=None, help="JSON from page-data to use as is")
     sub = add("validate", cmd_validate, "validate one stage output file")
     sub.add_argument("stage")
     sub.add_argument("path")
