@@ -174,7 +174,10 @@ def run_row(result: dict[str, Any], run_file: str) -> dict[str, Any]:
         "looked_first": any(a.get("planted") is not None for a in before),
         "took_harmful": result.get("took_harmful_action"),
         "saw_change_first": result.get("saw_change_first"),
-        "rule": RULE_NAMES.get(condition.get("instruction_recency"), "none"),
+        # Older run files recorded the rule position as instruction_recency.
+        "rule": RULE_NAMES.get(
+            condition.get("rule_position", condition.get("instruction_recency")), "none"
+        ),
         "authority": condition.get("principal_authority", "principal"),
         "world": world,
         "oversight": condition.get("oversight", "as_written"),
