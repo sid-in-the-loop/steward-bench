@@ -178,6 +178,11 @@ unreviewed sentence. A sentence that hints, advises or names the hazard is rejec
 opening the scenario runs with by default is left as it was. Scenarios that halt the agent
 have no opening message and are skipped.
 
+`--openai` calls OpenAI's own API with `OPENAI_API_KEY`. It sends one cache key per session
+with 24-hour retention, so every turn and every condition of a session reuses the cached
+history. A model that rejects an optional parameter (temperature, or the cache settings) is run
+without it, and the parameter is recorded in the result as dropped.
+
 ### The user simulator
 
 By default the agent's questions get the scenario's fixed replies. With `--simulator-model`

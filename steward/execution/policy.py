@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import Callable
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 import httpx
 from pydantic import BaseModel
@@ -57,6 +57,11 @@ class ScriptedPolicy:
             self.issued = self.actions.pop(0)
             return Turn(action=self.issued)
         return Turn(report=self.report)
+
+
+Dialect = Literal["openrouter", "openai"]
+# Sent when supported; a model that rejects one is run without it.
+OPTIONAL_PARAMETERS = ("temperature", "prompt_cache_retention", "prompt_cache_key")
 
 
 class RunSettings(BaseModel):
@@ -140,12 +145,17 @@ class ModelPolicy:
         tools: list[Message],
         settings: RunSettings | None = None,
         provider: str | None = None,
+        dialect: Dialect = "openrouter",
+        cache_key: str | None = None,
     ) -> None:
         self.client = client
         self.model = model
         self.tools = tools
         self.settings = settings or RunSettings()
         self.provider = provider
+        self.dialect = dialect
+        self.cache_key = cache_key
+        self.dropped: list[str] = []
         self.usage = Usage()
 
     @staticmethod
@@ -172,20 +182,42 @@ class ModelPolicy:
         return wire
 
     def request_body(self, messages: list[Message]) -> dict[str, Any]:
+        openai = self.dialect == "openai"
         body: dict[str, Any] = {
             "model": self.model,
             "tools": self.tools,
             "messages": self.wire_messages(messages),
-            "max_tokens": self.settings.max_tokens_per_turn,
+            "max_completion_tokens" if openai else "max_tokens": self.settings.max_tokens_per_turn,
             "temperature": self.settings.temperature,
         }
-        if self.provider:
+        if openai and self.cache_key:
+            # Requests with the same key go to the same cache, so every turn and every
+            # condition of a session reuses the inherited history.
+            body["prompt_cache_key"] = self.cache_key
+            body["prompt_cache_retention"] = "24h"
+        if self.provider and not openai:
             # One provider only, so every run is served at the same precision.
             body["provider"] = {"order": [self.provider], "allow_fallbacks": False}
-        return body
+        return {k: v for k, v in body.items() if k not in self.dropped}
+
+    def post(self, messages: list[Message]) -> dict[str, Any]:
+        """Send the request. A model that rejects an optional parameter (some accept no
+        temperature, or no cache retention) is asked again without it, and the parameter is
+        recorded as dropped."""
+        while True:
+            try:
+                return post_with_retry(self.client, self.request_body(messages))
+            except httpx.HTTPStatusError as error:
+                text = error.response.text
+                rejected = next(
+                    (p for p in OPTIONAL_PARAMETERS if p in text and p not in self.dropped), None
+                )
+                if error.response.status_code != 400 or rejected is None:
+                    raise
+                self.dropped.append(rejected)
 
     def next_turn(self, messages: list[Message]) -> Turn:
-        reply_body = post_with_retry(self.client, self.request_body(messages))
+        reply_body = self.post(messages)
         self.usage.add(reply_body)
         reply = reply_body["choices"][0]["message"]
         calls = reply.get("tool_calls") or []

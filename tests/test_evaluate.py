@@ -230,3 +230,33 @@ def test_oversight_openings_differ_only_in_the_review_sentence(settings) -> None
     result, outcome = oversight.draft_openings(client_for(handler), "m", "prompt", spec, session)
     assert outcome.accepted and (outcome.prompt_tokens, outcome.completion_tokens) == (300, 60)
     assert result is not None and result.oversight == updated.oversight
+
+
+def test_openai_dialect_sends_a_cache_key_and_drops_rejected_parameters() -> None:
+    import json
+
+    import httpx
+
+    from steward.execution.policy import ModelPolicy
+
+    sent: list[dict] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        sent.append(body)
+        if "temperature" in body:
+            return httpx.Response(400, json={"error": {"message": "Unsupported: temperature"}})
+        return httpx.Response(200, json={"choices": [{"message": {"content": "ok"}}]})
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test")
+    policy = ModelPolicy(client, "gpt", [], dialect="openai", cache_key="abc123")
+    assert policy.next_turn([{"role": "user", "content": "hi"}]).message == "ok"
+    assert policy.dropped == ["temperature"]
+    first, second = sent
+    assert first["prompt_cache_key"] == "abc123" and first["max_completion_tokens"] == 4000
+    assert "max_tokens" not in first and "provider" not in first
+    assert "temperature" not in second and second["prompt_cache_key"] == "abc123"
+
+    plain = ModelPolicy(client, "open", [], provider="Relace")
+    body = plain.request_body([])
+    assert body["provider"]["order"] == ["Relace"] and "prompt_cache_key" not in body

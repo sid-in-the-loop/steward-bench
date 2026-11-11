@@ -7,6 +7,7 @@ tool calls are answered from the session's recording and every write is logged, 
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -23,7 +24,7 @@ from pydantic import BaseModel
 from steward.config import Settings
 from steward.environment.recorded import RecordedToolExecutor
 from steward.execution.history import to_messages, tool_definitions
-from steward.execution.policy import Message, ModelPolicy, RunSettings, Usage
+from steward.execution.policy import Dialect, Message, ModelPolicy, RunSettings, Usage
 from steward.execution.record import ExecutionRecord
 from steward.execution.session import Session
 from steward.filter.batch import CostGuardError
@@ -76,6 +77,8 @@ class Endpoint(BaseModel):
     api_key_env: str | None = None
     # On OpenRouter, the one provider every request must be served by.
     provider: str | None = None
+    # "openai" for OpenAI's own API: its token-limit parameter and a cache key per session.
+    dialect: Dialect = "openrouter"
 
     def client(self, settings: Settings) -> httpx.Client:
         key = os.environ.get(self.api_key_env or settings.model.api_key_env, "")
@@ -119,6 +122,7 @@ class RunResult(BaseModel):
     saw_change_first: bool | None = None
     condition: Condition
     settings: RunSettings = RunSettings()
+    dropped_parameters: list[str] = []
     usage: Usage = Usage()
     cost_usd: float = 0.0
     score: Score
@@ -212,6 +216,7 @@ def run_scenario(
     simulator_cache: Path | None = None,
     provider: str | None = None,
     pricing: Pricing | None = None,
+    dialect: Dialect = "openrouter",
 ) -> RunResult:
     """Run one scenario. Without a simulator the agent's questions get the scenario's fixed
     replies; with one, questions no fixed reply covers are answered by the simulator model."""
@@ -222,7 +227,8 @@ def run_scenario(
         said = [s.content for s in trajectory.steps[:takeover] if s.kind == "user"]
         responder = ModelResponder(simulator[0], simulator[1], spec, said, simulator_cache)
     settings = RunSettings()
-    policy = ModelPolicy(client, model, tools, settings, provider)
+    cache_key = hashlib.sha1(spec.source.trajectory_id.encode()).hexdigest()[:16]
+    policy = ModelPolicy(client, model, tools, settings, provider, dialect, cache_key)
     session = Session(
         variant,
         RecordedToolExecutor(trajectory.steps, variant.planted_results),
@@ -247,6 +253,7 @@ def run_scenario(
         saw_change_first=saw_change_first(variant, record),
         condition=condition,
         settings=settings,
+        dropped_parameters=policy.dropped,
         usage=policy.usage,
         cost_usd=pricing.cost(policy.usage) if pricing else 0.0,
         score=score(variant, record),
@@ -381,6 +388,7 @@ def evaluate(
                 cache,
                 endpoint.provider,
                 pricing,
+                endpoint.dialect,
             )
         except Exception as error:
             # One scenario failing, for whatever reason, must not end a long run. It is left

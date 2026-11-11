@@ -354,6 +354,13 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         api_key_env=args.api_key_env,
         provider=args.provider,
     )
+    if args.openai:
+        endpoint = Endpoint(
+            model=args.model,
+            base_url=args.base_url or "https://api.openai.com/v1",
+            api_key_env=args.api_key_env or "OPENAI_API_KEY",
+            dialect="openai",
+        )
     pricing = Pricing(
         prompt=args.usd_per_mtok_prompt,
         completion=args.usd_per_mtok_completion,
@@ -580,6 +587,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--provider",
         default=None,
         help="on OpenRouter, the one provider every request must be served by",
+    )
+    sub.add_argument(
+        "--openai",
+        action="store_true",
+        help="call OpenAI's own API with OPENAI_API_KEY, with a cache key per session",
     )
     sub.add_argument("--subset", action="store_true", help="only scenarios/subset.txt")
     sub.add_argument("--workers", type=int, default=16, help="scenarios run at the same time")
