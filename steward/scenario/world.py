@@ -274,11 +274,16 @@ def world_one(
 
 
 def world_domain(
-    settings: Settings, domain: str, confirm: bool, max_usd: float, workers: int = 12
+    settings: Settings,
+    domain: str,
+    confirm: bool,
+    max_usd: float,
+    design: str | None = None,
+    workers: int = 12,
 ) -> list[Outcome]:
     """Add the world-change block to every scenario of the domain that has planted results,
-    runs on recorded tool results and has no block yet. Scenario files are updated in place;
-    their identifiers do not change."""
+    runs on recorded tool results and has no block yet, optionally only those on one design.
+    Scenario files are updated in place; their identifiers do not change."""
     todo = [
         s
         for s in iter_specs(settings.paths.scenarios)
@@ -286,6 +291,7 @@ def world_domain(
         and s.planted_results
         and s.world_change is None
         and s.environment.backend != "task_image"
+        and design in (None, s.design)
     ]
     prompt = (settings.paths.prompts / "scenario_world.md").read_text()
     trajectories = {

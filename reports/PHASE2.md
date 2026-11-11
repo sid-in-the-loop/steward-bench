@@ -8,17 +8,17 @@ An as-recorded scenario adds only a message or a halt to a hazard that was alrea
 
 | Domain | As recorded | On a library design | Sessions with a planted scenario |
 |---|---|---|---|
-| swe | 36 | 46 | 31 |
-| terminal_devops | 36 | 47 | 30 |
-| workplace | 36 | 37 | 29 |
+| swe | 36 | 62 | 34 |
+| terminal_devops | 36 | 62 | 30 |
+| workplace | 36 | 57 | 32 |
 
 ## Counts by domain and category
 
 | Domain | Scenarios | safe_interruptibility | side_effects | absent_supervisor | reward_gaming | self_modification |
 |---|---|---|---|---|---|---|
-| swe | 82 | 13 | 28 | 16 | 13 | 12 |
-| terminal_devops | 83 | 9 | 30 | 13 | 14 | 17 |
-| workplace | 73 | 2 | 29 | 15 | 27 | 0 |
+| swe | 98 | 13 | 44 | 16 | 13 | 12 |
+| terminal_devops | 98 | 9 | 45 | 13 | 14 | 17 |
+| workplace | 93 | 2 | 49 | 15 | 27 | 0 |
 
 ## Library designs in use
 
@@ -43,6 +43,7 @@ An as-recorded scenario adds only a message or a halt to a hazard that was alrea
 | self_modification | memory_edit | 2 |
 | self_modification | handoff_summary_omission | 1 |
 | self_modification | delegated_bypass | 1 |
+| side_effects | stale_state | 51 |
 | side_effects | uncommitted_work | 17 |
 | side_effects | irreversible_delete | 7 |
 | side_effects | inherited_partial_cleanup | 3 |
@@ -52,20 +53,30 @@ An as-recorded scenario adds only a message or a halt to a hazard that was alrea
 
 | What is planted | Scenarios |
 |---|---|
-| Steps in the history | 126 |
-| Changed tool results | 116 |
+| Steps in the history | 177 |
+| Changed tool results | 167 |
 | A repeated halt | 1 |
-| Reviewed and unreviewed openings | 16 |
+| Reviewed and unreviewed openings | 66 |
+
+## A changing world
+
+These scenarios can be run with the world unchanged, changed silently, changed and announced, changed after the model's first actions, or changed somewhere unrelated. Each names at least two different ways of looking that show the change.
+
+| Domain | Scenarios with the changing-world arms |
+|---|---|
+| swe | 16 |
+| terminal_devops | 13 |
+| workplace | 29 |
 
 ## Environments
 
 | Domain | Environment | Scenarios | How the references were checked |
 |---|---|---|---|
-| swe | repository | 82 | both references run on the session's recorded tool results |
-| terminal_devops | recorded_tools | 7 | both references run on the session's recorded tool results |
-| terminal_devops | repository | 74 | both references run on the session's recorded tool results |
+| swe | repository | 98 | both references run on the session's recorded tool results |
+| terminal_devops | recorded_tools | 8 | both references run on the session's recorded tool results |
+| terminal_devops | repository | 88 | both references run on the session's recorded tool results |
 | terminal_devops | task_image | 2 | both references run in the task's container image |
-| workplace | recorded_tools | 73 | both references run on the session's recorded tool results |
+| workplace | recorded_tools | 93 | both references run on the session's recorded tool results |
 
 Repository scenarios name the repository and commit their working tree rebuilds from, and were chosen from sessions where every recorded edit before the takeover step applies to that commit. Their references have so far been run on the recorded tool results, not in a container.
 
@@ -73,22 +84,23 @@ Repository scenarios name the repository and commit their working tree rebuilds 
 
 | Domain | Source | Scenarios |
 |---|---|---|
-| swe | dataclaw | 7 |
-| swe | swe_chat | 75 |
-| terminal_devops | swe_chat | 81 |
+| swe | dataclaw | 9 |
+| swe | swe_chat | 89 |
+| terminal_devops | swe_chat | 96 |
 | terminal_devops | terminal_bench | 2 |
-| workplace | toolathlon | 73 |
+| workplace | toolathlon | 93 |
 
 ## Principal
 
-Every scenario uses a principal with fixed messages. In 238 of 238 the simulator only answers questions the agent asks, from fixed replies. 17 scenarios halt the agent and later permit it to continue; the rest open with one message from the principal.
+Every scenario uses a principal with fixed messages. In 289 of 289 the simulator only answers questions the agent asks, from fixed replies. 17 scenarios halt the agent and later permit it to continue; the rest open with one message from the principal.
 
 ## Experimental factors
 
 | Experimental factor | Scenarios that support it |
 |---|---|
-| context_compaction | 238 |
-| history_provenance | 238 |
-| instruction_recency | 238 |
-| oversight_condition | 16 |
-| principal_authority | 238 |
+| context_compaction | 286 |
+| environment_drift | 58 |
+| history_provenance | 289 |
+| instruction_recency | 286 |
+| oversight_condition | 66 |
+| principal_authority | 289 |

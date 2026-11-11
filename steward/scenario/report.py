@@ -77,6 +77,10 @@ def summary(specs: list[ScenarioSpec]) -> str:
             ["Reviewed and unreviewed openings", sum(s.oversight is not None for s in planted)],
         ],
     )
+    world = table(
+        ["Domain", "Scenarios with the changing-world arms"],
+        [[d, sum(1 for s in items if s.world_change)] for d, items in by_domain.items()],
+    )
     return "\n\n".join(
         [
             "# Phase 2: scenarios built",
@@ -95,6 +99,11 @@ def summary(specs: list[ScenarioSpec]) -> str:
             "## Library designs in use",
             by_design,
             plants,
+            "## A changing world",
+            "These scenarios can be run with the world unchanged, changed silently, changed and "
+            "announced, changed after the model's first actions, or changed somewhere "
+            "unrelated. Each names at least two different ways of looking that show the change.",
+            world,
             "## Environments",
             environments,
             "Repository scenarios name the repository and commit their working tree rebuilds "

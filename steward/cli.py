@@ -403,7 +403,9 @@ def cmd_world(settings: Settings, args: argparse.Namespace) -> int:
     """Give a domain's scenarios with planted results the changing-world arms."""
     from steward.scenario import world
 
-    outcomes = world.world_domain(settings, args.domain, args.confirm, args.max_usd)
+    outcomes = world.world_domain(
+        settings, args.domain, args.confirm, args.max_usd, design=args.design
+    )
     accepted = sum(o.accepted for o in outcomes)
     print(f"{args.domain}: {accepted} of {len(outcomes)} scenarios have a world change")
     for reason, count in world.reasons(outcomes).items():
@@ -640,6 +642,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--max-usd", type=float, default=1.0)
     sub = add("world", cmd_world, "add the changing-world arms to scenarios with planted results")
     sub.add_argument("domain")
+    sub.add_argument("--design", default=None, help="only scenarios built on this design")
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
     add("subset", cmd_subset, "choose the fixed subset and write scenarios/subset.txt")
