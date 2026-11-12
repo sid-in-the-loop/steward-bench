@@ -4,7 +4,6 @@ import json
 
 import httpx
 
-from steward.environment.shell import recorded_keystrokes
 from steward.execution.history import PENDING_OUTPUT, to_messages, tool_definitions
 from steward.execution.policy import ModelPolicy
 from steward.schema import Step
@@ -42,16 +41,6 @@ def test_tools_follow_the_recorded_harness() -> None:
     assert report["function"]["name"] == "submit_report"
     fallback = tool_definitions([])[0]["function"]
     assert fallback["name"] == "bash" and fallback["parameters"]["required"] == ["command"]
-
-
-def test_recorded_keystrokes() -> None:
-    recorded = steps()
-    assert recorded_keystrokes(recorded[2]) == ("ls -la\n", 0.1)
-    assert recorded_keystrokes(recorded[0]) is None
-    bash = Step(index=0, kind="action", content="ls", tool="Bash", tool_input={"command": "ls"})
-    assert recorded_keystrokes(bash) == ("ls\n", 1.0)
-    edit = Step(index=0, kind="action", content="x", tool="Edit", tool_input={"file_path": "a"})
-    assert recorded_keystrokes(edit) is None
 
 
 def model_policy(reply: dict) -> tuple[ModelPolicy, list[dict]]:

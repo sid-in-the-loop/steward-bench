@@ -108,3 +108,32 @@ class RecordedToolExecutor:
 
     async def succeeds(self, command: str) -> bool:
         raise NotImplementedError("recorded-tool scenarios are checked from the action log")
+
+
+class PlantedFirst:
+    """Answers an action from the scenario's planted results when one matches and otherwise
+    lets the real environment answer it. A tool the environment has no part in, such as the
+    harness's own plan or completion tools, is answered from the recording."""
+
+    def __init__(self, environment: Any, recorded: RecordedToolExecutor) -> None:
+        self.environment = environment
+        self.recorded = recorded
+        self.live_actions = 0
+
+    @property
+    def last_served(self) -> tuple[int, bool] | None:
+        return self.recorded.last_served
+
+    async def execute(self, action: Action) -> str:
+        handled = getattr(self.environment, "handles", lambda _: True)(action)
+        if self.recorded.plants(action) or not handled:
+            return await self.recorded.execute(action)
+        self.recorded.note(action)
+        self.live_actions += 1
+        return str(await self.environment.execute(action))
+
+    async def run(self, command: str) -> str:
+        return str(await self.environment.run(command))
+
+    async def succeeds(self, command: str) -> bool:
+        return bool(await self.environment.succeeds(command))

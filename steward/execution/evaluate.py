@@ -1,7 +1,9 @@
 """Run a model over scenarios: build the inherited history, continue from it, and score.
 
-Scenarios on the recorded-tool emulator and repository scenarios run in process; the model's
-tool calls are answered from the session's recording and every write is logged, not sent.
+Scenarios on the recorded-tool emulator and repository scenarios run in process. By default the
+model's tool calls are answered from the session's recording and every write is logged, not
+sent. In a live run its shell and file tools act on a rebuilt copy of the session's
+environment, and a scenario built on a task image runs inside that image.
 """
 
 from __future__ import annotations
@@ -15,6 +17,7 @@ import re
 import shutil
 import tempfile
 import threading
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from datetime import UTC, datetime
 from pathlib import Path
@@ -38,7 +41,7 @@ from steward.environment.workspace import (
 from steward.execution.history import to_messages, tool_definitions
 from steward.execution.policy import Dialect, Message, ModelPolicy, RunSettings, Usage
 from steward.execution.record import ExecutionRecord
-from steward.execution.session import Session
+from steward.execution.session import Executor, Session
 from steward.filter.batch import CostGuardError
 from steward.filter.render import estimate_tokens
 from steward.filter.selection import load_by_ids
@@ -66,6 +69,8 @@ from steward.store import append_jsonl
 log = logging.getLogger(__name__)
 
 IN_PROCESS_BACKENDS = ("recorded_tools", "repository")
+# Re-running a long recorded prefix and then the model's own turns in a task container.
+TASK_IMAGE_TIMEOUT_SEC = 3600
 
 
 class Condition(BaseModel):
@@ -143,6 +148,9 @@ class RunResult(BaseModel):
     history_messages: int
     history_truncated: bool
     live_actions: int | None = None
+    # For a run in a task container: the share of re-run prefix commands whose output
+    # matched the recording.
+    replay_fidelity: float | None = None
     record: ExecutionRecord
 
 
@@ -271,6 +279,14 @@ def live_workspace(
     return copy_workspace(workspace, Path(tempfile.mkdtemp(prefix="steward-run-")) / "workspace")
 
 
+class RunRequest(BaseModel):
+    """What a run inside a task container needs to call the model."""
+
+    endpoint: Endpoint
+    condition: Condition
+    pricing: Pricing | None = None
+
+
 def run_scenario(
     client: httpx.Client,
     model: str,
@@ -285,8 +301,48 @@ def run_scenario(
     workspace: Workspace | None = None,
     image: Path | None = None,
 ) -> RunResult:
-    """Run one scenario. Without a simulator the agent's questions get the scenario's fixed
-    replies; with one, questions no fixed reply covers are answered by the simulator model."""
+    """Run one scenario in process. Without a simulator the agent's questions get the
+    scenario's fixed replies; with one, questions no fixed reply covers are answered by the
+    simulator model."""
+
+    def executor(recorded: RecordedToolExecutor) -> Executor:
+        if workspace is None or image is None:
+            return recorded
+        live = WorkplaceExecutor if workspace.mount == MOUNT else LiveExecutor
+        return live(workspace, recorded, image)
+
+    return asyncio.run(
+        continue_scenario(
+            client,
+            model,
+            spec,
+            trajectory,
+            condition,
+            executor,
+            simulator,
+            simulator_cache,
+            provider,
+            pricing,
+            dialect,
+        )
+    )
+
+
+async def continue_scenario(
+    client: httpx.Client,
+    model: str,
+    spec: ScenarioSpec,
+    trajectory: Trajectory,
+    condition: Condition,
+    executor_for: Callable[[RecordedToolExecutor], Executor],
+    simulator: tuple[httpx.Client, str] | None = None,
+    simulator_cache: Path | None = None,
+    provider: str | None = None,
+    pricing: Pricing | None = None,
+    dialect: Dialect = "openrouter",
+) -> RunResult:
+    """Hand the model the inherited history and let it continue in the environment that
+    `executor_for` returns, given the emulator of the session's recorded results."""
     variant, messages, tools, truncated = prepare(spec, trajectory, condition)
     responder: ScriptedResponder | ModelResponder = ScriptedResponder(spec.principal)
     if simulator is not None:
@@ -296,11 +352,7 @@ def run_scenario(
     settings = RunSettings()
     cache_key = hashlib.sha1(spec.source.trajectory_id.encode()).hexdigest()[:16]
     policy = ModelPolicy(client, model, tools, settings, provider, dialect, cache_key)
-    recorded = RecordedToolExecutor(trajectory.steps, variant.planted_results)
-    executor: RecordedToolExecutor | LiveExecutor | WorkplaceExecutor = recorded
-    if workspace is not None and image is not None:
-        live = WorkplaceExecutor if workspace.mount == MOUNT else LiveExecutor
-        executor = live(workspace, recorded, image)
+    executor = executor_for(RecordedToolExecutor(trajectory.steps, variant.planted_results))
     session = Session(
         variant,
         executor,
@@ -309,7 +361,7 @@ def run_scenario(
         history=messages,
         max_turns=condition.max_turns,
     )
-    record = asyncio.run(session.run())
+    record = await session.run()
     simulated = responder.simulated if isinstance(responder, ModelResponder) else 0
     replaced = responder.replaced if isinstance(responder, ModelResponder) else 0
     return RunResult(
@@ -336,6 +388,41 @@ def run_scenario(
     )
 
 
+def run_in_task_image(
+    settings: Settings,
+    endpoint: Endpoint,
+    spec: ScenarioSpec,
+    trajectory: Trajectory,
+    condition: Condition,
+    pricing: Pricing,
+) -> RunResult:
+    """Run one scenario inside its task's own container: the recorded prefix is re-run there,
+    the model continues in the same terminal, and the task's verifier decides the task score."""
+    from steward.execution.harbor_agent import RESULT_FILE
+    from steward.scenario.compile import full_reward, run_trial, with_reward
+    from steward.scenario.spec import spec_path
+
+    request = RunRequest(endpoint=endpoint, condition=condition, pricing=pricing)
+    name = f"{endpoint.model.replace('/', '_')}-{os.getpid()}-{threading.get_ident()}"
+    request_file = settings.paths.trials / spec.key / f"{name}.request.json"
+    request_file.parent.mkdir(parents=True, exist_ok=True)
+    request_file.write_text(request.model_dump_json())
+    trajectory_file = request_file.with_name("trajectory.json")
+    if not trajectory_file.exists():
+        trajectory_file.write_text(trajectory.model_dump_json())
+    options = {
+        "spec_path": str(spec_path(settings.paths.scenarios, spec)),
+        "request_path": str(request_file),
+        "trajectory_path": str(trajectory_file),
+    }
+    trial = run_trial(settings, spec, name, options, timeout_sec=TASK_IMAGE_TIMEOUT_SEC)
+    result = RunResult.model_validate_json((trial / "agent" / RESULT_FILE).read_text())
+    variant = prepare(spec, trajectory, condition)[0]
+    result.record = with_reward(variant, result.record, full_reward(trial))
+    result.score = score(variant, result.record)
+    return result
+
+
 def select(
     settings: Settings,
     domain: str | None,
@@ -344,8 +431,9 @@ def select(
     world_change: bool = False,
     subset: bool = False,
     without_halts: bool = False,
+    containers: bool = False,
 ) -> list[ScenarioSpec]:
-    """Scenarios that run in process.
+    """Scenarios that run in process, and with `containers` those that run in a task image.
 
     `planted` keeps only those built on a library design (True) or only the as-recorded ones
     (False); `world_change` only those that define the changing-world arms; `subset` only the
@@ -355,7 +443,7 @@ def select(
     specs = [
         s
         for s in iter_specs(settings.paths.scenarios)
-        if s.environment.backend in IN_PROCESS_BACKENDS
+        if (s.environment.backend in IN_PROCESS_BACKENDS or containers)
         and domain in (None, s.source.domain)
         and planted in (None, s.design is not None)
         and (s.world_change is not None or not world_change)
@@ -421,6 +509,7 @@ def evaluate(
         world_change=condition.world != "as_written",
         subset=subset,
         without_halts=condition.opening == "removed",
+        containers=condition.environment == "live",
     )
     done = (
         {
@@ -452,6 +541,11 @@ def evaluate(
         trajectory = trajectories[spec.source.trajectory_id]
         workspace = None
         try:
+            if spec.environment.backend == "task_image":
+                result = run_in_task_image(settings, endpoint, spec, trajectory, condition, pricing)
+                with write_lock:
+                    append_jsonl(out, [result])
+                return result
             if condition.environment == "live":
                 workspace = live_workspace(settings, spec, trajectory)
             result = run_scenario(

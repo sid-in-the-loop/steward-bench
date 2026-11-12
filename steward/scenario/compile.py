@@ -69,15 +69,22 @@ def container_processes(image: str) -> set[int]:
     return {int(pid) for pid in listing.stdout.split()}
 
 
-def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, reference: str) -> Path:
-    """Run one reference execution through Harbor on Apptainer; returns the trial directory."""
+def run_trial(
+    settings: Settings,
+    spec: ScenarioSpec,
+    name: str,
+    agent_options: dict[str, str],
+    timeout_sec: int = REFERENCE_TIMEOUT_SEC,
+) -> Path:
+    """Run the scenario once through Harbor on Apptainer; returns the trial directory."""
     task_dir = compile_task(settings, spec)
     image = image_file(settings, spec.environment.model_dump()).name
     before = container_processes(image)
-    trials = settings.paths.trials / spec.key / reference
+    trials = settings.paths.trials / spec.key / name
     if trials.exists():
         shutil.rmtree(trials)
     images = settings.paths.container_images
+    options = {**agent_options, "task_dir": str(task_dir)}
     command = [
         sys.executable,
         "-m",
@@ -88,12 +95,7 @@ def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, refer
         str(task_dir),
         "--agent-import-path",
         StewardAgent.import_path(),
-        "--agent-kwarg",
-        f"spec_path={spec_file}",
-        "--agent-kwarg",
-        f"reference={reference}",
-        "--agent-kwarg",
-        f"task_dir={task_dir}",
+        *(part for key, value in options.items() for part in ("--agent-kwarg", f"{key}={value}")),
         "--environment-type",
         "singularity",
         "--environment-kwarg",
@@ -114,12 +116,10 @@ def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, refer
             capture_output=True,
             text=True,
             check=False,
-            timeout=REFERENCE_TIMEOUT_SEC,
+            timeout=timeout_sec,
         )
     except subprocess.TimeoutExpired as error:
-        raise RuntimeError(
-            f"the {reference} reference took longer than {REFERENCE_TIMEOUT_SEC} seconds"
-        ) from error
+        raise RuntimeError(f"the {name} trial took longer than {timeout_sec} seconds") from error
     finally:
         # Harbor's Apptainer backend can leave the container process behind after a trial.
         for pid in container_processes(image) - before:
@@ -130,6 +130,18 @@ def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, refer
     if completed.returncode != 0 or len(trial_dirs) != 1:
         raise RuntimeError(f"trial failed, see {trials / 'harbor.log'}")
     return trial_dirs[0]
+
+
+def run_reference(settings: Settings, spec: ScenarioSpec, spec_file: Path, reference: str) -> Path:
+    """Run one reference execution; returns the trial directory."""
+    return run_trial(
+        settings, spec, reference, {"spec_path": str(spec_file), "reference": reference}
+    )
+
+
+def full_reward(trial_dir: Path) -> bool:
+    reward_file = trial_dir / REWARD_FILE
+    return reward_file.exists() and float(reward_file.read_text().strip() or 0) >= 1.0
 
 
 def read_record(trial_dir: Path) -> ExecutionRecord:
@@ -166,10 +178,12 @@ def gate_container(settings: Settings, spec: ScenarioSpec, work_dir: Path) -> li
 
 def score_trial(spec: ScenarioSpec, trial_dir: Path) -> Score:
     """Score a finished trial from its execution record and the task verifier's reward."""
-    record = read_record(trial_dir)
-    reward_file = trial_dir / REWARD_FILE
-    full_reward = reward_file.exists() and float(reward_file.read_text().strip() or 0) >= 1.0
+    return score(spec, with_reward(spec, read_record(trial_dir), full_reward(trial_dir)))
+
+
+def with_reward(spec: ScenarioSpec, record: ExecutionRecord, reward: bool) -> ExecutionRecord:
+    """The record with the verifier's verdict filled in for the checks that read it."""
     for check in [*spec.task_checks, *spec.safety_checks, *spec.disqualifying_violations]:
         if check.kind == "verifier_reward":
-            record.probes[check.id] = full_reward
-    return score(spec, record)
+            record.probes[check.id] = reward
+    return record
