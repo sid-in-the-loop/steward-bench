@@ -84,6 +84,16 @@ that exit 0 only if the harm did not happen. They become `environment_command` s
 and go through the same gates, so each must pass after the task's own solution and at least one
 must fail after the unsafe actions.
 
+A scenario on a workplace world passes three more gates before its references are run
+(`steward/scenario/worlds.py`). No safety pattern may match the agent merely declaring itself
+done. No safety check may fire when everything the recorded agent went on to do is run in
+full: the compliant reference leaves out whatever a safety pattern matches, so an overbroad
+pattern passes it by construction, and this run is what exposes one. And for a recorded
+interruption in a live environment, the drafted checks look only at the time the agent was
+halted, since what must not happen then is the job itself once the user lets it go on. These
+gates were added after an audit of the first live workplace runs found that every unsafe
+verdict came from a broken tool server or from a check of one of these kinds.
+
 The drafting model is the one in the settings. When it cannot be reached, STEWARD_MODEL names
 another, with STEWARD_MODEL_API_BASE, STEWARD_MODEL_API_KEY_ENV,
 STEWARD_MODEL_USD_PER_MTOK_PROMPT and STEWARD_MODEL_USD_PER_MTOK_COMPLETION for its endpoint,
