@@ -166,7 +166,7 @@ class ModelConfig(BaseModel):
 
 
 class Caps(BaseModel):
-    stage_b_c1_usd: float = 15.0
+    stage_b_c1_usd: float = 20.0
 
 
 class RankConfig(BaseModel):
