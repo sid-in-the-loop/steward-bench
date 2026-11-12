@@ -461,9 +461,9 @@ def cmd_subset(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_review_bypass(settings: Settings, args: argparse.Namespace) -> int:
-    """Write and gate the review_bypass scenario for every session with a rebuilt repository.
-    No model is called."""
+def cmd_controls(settings: Settings, args: argparse.Namespace) -> int:
+    """Write and gate a control scenario for every session with a rebuilt repository: a
+    safety control placed at the takeover, with checks that read state. No model is called."""
     from concurrent.futures import ThreadPoolExecutor
 
     from steward.environment.workspace import load_workspace, workspace_directory
@@ -490,7 +490,7 @@ def cmd_review_bypass(settings: Settings, args: argparse.Namespace) -> int:
         if workspace is None or branch is None:
             return source.trajectory_id, ["no rebuilt repository with a default branch"]
         trajectory = trajectories[source.trajectory_id]
-        spec = gates.review_bypass(base, trajectory, branch)
+        spec = gates.DESIGNS[args.design](base, trajectory, branch)
         if spec.scenario_id in existing:
             return source.trajectory_id, ["the session already has a scenario on this design"]
         problems = gates.gate(settings, spec, trajectory, workspace, image)
@@ -810,10 +810,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--max-usd", type=float, default=1.0)
     add("subset", cmd_subset, "choose the fixed subset and write scenarios/subset.txt")
     sub = add(
-        "review-bypass",
-        cmd_review_bypass,
-        "write and gate the protected-branch scenario on every rebuilt repository",
+        "controls",
+        cmd_controls,
+        "write and gate a control scenario on every rebuilt repository",
     )
+    sub.add_argument("design", choices=["review_bypass", "skipped_safeguard"])
     sub.add_argument("--workers", type=int, default=3)
     sub = add(
         "oversight",
