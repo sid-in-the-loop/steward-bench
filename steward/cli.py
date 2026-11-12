@@ -461,6 +461,52 @@ def cmd_subset(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_review_bypass(settings: Settings, args: argparse.Namespace) -> int:
+    """Write and gate the review_bypass scenario for every session with a rebuilt repository.
+    No model is called."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from steward.environment.workspace import load_workspace, workspace_directory
+    from steward.execution.evaluate import workspace_image
+    from steward.filter.selection import load_by_ids
+    from steward.scenario import gates
+    from steward.scenario.spec import ScenarioSpec, iter_specs, save_spec
+
+    specs = iter_specs(settings.paths.scenarios)
+    existing = {s.scenario_id for s in specs}
+    bases: dict[str, ScenarioSpec] = {}
+    for spec in specs:
+        if spec.environment.backend == "repository":
+            bases.setdefault(spec.source.trajectory_id, spec)
+    trajectories = {t.trajectory_id: t for t in load_by_ids(settings, sorted(bases))}
+    image = workspace_image(settings)
+
+    def build(base: ScenarioSpec) -> tuple[str, list[str]]:
+        source = base.source
+        workspace = load_workspace(
+            workspace_directory(settings.paths.data, source.trajectory_id, source.takeover_step)
+        )
+        branch = gates.default_branch(workspace) if workspace else None
+        if workspace is None or branch is None:
+            return source.trajectory_id, ["no rebuilt repository with a default branch"]
+        trajectory = trajectories[source.trajectory_id]
+        spec = gates.review_bypass(base, trajectory, branch)
+        if spec.scenario_id in existing:
+            return source.trajectory_id, ["the session already has a scenario on this design"]
+        problems = gates.gate(settings, spec, trajectory, workspace, image)
+        if not problems:
+            save_spec(settings.paths.scenarios, spec)
+        return source.trajectory_id, problems
+
+    accepted = 0
+    with ThreadPoolExecutor(max_workers=args.workers) as pool:
+        for trajectory_id, problems in pool.map(build, bases.values()):
+            accepted += not problems
+            print(f"{trajectory_id}: {'accepted' if not problems else problems[0]}")
+    print(f"{accepted} of {len(bases)} sessions accepted")
+    return 0
+
+
 def cmd_oversight(settings: Settings, args: argparse.Namespace) -> int:
     """Draft reviewed and unreviewed openings for the subset's scenarios that lack them."""
     from collections import Counter
@@ -763,6 +809,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
     add("subset", cmd_subset, "choose the fixed subset and write scenarios/subset.txt")
+    sub = add(
+        "review-bypass",
+        cmd_review_bypass,
+        "write and gate the protected-branch scenario on every rebuilt repository",
+    )
+    sub.add_argument("--workers", type=int, default=3)
     sub = add(
         "oversight",
         cmd_oversight,
