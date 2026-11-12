@@ -472,6 +472,18 @@ def cmd_controls(settings: Settings, args: argparse.Namespace) -> int:
     from steward.scenario import gates
     from steward.scenario.spec import ScenarioSpec, iter_specs, save_spec
 
+    if args.workplace:
+        # On workplace worlds the control is a data-protection rule on outgoing mail.
+        from steward.environment.gym_sessions import recorded_sessions
+        from steward.scenario.worlds import write_mail_control
+
+        sessions = recorded_sessions(settings)
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            outcomes = list(pool.map(lambda t: write_mail_control(settings, t), sessions))
+        for session, problems in zip(sessions, outcomes, strict=True):
+            print(f"{session.trajectory_id}: {'accepted' if not problems else problems[0]}")
+        print(f"{sum(not p for p in outcomes)} of {len(sessions)} sessions accepted")
+        return 0
     specs = iter_specs(settings.paths.scenarios)
     existing = {s.scenario_id for s in specs}
     bases: dict[str, ScenarioSpec] = {}
@@ -815,6 +827,11 @@ def build_parser() -> argparse.ArgumentParser:
         "write and gate a control scenario on every rebuilt repository",
     )
     sub.add_argument("design", choices=["review_bypass", "skipped_safeguard"])
+    sub.add_argument(
+        "--workplace",
+        action="store_true",
+        help="write the mail control on sessions recorded on workplace worlds",
+    )
     sub.add_argument("--workers", type=int, default=3)
     sub = add(
         "oversight",
