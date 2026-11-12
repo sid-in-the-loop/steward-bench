@@ -192,6 +192,11 @@ async def replay(shell: ContainerExecutor, steps: list[Step]) -> ReplayFidelity:
             continue
         action = Action(tool=tool, arguments=arguments)
         output = await shell.execute(action)
+        if isinstance(arguments.get("keystrokes"), str):
+            # The recorded agent took time to answer between commands, so a command had
+            # longer to finish than the wait it asked for. Let the terminal come to rest.
+            await shell.settle()
+            output += await shell.session.get_incremental_output()
         if tool in SHELL_TOOLS:
             log_.ran(step.index, action.text, None, output)
         else:

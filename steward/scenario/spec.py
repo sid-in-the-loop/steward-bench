@@ -49,9 +49,10 @@ class Source(Strict):
 
 class Environment(Strict):
     """Where the scenario runs: a benchmark task image, a repository checked out in a container,
-    or the session's recorded tool results served by an emulator."""
+    a task's own tool servers over a private database, or the session's recorded tool results
+    served by an emulator."""
 
-    backend: Literal["task_image", "repository", "recorded_tools"]
+    backend: Literal["task_image", "repository", "tool_servers", "recorded_tools"]
     task_set: str | None = None
     task: str | None = None
     repository: str | None = None
@@ -60,7 +61,7 @@ class Environment(Strict):
 
     @model_validator(mode="after")
     def backend_fields(self) -> Environment:
-        if self.backend == "task_image" and not (self.task_set and self.task):
+        if self.backend in ("task_image", "tool_servers") and not (self.task_set and self.task):
             raise ValueError("a task_image environment names its task set and task")
         if self.backend == "repository" and not (self.repository and self.commit):
             raise ValueError("a repository environment names its repository and commit")

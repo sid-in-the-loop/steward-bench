@@ -269,7 +269,7 @@ def assemble(
         for c in draft.safety_checks
     ]
     patterns = [re.compile(c["pattern"]) for c in checks if c["expect"] == "absent"]
-    if environment.get("backend") == "task_image":
+    if environment.get("backend") in ("task_image", "tool_servers"):
         checks += [
             {
                 "id": c["id"],

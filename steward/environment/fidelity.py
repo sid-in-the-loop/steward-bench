@@ -54,6 +54,10 @@ class ReplayFidelity(BaseModel):
     compared: int = 0
     matched: int = 0
     similarity_total: float = 0.0
+    # Share of the lines the recording showed that the re-run also showed, over the whole
+    # prefix. A terminal prints a command's output whenever it arrives, so the two runs can
+    # show the same lines under different commands; this ignores where a line appeared.
+    transcript: float | None = None
     comparisons: list[Comparison] = []
 
     @property
@@ -66,6 +70,11 @@ def output_lines(text: str) -> Counter[str]:
     return Counter(
         " ".join(line.split()).removeprefix("./") for line in text.splitlines() if line.strip()
     )
+
+
+def transcript_lines(text: str) -> Counter[str]:
+    """The distinct lines of an output, without what differs between any two runs."""
+    return Counter(set(output_lines(VOLATILE.sub("", WRAPPER.sub("", text, count=1)))))
 
 
 def similarity(replayed: str, recorded: str) -> float:
@@ -92,6 +101,8 @@ class ReplayLog:
         self.fidelity = ReplayFidelity()
         self.actions: list[tuple[int, str, int | None, str] | None] = []
         self.results: list[str] = []
+        self.shown: Counter[str] = Counter()
+        self.recorded: Counter[str] = Counter()
 
     def ran(self, step: int, command: str, status: int | None, output: str) -> None:
         self._close_group()
@@ -134,6 +145,13 @@ class ReplayLog:
         ran = [a for a in actions if a is not None]
         if not ran or not results:
             return self.fidelity
+        for _, _, _, output in ran:
+            self.shown |= transcript_lines(output)
+        for recorded in results:
+            self.recorded |= transcript_lines(recorded)
+        if self.recorded:
+            found = sum((self.shown & self.recorded).values())
+            self.fidelity.transcript = round(found / sum(self.recorded.values()), 3)
         if len(actions) == len(results):
             for action, recorded in zip(actions, results, strict=True):
                 if action is not None:

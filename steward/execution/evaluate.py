@@ -28,7 +28,9 @@ from pydantic import BaseModel
 
 from steward.config import Settings
 from steward.environment.audit import checkout_dir
-from steward.environment.recorded import RecordedToolExecutor
+from steward.environment.gym import GymExecutor
+from steward.environment.gym_sessions import tools_of, world_at
+from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
 from steward.environment.workplace import MOUNT, WorkplaceExecutor, build_task_workspace
 from steward.environment.workspace import (
     LiveExecutor,
@@ -340,10 +342,15 @@ async def continue_scenario(
     provider: str | None = None,
     pricing: Pricing | None = None,
     dialect: Dialect = "openrouter",
+    tools: list[Message] | None = None,
+    verdict: Callable[[], bool] | None = None,
 ) -> RunResult:
     """Hand the model the inherited history and let it continue in the environment that
-    `executor_for` returns, given the emulator of the session's recorded results."""
-    variant, messages, tools, truncated = prepare(spec, trajectory, condition)
+    `executor_for` returns, given the emulator of the session's recorded results. `tools` are
+    the environment's own tool definitions, when it has them, in place of those inferred
+    from the history. `verdict` asks the task's own verifier about the state the run left."""
+    variant, messages, inferred, truncated = prepare(spec, trajectory, condition)
+    tools = tools or inferred
     responder: ScriptedResponder | ModelResponder = ScriptedResponder(spec.principal)
     if simulator is not None:
         takeover = spec.source.takeover_step
@@ -362,6 +369,11 @@ async def continue_scenario(
         max_turns=condition.max_turns,
     )
     record = await session.run()
+    if verdict is not None:
+        reward = await asyncio.to_thread(verdict)
+        for check in [*variant.task_checks, *variant.safety_checks]:
+            if check.kind == "verifier_reward":
+                record.probes[check.id] = reward
     simulated = responder.simulated if isinstance(responder, ModelResponder) else 0
     replaced = responder.replaced if isinstance(responder, ModelResponder) else 0
     return RunResult(
@@ -386,6 +398,52 @@ async def continue_scenario(
         live_actions=getattr(executor, "live_actions", None),
         record=record,
     )
+
+
+def run_in_world(
+    settings: Settings,
+    client: httpx.Client,
+    endpoint: Endpoint,
+    spec: ScenarioSpec,
+    trajectory: Trajectory,
+    condition: Condition,
+    pricing: Pricing,
+    simulator: tuple[httpx.Client, str] | None = None,
+    simulator_cache: Path | None = None,
+) -> RunResult:
+    """Run one workplace scenario on its live tool servers: the saved state at the takeover
+    step is restored into a private world, the model continues with the world's real tools,
+    and the task's own evaluation script decides the task score."""
+    directory = Path(tempfile.mkdtemp(prefix="steward-world-")) / "world"
+    world = None
+    try:
+        world, session, rebuilt = world_at(
+            settings, trajectory, spec.source.takeover_step, directory
+        )
+        live = world
+        result = asyncio.run(
+            continue_scenario(
+                client,
+                endpoint.model,
+                spec,
+                session,
+                condition,
+                lambda recorded: PlantedFirst(GymExecutor(live), recorded),
+                simulator,
+                simulator_cache,
+                endpoint.provider,
+                pricing,
+                endpoint.dialect,
+                tools=tools_of(world),
+                verdict=lambda: bool(live.evaluate().get("pass")),
+            )
+        )
+        result.replay_fidelity = rebuilt.fidelity.rate
+        return result
+    finally:
+        if world is not None:
+            world.stop()
+        shutil.rmtree(directory.parent, ignore_errors=True)
 
 
 def run_in_task_image(
@@ -541,6 +599,21 @@ def evaluate(
         trajectory = trajectories[spec.source.trajectory_id]
         workspace = None
         try:
+            if spec.environment.backend == "tool_servers":
+                result = run_in_world(
+                    settings,
+                    client,
+                    endpoint,
+                    spec,
+                    trajectory,
+                    condition,
+                    pricing,
+                    simulated,
+                    cache,
+                )
+                with write_lock:
+                    append_jsonl(out, [result])
+                return result
             if spec.environment.backend == "task_image":
                 result = run_in_task_image(settings, endpoint, spec, trajectory, condition, pricing)
                 with write_lock:

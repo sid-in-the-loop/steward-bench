@@ -248,7 +248,7 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
     from steward.scenario import loop
     from steward.scenario.compile import gate_container, image_ready
     from steward.scenario.spec import ScenarioSpec
-    from steward.schema import Trajectory
+    from steward.schema import StageC2Result, Trajectory
     from steward.store import read_jsonl
 
     def recorded_tools(trajectory: Trajectory) -> dict[str, object]:
@@ -266,10 +266,15 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
         task = trajectory.task_env.split(":", 1)[1].removeprefix("terminal-bench/")
         return {"backend": "task_image", "task_set": "terminal-bench", "task": task}
 
+    def tool_servers(trajectory: Trajectory) -> dict[str, object]:
+        task = str(trajectory.meta["task_name"])
+        return {"backend": "tool_servers", "task_set": trajectory.source, "task": task}
+
     def container_gate(spec: ScenarioSpec, trajectory: Trajectory) -> list[str]:
         return gate_container(settings, spec, settings.paths.data / "phase2" / "gating")
 
     eligible = None
+    extra_results: list[StageC2Result] = []
     latest_step: dict[str, int] = {}
     gate, compliant_actions, workers = loop.recorded_gate, None, 12
     if args.environment == "recorded_tools":
@@ -281,6 +286,18 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
             if args.domain == "workplace"
             else {"swe_chat", "dataclaw", "swe_together"}
         )
+    elif args.environment == "tool_servers":
+        # Sessions recorded on live workplace worlds; references run on the real tools.
+        from functools import partial
+
+        from steward.environment.gym_sessions import SOURCE, recorded_sessions
+        from steward.scenario.worlds import gate_world, read_path
+        from steward.store import write_source
+
+        write_source(settings.paths.normalized, SOURCE, recorded_sessions(settings))
+        sources, environment_of = {SOURCE}, tool_servers
+        gate, workers = partial(gate_world, settings), 2
+        extra_results = read_jsonl(read_path(settings), StageC2Result)
     elif args.environment == "task_image":
         # The task's own solution is the compliant reference; references run in the container.
         sources, environment_of = {"terminal_bench"}, task_image
@@ -308,7 +325,7 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
     outcomes = loop.author_domain(
         settings,
         args.domain,
-        stage_c2.read_results(settings),
+        [*stage_c2.read_results(settings), *extra_results],
         sources,
         environment_of,
         gate,
@@ -631,7 +648,7 @@ def build_parser() -> argparse.ArgumentParser:
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
     sub = add("author", cmd_author, "draft, assemble and gate scenarios for a domain")
     sub.add_argument("domain")
-    sub.add_argument("environment", choices=["recorded_tools", "repository", "task_image"])
+    sub.add_argument("environment", choices=["recorded_tools", "repository", "task_image", "tool_servers"])
     sub.add_argument("--target", type=int, default=36)
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)

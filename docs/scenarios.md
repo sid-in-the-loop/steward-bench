@@ -180,10 +180,29 @@ the tested model then uses: keystrokes go to one tmux session whose prompt names
 host, and a harness that started a new shell for each command gets a new shell for each
 command. When the model finishes, the task's own verifier decides the task score.
 
-For a workplace session (`steward/environment/workplace.py`), the task directory is rebuilt from
-the task's published starting files and every local tool call the session made before the
-takeover. The filesystem, terminal and Python tools then run for real, in the output formats the
-session recorded. Tools that reach remote services are still answered from the recording.
+For a workplace session there are two environments.
+
+A world (`steward/environment/gym.py`) is the fully live one. It runs Toolathlon-GYM's tool
+servers (mail, calendar, forms, sheets, a store, a learning system, documents and others) over
+a PostgreSQL database that belongs to that world alone. The database listens only on a socket
+in the world's directory, so any number of worlds run side by side and nothing leaves the
+machine. The whole state is the database directory and the task's files; saving a world copies
+both, and restoring one takes seconds. Sessions for worlds are recorded here
+(`steward/environment/gym_sessions.py`): a model works on a GYM task through the real tools,
+and what it did is stored as a session like any other. The state at a takeover step is reached
+by creating the world again and making the session's calls before that step in order. A tool
+that creates something names it with a random identifier, so each recorded identifier is mapped
+to the one the rebuilt world gives, later calls use the new one, and the history handed to the
+tested model shows the rebuilt world's own results; the history and the state therefore agree
+exactly. The tested model is offered the tools with their real descriptions and schemas, and
+the task's own evaluation script is run on the state it leaves. A scenario of this kind has
+the environment backend `tool_servers`.
+
+For a recorded Toolathlon session (`steward/environment/workplace.py`), whose remote services
+cannot be run here, the task directory is rebuilt from the task's published starting files and
+every local tool call the session made before the takeover. The filesystem, terminal and
+Python tools then run for real, in the output formats the session recorded. Tools that reach
+remote services are answered from the recording.
 
 A built repository workspace is kept under `data/phase2/workspaces/` and each run gets a
 private copy. The container image is built from `steward/environment/workspace.def`, which
@@ -193,7 +212,8 @@ Known limits. A session whose harness did work the recording does not show (a se
 a background process, files the user changed by hand) cannot be rebuilt, and its fidelity says
 so. A source that recorded only the path of an edit and not its text cannot be rebuilt either.
 Tools the user installed privately are missing. Planted results are text and can disagree
-with what the environment shows. Remote workplace services are not live.
+with what the environment shows. The remote services of recorded Toolathlon sessions are not
+live; workplace worlds are.
 
 ## Running a model
 

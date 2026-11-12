@@ -1,0 +1,132 @@
+#!/usr/bin/env python3
+"""Serve one Toolathlon-GYM task's tools over standard input and output.
+
+Runs inside the GYM container from the GYM repository directory. It prepares the task the way
+GYM's own agent does (workspace, preprocessing, tool servers) and then answers one JSON
+request per line:
+
+    {"call": "<tool name>", "arguments": {...}}   ->  {"output": "...", "ok": true}
+    {"evaluate": "success"}                       ->  {"evaluation": {...}}
+    {"close": true}
+
+The first line it writes describes the task: its tools, system prompt and request. Everything
+GYM prints goes to standard error, so standard output carries only the protocol.
+"""
+
+import argparse
+import asyncio
+import json
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+
+PROTOCOL = sys.stdout
+sys.stdout = sys.stderr
+# GYM's own modules are in the directory this runs from.
+sys.path.insert(0, os.getcwd())
+
+from camel.toolkits import MCPToolkit  # noqa: E402
+from utils.data_structures.task_config import TaskConfig  # noqa: E402
+from utils.evaluation.evaluator import TaskEvaluator  # noqa: E402
+from utils.mcp.tool_servers import build_mcp_clients  # noqa: E402
+from utils.roles.task_agent import TaskAgent, _sanitize_tool_schemas  # noqa: E402
+
+MAX_STEPS = 100
+
+
+def send(message):
+    PROTOCOL.write(json.dumps(message, ensure_ascii=False) + "\n")
+    PROTOCOL.flush()
+
+
+async def call(tool, arguments):
+    function = tool.func
+    run = getattr(function, "async_call", None)
+    if run is not None:
+        return str(await run(**arguments))
+    result = function(**arguments)
+    if asyncio.iscoroutine(result):
+        result = await result
+    return str(result)
+
+
+async def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--task_dir", required=True)
+    parser.add_argument("--agent", default="steward/run")
+    parser.add_argument("--restored", action="store_true", help="the state is already in place")
+    args = parser.parse_args()
+
+    config = TaskConfig.build(
+        args.task_dir,
+        agent_short_name=args.agent,
+        global_task_config={"dump_path": "./dumps/", "max_steps_under_single_turn_mode": MAX_STEPS},
+        single_turn_mode=True,
+    )
+    agent = TaskAgent(task_config=config, model=None, max_steps=MAX_STEPS)
+    workspace = os.path.abspath(config.agent_workspace)
+    if not args.restored:
+        workspace = await agent._setup_workspace()
+        agent._run_preprocess()
+    clients = build_mcp_clients(
+        config.needed_mcp_servers,
+        workspace,
+        task_dir=os.path.abspath(os.path.join("tasks/finalpool", config.task_dir)),
+    )
+    toolkit = MCPToolkit(clients=clients, timeout=600.0)
+    await toolkit.connect()
+    served = toolkit.get_tools()
+    _sanitize_tool_schemas(served, strict_openai=True)
+    tools = served + agent._build_local_tools(workspace)
+    by_name = {tool.get_function_name(): tool for tool in tools}
+    system = config.system_prompts.agent if config.system_prompts else ""
+    send(
+        {
+            "ready": True,
+            "workspace": workspace,
+            "system": (system or "").replace("local-claim_done", "claim_done"),
+            "task": config.task_str,
+            "tools": [tool.get_openai_tool_schema() for tool in tools],
+        }
+    )
+    started = datetime.now()
+    loop = asyncio.get_running_loop()
+    try:
+        while True:
+            line = await loop.run_in_executor(None, sys.stdin.readline)
+            if not line:
+                break
+            request = json.loads(line)
+            if request.get("close"):
+                break
+            if "evaluate" in request:
+                log = Path(config.log_file)
+                log.parent.mkdir(parents=True, exist_ok=True)
+                record = {
+                    "config": config.to_dict(),
+                    "status": request["evaluate"],
+                    "start_time": started.isoformat(),
+                    "end_time": datetime.now().isoformat(),
+                }
+                log.write_text(json.dumps(record, ensure_ascii=False))
+                send({"evaluation": await TaskEvaluator.evaluate_from_log_file(str(log))})
+                continue
+            tool = by_name.get(request.get("call"))
+            if tool is None:
+                send({"output": f"Tool {request.get('call')} not found.", "ok": False})
+                continue
+            try:
+                output = await asyncio.wait_for(call(tool, request.get("arguments") or {}), 300)
+                send({"output": output, "ok": True})
+            except Exception as error:
+                send({"output": f"Error: {type(error).__name__}: {error}", "ok": False})
+    finally:
+        try:
+            await toolkit.disconnect()
+        except Exception:
+            pass
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
