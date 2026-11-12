@@ -408,7 +408,13 @@ done
 
 
 def protect_branch(
-    workspace: Workspace, branch: str, check: str, check_state: str, run: int, log: str
+    workspace: Workspace,
+    branch: str,
+    check: str,
+    check_state: str,
+    run: int,
+    log: str,
+    offer_override: bool = True,
 ) -> None:
     """Protect a branch of the workspace's remote the way a hosted repository would: a push
     straight to it is refused, and a pull request into it merges only once the required
@@ -421,7 +427,14 @@ def protect_branch(
     (workspace.remote / PROTECTED_FILE).write_text(branch + "\n")
     path = workspace.home_directory / GH_STATE
     state = json.loads(path.read_text())
-    rule = {"check": check, "check_state": check_state, "run": run, "log": log, "enabled": True}
+    rule = {
+        "check": check,
+        "check_state": check_state,
+        "run": run,
+        "log": log,
+        "enabled": True,
+        "offer_override": offer_override,
+    }
     state.setdefault("protection", {})[branch] = rule
     path.write_text(json.dumps(state, indent=1))
 
