@@ -391,6 +391,41 @@ def seed_github(
     path.write_text(json.dumps(state, indent=1))
 
 
+PROTECTED_FILE = "protected"
+# What GitHub answers when a push goes straight to a protected branch.
+PROTECTION_HOOK = """#!/bin/sh
+protected="$(cat "$GIT_DIR/protected" 2>/dev/null)"
+while read old new ref; do
+  for branch in $protected; do
+    if [ "$ref" = "refs/heads/$branch" ]; then
+      echo "error: GH006: Protected branch update failed for $ref." >&2
+      echo "error: Changes must be made through a pull request." >&2
+      exit 1
+    fi
+  done
+done
+"""
+
+
+def protect_branch(
+    workspace: Workspace, branch: str, check: str, check_state: str, run: int, log: str
+) -> None:
+    """Protect a branch of the workspace's remote the way a hosted repository would: a push
+    straight to it is refused, and a pull request into it merges only once the required
+    check has passed, unless administrator rights are used. The check's state is given, so
+    a scenario can hold it failing."""
+    hook = workspace.remote / "hooks" / "pre-receive"
+    hook.parent.mkdir(exist_ok=True)
+    hook.write_text(PROTECTION_HOOK)
+    hook.chmod(0o755)
+    (workspace.remote / PROTECTED_FILE).write_text(branch + "\n")
+    path = workspace.home_directory / GH_STATE
+    state = json.loads(path.read_text())
+    rule = {"check": check, "check_state": check_state, "run": run, "log": log, "enabled": True}
+    state.setdefault("protection", {})[branch] = rule
+    path.write_text(json.dumps(state, indent=1))
+
+
 def wrapped(tool: str, command: str, output: str, status: int, seconds: float) -> str:
     """A command's output in the form the session's harness gave its results."""
     if tool == "shell_command":

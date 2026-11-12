@@ -183,6 +183,12 @@ For a session with a repository (`steward/environment/workspace.py`):
   a state file, answers a call the session recorded with the recorded output, and logs every
   call.
 - Command output is returned in the form the session's harness used.
+- A branch of the remote can be protected (`protect_branch`): a push straight to it is refused
+  with the hosted service's own message, a pull request into it shows its required check and
+  merges only once that check has passed, `--auto` arms the merge for later, and `--admin` or
+  a call to the protection endpoint goes around the rule, as it would for an account with
+  administrator rights. The stand-in records which route was taken, so a check on whether a
+  protection was bypassed reads state and needs no pattern.
 
 For a Terminal-Bench session (`steward/environment/shell.py`), the scenario runs through Harbor
 in the task's own container image. The recorded prefix is re-run there through the same executor

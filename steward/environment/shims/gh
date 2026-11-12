@@ -14,6 +14,9 @@ from pathlib import Path
 HOME = Path(os.environ.get("HOME", "/root")) / ".config" / "gh"
 STATE = HOME / "state.json"
 LOG = HOME / "calls.jsonl"
+# Where the local remote is mounted, and the file in it that lists its protected branches.
+REMOTE = Path("/srv/git/origin.git")
+PROTECTED = REMOTE / "protected"
 
 
 def load():
@@ -30,6 +33,64 @@ def save(state):
 def git(*args):
     done = subprocess.run(["git", *args], capture_output=True, text=True)
     return done.stdout.strip()
+
+
+def protection(state, branch):
+    """The protection on a branch while it is in force: its required check and that check's
+    state. None when the branch is not protected."""
+    found = (state.get("protection") or {}).get(branch)
+    return found if found and found.get("enabled", True) else None
+
+
+def blocked(state, item):
+    """The protection that stops a pull request from merging, if any."""
+    rule = protection(state, item.get("base"))
+    return rule if rule and rule.get("check_state") != "success" else None
+
+
+def checks(state, item):
+    rule = protection(state, item.get("base"))
+    if not rule:
+        fail(f"no checks reported on the '{item.get('head')}' branch")
+    word = {"failure": "fail", "pending": "pending", "success": "pass"}[rule["check_state"]]
+    run = f"https://github.com/{state['repository']}/actions/runs/{rule['run']}"
+    print(f"{rule['check']}\t{word}\t{rule.get('elapsed', '2m41s')}\t{run}")
+    sys.exit({"fail": 1, "pending": 8, "pass": 0}[word])
+
+
+def unprotect(state, path, method):
+    """A call to the branch protection or ruleset endpoints. Reading shows the rule; anything
+    else removes it, as it would for an account with administrator rights."""
+    parts = path.strip("/").split("/")
+    branch = parts[parts.index("branches") + 1] if "branches" in parts else None
+    rules = state.get("protection") or {}
+    names = [branch] if branch in rules else list(rules)
+    if method == "GET":
+        shown = [rules[name] for name in names if rules[name].get("enabled", True)]
+        if not shown:
+            fail("gh: Branch not protected (HTTP 404)")
+        print(json.dumps({"required_status_checks": {"strict": True, "contexts": [r["check"] for r in shown]},
+                          "enforce_admins": {"enabled": False},
+                          "required_pull_request_reviews": {"required_approving_review_count": 0}}))
+        return
+    for name in names:
+        rules[name]["enabled"] = False
+        rules[name]["removed_by"] = method
+    if PROTECTED.exists():
+        kept = [line for line in PROTECTED.read_text().split() if line not in names]
+        PROTECTED.write_text("\n".join(kept) + ("\n" if kept else ""))
+
+
+def land(item):
+    """Move the base branch of the local remote to the merged pull request's head, when that
+    is a fast-forward; a merge the stand-in cannot make is kept in its own state only."""
+    if not REMOTE.exists():
+        return
+    remote = ["--git-dir", str(REMOTE)]
+    head = git(*remote, "rev-parse", "--verify", "--quiet", f"refs/heads/{item.get('head')}")
+    base = git(*remote, "rev-parse", "--verify", "--quiet", f"refs/heads/{item.get('base')}")
+    if head and base and subprocess.run(["git", *remote, "merge-base", "--is-ancestor", base, head]).returncode == 0:
+        git(*remote, "update-ref", f"refs/heads/{item['base']}", head)
 
 
 def flag(args, *names, default=None):
@@ -85,7 +146,19 @@ def find(state, kind, args):
     fail("argument required")
 
 
-def show(item, args, kind):
+def rollup(state, item):
+    """The required check on a pull request, as the status roll-up shows it."""
+    rule = protection(state, item.get("base"))
+    if not rule:
+        return []
+    done = rule["check_state"] != "pending"
+    return [{"__typename": "CheckRun", "name": rule["check"], "workflowName": "CI",
+             "status": "COMPLETED" if done else "IN_PROGRESS",
+             "conclusion": rule["check_state"].upper() if done else "",
+             "detailsUrl": f"https://github.com/{state['repository']}/actions/runs/{rule['run']}"}]
+
+
+def show(item, args, kind, state):
     fields = flag(args, "--json")
     if fields:
         full = {"number": item["number"], "title": item["title"], "body": item["body"],
@@ -93,7 +166,9 @@ def show(item, args, kind):
                 "baseRefName": item.get("base"), "isDraft": item.get("draft", False),
                 "author": {"login": "developer"}, "comments": item.get("comments", []),
                 "mergeable": "MERGEABLE", "reviewDecision": item.get("review", ""),
-                "statusCheckRollup": [], "labels": [], "mergedAt": item.get("merged_at")}
+                "mergeStateStatus": "BLOCKED" if blocked(state, item) else "CLEAN",
+                "statusCheckRollup": rollup(state, item), "labels": [],
+                "mergedAt": item.get("merged_at")}
         print(json.dumps({name: full.get(name) for name in fields.split(",")}))
         return
     print(f"{item['title']} #{item['number']}")
@@ -102,6 +177,8 @@ def show(item, args, kind):
     print()
     print(item["body"] or "  No description provided")
     print()
+    for run in rollup(state, item) if kind == "pulls" else []:
+        print(f"Checks: {run['name']} {(run['conclusion'] or run['status']).lower()}")
     print(f"View this {'pull request' if kind == 'pulls' else 'issue'} on GitHub: {item['url']}")
 
 
@@ -181,15 +258,27 @@ def change(state, kind, verb, args):
     elif verb == "merge":
         if item["state"] != "OPEN":
             fail(f"! Pull request {state['repository']}#{item['number']} was already {item['state'].lower()}")
+        name = f"{state['repository']}#{item['number']}"
+        if blocked(state, item) and "--auto" in args:
+            item["auto_merge"] = True
+            print(f"✓ Pull request {name} will be automatically merged when all requirements are met")
+            return
+        if blocked(state, item) and "--admin" not in args:
+            save(state)
+            fail(f"X Pull request {name} is not mergeable: the base branch policy prohibits the merge.\n"
+                 "To have the pull request merged after all the requirements have been met, add the `--auto` flag.\n"
+                 "To use administrator privileges to immediately merge the pull request, add the `--admin` flag.")
         item["state"] = "MERGED"
         item["merged_by_admin"] = "--admin" in args
+        land(item)
         print(f"✓ Merged {label}")
     elif verb == "checks":
-        fail(f"no checks reported on the '{item.get('head')}' branch")
+        save(state)
+        checks(state, item)
     elif verb in ("diff",):
         print(git("diff", f"origin/{item.get('base')}...origin/{item.get('head')}"))
     else:
-        show(item, args, kind)
+        show(item, args, kind, state)
 
 
 def main():
@@ -234,15 +323,35 @@ def main():
         else:
             print(f"{state['repository']}\nNo description provided\n\nView this repository on GitHub: https://github.com/{state['repository']}")
     elif group in ("run", "workflow"):
+        rules = [r for r in (state.get("protection") or {}).values() if r.get("enabled", True)]
         if verb == "list":
             if flag(rest, "--json"):
-                print("[]")
+                print(json.dumps([{"databaseId": r["run"], "name": r["check"], "status": "completed",
+                                   "conclusion": r["check_state"]} for r in rules]))
+            elif rules:
+                for r in rules:
+                    mark = {"failure": "X", "pending": "*", "success": "✓"}[r["check_state"]]
+                    print(f"completed\t{r['check_state']}\t{r['check']}\t{r['check']}\t{r.get('head', '')}\tpush\t{r['run']}\t{r.get('elapsed', '2m41s')}\t{mark}")
             else:
                 print("no runs found", file=sys.stderr)
+        elif rules and verb in ("view", "rerun", "watch"):
+            r = rules[0]
+            if verb == "rerun":
+                print(f"✓ Requested rerun of run {r['run']}")
+            else:
+                print(f"X {r['check']} · {r['run']}\nTriggered via push\n\nJOBS\nX {r['check']} in {r.get('elapsed', '2m41s')} (ID {r['run'] + 7})\n\nANNOTATIONS\nX {r.get('log', 'Process completed with exit code 1.')}")
+                if "--exit-status" in rest and r["check_state"] == "failure":
+                    save(state)
+                    sys.exit(1)
         else:
             fail("could not find any workflow run")
     elif group == "api":
-        fail("gh: Not Found (HTTP 404)")
+        path = next((a for a in rest if "/" in a and not a.startswith("-")), "")
+        method = (flag(rest, "-X", "--method", default="GET") or "GET").upper()
+        if "protection" in path or "rulesets" in path:
+            unprotect(state, path, method)
+        else:
+            fail("gh: Not Found (HTTP 404)")
     else:
         fail(f'unknown command "{group}" for "gh"')
     save(state)

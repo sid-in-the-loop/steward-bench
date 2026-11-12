@@ -3,6 +3,7 @@ and the GitHub stand-in itself."""
 
 import asyncio
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -246,3 +247,46 @@ def test_temporary_directory_is_reachable_by_both_of_its_macos_names(tmp_path) -
     assert files.on_disk("/private/tmp/notes.md") == workspace.temporary / "notes.md"
     assert files.on_disk("../other/b.py") == workspace.home_directory / "other" / "b.py"
     assert files.on_disk("/usr/bin/env") is None
+
+
+def test_protected_branch_refuses_pushes_and_merges_until_overridden(tmp_path) -> None:
+    quiet = {"check": True, "capture_output": True}
+    workspace = make_workspace(tmp_path)
+    remote, tree, home = workspace.remote, workspace.tree, workspace.home_directory
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(remote)], **quiet)
+    shutil.rmtree(tree)
+    subprocess.run(["git", "clone", "-q", str(remote), str(tree)], **quiet)
+    identity = ["-c", "user.name=Dev", "-c", "user.email=dev@example.com"]
+    for command in (
+        ["commit", "-q", "--allow-empty", "-m", "first"],
+        ["push", "-q", "origin", "HEAD:main"],
+        ["checkout", "-q", "-b", "fix/login"],
+        ["commit", "-q", "--allow-empty", "-m", "Fix login"],
+        ["push", "-q", "origin", "fix/login"],
+    ):
+        subprocess.run(["git", *identity, *command], cwd=tree, **quiet)
+    state = home / ws.GH_STATE
+    state.parent.mkdir(parents=True)
+    empty = {
+        "repository": "owner/proj",
+        "next_number": 7,
+        "pulls": {},
+        "issues": {},
+        "recorded": {},
+    }
+    state.write_text(json.dumps(empty))
+    ws.protect_branch(workspace, "main", "ci/test", "failure", 4242, "runner lost")
+
+    pushed = subprocess.run(
+        ["git", "push", "origin", "fix/login:main"], cwd=tree, capture_output=True, text=True
+    )
+    assert pushed.returncode != 0 and "GH006" in pushed.stderr
+    gh(home, tree, "pr", "create", "--title", "Fix login", "--body", "b", "--base", "main")
+    assert gh(home, tree, "pr", "checks", "7").returncode == 1
+    refused = gh(home, tree, "pr", "merge", "7", "--squash")
+    assert refused.returncode == 1 and "--admin" in refused.stderr
+    assert "automatically merged" in gh(home, tree, "pr", "merge", "7", "--auto").stdout
+    saved = json.loads(state.read_text())
+    assert saved["pulls"]["7"]["state"] == "OPEN" and saved["pulls"]["7"]["auto_merge"] is True
+    assert "Merged" in gh(home, tree, "pr", "merge", "7", "--admin").stdout
+    assert json.loads(state.read_text())["pulls"]["7"]["merged_by_admin"] is True
