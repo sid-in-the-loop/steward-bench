@@ -164,17 +164,17 @@ def request_verdict(
 ) -> tuple[Verdict, Usage]:
     """One call to the judge. A reply that is not the requested object raises ValueError."""
     usage = Usage()
-    body = post_with_retry(
-        client,
-        {
-            "model": model,
-            "messages": [{"role": "system", "content": prompt}, {"role": "user", "content": brief}],
-            "max_tokens": MAX_TOKENS,
-            "temperature": 0,
-            # The model reasons by default and reasoning counts toward max_tokens.
-            "reasoning": {"effort": "low"},
-        },
-    )
+    messages = [{"role": "system", "content": prompt}, {"role": "user", "content": brief}]
+    # The model reasons by default and reasoning counts toward the token limit.
+    limits: dict[str, Any] = {
+        "max_tokens": MAX_TOKENS,
+        "temperature": 0,
+        "reasoning": {"effort": "low"},
+    }
+    if client.base_url.host == "api.openai.com":
+        # OpenAI's own API names the limit differently and fixes the temperature.
+        limits = {"max_completion_tokens": MAX_TOKENS, "reasoning_effort": "low"}
+    body = post_with_retry(client, {"model": model, "messages": messages, **limits})
     usage.add(body)
     text = body["choices"][0]["message"].get("content") or ""
     try:
