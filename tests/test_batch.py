@@ -37,7 +37,7 @@ def test_guard_requires_confirm_and_respects_caps(settings) -> None:
                 requests=1,
                 prompt_tokens=1,
                 completion_tokens=1,
-                cost_usd=14.99,
+                cost_usd=19.99,
                 submitted_at="2026-01-01T00:00:00Z",
             )
         ],
