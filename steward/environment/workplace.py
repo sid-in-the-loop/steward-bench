@@ -236,7 +236,7 @@ class WorkplaceExecutor:
             f"python3 .python_tmp/{name} 2>/tmp/.stderr; s=$?; echo; cat /tmp/.stderr >&2; exit $s"
         )
         done = subprocess.run(
-            container_command(self.workspace, self.image, MOUNT, command),
+            container_command(self.workspace, self.image, MOUNT, command, limit),
             capture_output=True,
             timeout=limit + 30,
             stdin=subprocess.DEVNULL,

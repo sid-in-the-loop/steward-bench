@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from steward.environment import workspace as ws
+from steward.environment.fidelity import ReplayLog, similarity
 from steward.environment.recorded import RecordedToolExecutor
 from steward.environment.repository import ReplayReport
 from steward.execution.record import Action
@@ -104,12 +105,14 @@ def test_actions_are_routed_to_the_plant_the_recording_or_the_workspace(
     assert run("Bash", command="curl https://other.example") == "live output"
     assert run("Bash", command="git status") == "live output"
     assert executor.last_served is None
-    assert run("Read", file_path="/Users/dev/proj/a.py") == "live output"
+    assert run("Write", file_path="/Users/dev/proj/a.py", content="x = 1\n").startswith("File")
+    assert run("Read", file_path="a.py") == "     1\tx = 1"
+    assert run("Edit", file_path="a.py", old_string="1", new_string="2").endswith("updated.")
+    assert (executor.workspace.tree / "a.py").read_text() == "x = 2\n"
+    assert run("Write", file_path="/etc/passwd", content="x") == "Permission denied: /etc/passwd"
     assert run("TodoWrite", todos=[]) == "No results."
-    assert ran[0] == "curl https://other.example"
-    assert ran[1] == "git status"
-    assert ran[2].startswith("cat -n -- /Users/dev/proj/a.py")
-    assert executor.live_actions == 3
+    assert ran == ["curl https://other.example", "git status"]
+    assert executor.live_actions == 6
 
 
 def gh(home: Path, cwd: Path, *arguments: str) -> subprocess.CompletedProcess[str]:
@@ -201,8 +204,8 @@ def test_starting_commit_is_the_head_the_session_reported(tmp_path) -> None:
 
 def test_similarity_ignores_line_order_wrappers_and_dot_prefixes() -> None:
     recorded = "Exit code: 0\nWall time: 0.2 seconds\nOutput:\nsrc/a.py:1:x\nsrc/b.py:2:y\n"
-    assert ws.similarity("./src/b.py:2:y\n./src/a.py:1:x\n", recorded) == 1.0
-    assert ws.similarity("something else entirely", recorded) < 0.5
+    assert similarity("./src/b.py:2:y\n./src/a.py:1:x\n", recorded) == 1.0
+    assert similarity("something else entirely", recorded) < 0.5
 
 
 def test_bash_tool_returns_to_the_project_directory() -> None:
@@ -215,3 +218,31 @@ def test_bash_tool_returns_to_the_project_directory() -> None:
         "",
     )
     assert ws.settle_directory("exec_command", "/w/p", "/tmp") == ("/tmp", "")
+
+
+def test_exec_with_javascript_is_not_a_shell_command() -> None:
+    assert ws.command_of({"input": "const x = await tools.read()"}, "exec") is None
+    assert ws.command_of({"cmd": "ls"}, "exec") == "ls"
+    assert ws.command_of({"input": "ls"}, "Bash") == "ls"
+
+
+def test_several_commands_answered_by_one_result_are_compared_together() -> None:
+    log = ReplayLog()
+    log.ran(0, "ls", 0, "a.txt")
+    log.ran(1, "pwd", 0, "/app")
+    log.result("a.txt\n/app")
+    log.skipped()
+    log.result("an edit's result, not compared")
+    log.ran(4, "cat a.txt", 1, "something else")
+    log.result("hello")
+    fidelity = log.flush()
+    assert (fidelity.replayed, fidelity.failed, fidelity.compared, fidelity.matched) == (3, 1, 2, 1)
+    assert fidelity.rate == 0.5 and fidelity.comparisons[0].step == 0
+
+
+def test_temporary_directory_is_reachable_by_both_of_its_macos_names(tmp_path) -> None:
+    workspace = make_workspace(tmp_path)
+    files = ws.WorkspaceFiles(workspace)
+    assert files.on_disk("/private/tmp/notes.md") == workspace.temporary / "notes.md"
+    assert files.on_disk("../other/b.py") == workspace.home_directory / "other" / "b.py"
+    assert files.on_disk("/usr/bin/env") is None

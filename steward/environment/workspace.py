@@ -10,31 +10,30 @@ so fetches and pushes work and stay local.
 from __future__ import annotations
 
 import asyncio
-import base64
-import difflib
 import hashlib
 import json
 import logging
+import os
 import re
 import shlex
 import shutil
 import subprocess
 import time
-from collections import Counter
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
+from steward.environment.fidelity import ReplayLog
 from steward.environment.recorded import RecordedToolExecutor
-from steward.environment.repository import (
-    EDIT_TOOLS,
+from steward.environment.repository import PathResolver, ReplayReport
+from steward.environment.tools import (
     WRITE_TOOLS,
-    PathResolver,
-    ReplayReport,
-    apply_step,
+    ToolError,
+    apply_file_tool,
+    changes_files,
 )
 from steward.execution.record import Action
 from steward.schema import Step
@@ -53,9 +52,10 @@ SHELL_TOOLS = frozenset(
         "run_in_terminal",
         "execute_bash",
         "bash_command",
+        "run_shell_command",
+        "terminal",
     }
 )
-READ_TOOLS = frozenset({"Read", "read_file"})
 SEARCH_TOOLS = frozenset({"Grep", "Glob", "list_dir", "LS"})
 COMMAND_KEYS = ("command", "cmd", "script", "input")
 # Programs that reach outside the machine. They are answered from the recording, because the
@@ -70,25 +70,21 @@ ABSOLUTE_PATH = re.compile(r"(?<![\w.])/(?:[\w.@+-]+/)+[\w.@+-]+")
 OUTPUT_LIMIT = 20_000
 COMMAND_TIMEOUT_SEC = 120
 REMOTE_MOUNT = "/srv/git/origin.git"
+# macOS keeps /tmp at /private/tmp, and sessions name it either way.
+TEMPORARY_PATHS = ("/tmp", "/private/tmp")
 GH_SHIM = Path(__file__).parent / "shims" / "gh"
 GH_STATE = Path(".config") / "gh" / "state.json"
 ITEM_NUMBER = re.compile(r"/(?:pull|issues)/(\d+)")
 CWD_MARK = "__steward_cwd__"
-MATCH_THRESHOLD = 0.9
-COMPARE_LIMIT = 2000
 # Time spent re-running commands that only read; state-changing ones always run.
-REPLAY_BUDGET_SEC = 900
-EDIT_SCRIPT = """
-import base64, json, pathlib, sys
-a = json.loads(base64.b64decode(sys.argv[1]))
-p = pathlib.Path(a.get("file_path") or a.get("path"))
-old, new = a.get("old_string", a.get("old_str")), a.get("new_string", a.get("new_str"))
-text = p.read_text()
-if old not in text:
-    sys.exit("String to replace not found in file.")
-p.write_text(text.replace(old, new, -1 if a.get("replace_all") else 1))
-print(f"The file {p} has been updated.")
-"""
+REPLAY_BUDGET_SEC = 1200
+# Commands that fetch a project's dependencies or build it; they get longer to finish.
+INSTALLS = re.compile(
+    r"\b(?:npm (?:ci|install|i)\b|pnpm (?:install|i)\b|yarn(?: install)?\s*(?:$|[;&|])|bun install"
+    r"|pip3? install|uv (?:sync|pip|venv|run)|poetry install|go (?:mod|build|test|install)\b"
+    r"|cargo (?:build|test|check|fetch)|make\b|bundle install)"
+)
+INSTALL_TIMEOUT_SEC = 300
 
 
 class Workspace(BaseModel):
@@ -140,9 +136,59 @@ class Workspace(BaseModel):
     def temporary(self) -> Path:
         return self.directory / "tmp"
 
+    @property
+    def mapped(self) -> list[tuple[PurePosixPath, Path]]:
+        """Each directory of the session's machine that exists here, most specific first,
+        with where it is on disk."""
+        found = [(PurePosixPath(self.mount), self.tree)]
+        parent = PurePosixPath(self.mount).parent
+        if not self.under_home and str(parent) != "/":
+            found.append((parent, self.tree.parent))
+        found.append((PurePosixPath(self.home), self.home_directory))
+        found += [(PurePosixPath(path), self.temporary) for path in TEMPORARY_PATHS]
+        return found
 
-def command_of(arguments: dict[str, Any] | None) -> str | None:
+
+class WorkspaceFiles:
+    """The workspace's files on disk, addressed by the paths the session used."""
+
+    def __init__(self, workspace: Workspace, cwd: Callable[[], str] | None = None) -> None:
+        self.workspace = workspace
+        self.cwd = cwd or (lambda: workspace.mount)
+
+    def on_disk(self, path: str) -> Path | None:
+        """Where a session path is on disk; None when it is outside every mapped directory."""
+        absolute = PurePosixPath(os.path.normpath(PurePosixPath(self.cwd()) / path))
+        for inside, outside in self.workspace.mapped:
+            if absolute.is_relative_to(inside):
+                return outside / absolute.relative_to(inside)
+        return None
+
+    async def read(self, path: str) -> str | None:
+        target = self.on_disk(path)
+        if target is None or not target.is_file():
+            return None
+        return target.read_text(errors="surrogateescape")
+
+    async def write(self, path: str, content: str) -> None:
+        target = self.on_disk(path)
+        if target is None:
+            raise ToolError(f"Permission denied: {path}")
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content, errors="surrogateescape")
+
+    async def delete(self, path: str) -> None:
+        target = self.on_disk(path)
+        if target is not None and target.is_file():
+            target.unlink()
+
+
+def command_of(arguments: dict[str, Any] | None, tool: str | None = None) -> str | None:
+    """The shell command a tool call carries. Codex's `exec` runs a shell command given as
+    `cmd`, and JavaScript given as `input`; only the first is a command."""
     for key in COMMAND_KEYS:
+        if tool == "exec" and key == "input":
+            continue
         value = (arguments or {}).get(key)
         if isinstance(value, str) and value.strip():
             return value
@@ -211,7 +257,7 @@ def evident_commit(steps: Sequence[Step], takeover_step: int, tree: Path) -> tup
         if step.kind != "result" or not pending:
             continue
         call = pending.pop(0)
-        command = command_of(call.tool_input) if call.tool in SHELL_TOOLS else None
+        command = command_of(call.tool_input, call.tool) if call.tool in SHELL_TOOLS else None
         if not command:
             continue
         if MOVES_HEAD.search(command):
@@ -236,8 +282,16 @@ def home_of(mount: str) -> str:
     return str(PurePosixPath(*parts[:3])) if parts[1:2] in (("Users",), ("home",)) else "/root"
 
 
-def container_command(workspace: Workspace, image: Path | str, cwd: str, command: str) -> list[str]:
-    binds = [f"{workspace.temporary}:/tmp", f"{GH_SHIM}:/usr/local/bin/gh:ro"]
+def container_command(
+    workspace: Workspace,
+    image: Path | str,
+    cwd: str,
+    command: str,
+    timeout_sec: int,
+    network: bool = False,
+) -> list[str]:
+    binds = [f"{workspace.temporary}:{path}" for path in TEMPORARY_PATHS]
+    binds.append(f"{GH_SHIM}:/usr/local/bin/gh:ro")
     if workspace.remote.exists():
         binds.append(f"{workspace.remote}:{REMOTE_MOUNT}")
     if not workspace.under_home:
@@ -248,12 +302,17 @@ def container_command(workspace: Workspace, image: Path | str, cwd: str, command
             binds.append(f"{workspace.tree.parent}:{parent}")
     wrapped = f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
     wrapped += f'__status=$?; printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
-    arguments = ["apptainer", "exec", "--containall", "--net", "--network", "none"]
+    arguments = ["apptainer", "exec", "--containall", "--pid"]
+    if not network:
+        arguments += ["--net", "--network", "none"]
     arguments += ["--home", f"{workspace.home_directory}:{workspace.home}"]
     for bind in binds:
         arguments += ["--bind", bind]
     arguments += ["--env", "GIT_TERMINAL_PROMPT=0", "--env", "TERM=dumb"]
-    return [*arguments, str(image), workspace.shell, "-c", wrapped]
+    # The limit is enforced inside the container so that the runtime exits and unmounts
+    # the image itself; killing it from outside leaves the mount behind.
+    limit = ["timeout", "--signal=KILL", str(timeout_sec)]
+    return [*arguments, str(image), *limit, workspace.shell, "-c", wrapped]
 
 
 def run_in_container(
@@ -262,17 +321,20 @@ def run_in_container(
     cwd: str,
     command: str,
     timeout_sec: int = COMMAND_TIMEOUT_SEC,
+    network: bool = False,
 ) -> tuple[str, int, str]:
     """Run a command in the workspace. Returns its output, exit status and the directory it
     ended in."""
     try:
         done = subprocess.run(
-            container_command(workspace, image, cwd, command),
+            container_command(workspace, image, cwd, command, timeout_sec, network),
             capture_output=True,
-            timeout=timeout_sec,
+            timeout=timeout_sec + 30,
             stdin=subprocess.DEVNULL,
         )
     except subprocess.TimeoutExpired:
+        return f"Command timed out after {timeout_sec} seconds.", 124, cwd
+    if done.returncode == 137 and CWD_MARK.encode() not in done.stdout:
         return f"Command timed out after {timeout_sec} seconds.", 124, cwd
     output = done.stdout.decode(errors="replace")
     errors = "\n".join(
@@ -308,7 +370,7 @@ def seed_github(
         elif step.kind == "result" and pending:
             call = pending.pop(0)
             highest = max([highest, *(int(n) for n in ITEM_NUMBER.findall(step.content))])
-            command = command_of(call.tool_input) if call.tool in SHELL_TOOLS else None
+            command = command_of(call.tool_input, call.tool) if call.tool in SHELL_TOOLS else None
             if not command or re.search(r"[|;&<>$`\n]", command):
                 continue
             try:
@@ -329,14 +391,6 @@ def seed_github(
     path.write_text(json.dumps(state, indent=1))
 
 
-# What some harnesses put around a command's output: exit status, timing, a chunk identifier.
-WRAPPER = re.compile(
-    r"\A(?:Command: [^\n]*\n)?(?:Chunk ID: \w+\n)?(?:Exit code:? \d+\n)?"
-    r"(?:Wall time: [\d.]+ seconds\n)?(?:Process exited with code \d+\n)?"
-    r"(?:Original token count: \d+\n)?(?:Total output lines: \d+\n)?(?:Output:\n)?"
-)
-
-
 def wrapped(tool: str, command: str, output: str, status: int, seconds: float) -> str:
     """A command's output in the form the session's harness gave its results."""
     if tool == "shell_command":
@@ -347,6 +401,16 @@ def wrapped(tool: str, command: str, output: str, status: int, seconds: float) -
             f"Chunk ID: {chunk}\nWall time: {seconds:.4f} seconds\n"
             f"Process exited with code {status}\nOriginal token count: {len(output) // 4}\n"
             f"Output:\n{output}"
+        )
+    if tool == "exec":
+        return (
+            f"Wall time: {seconds:.3g} seconds\nProcess exited with code {status}\n"
+            f"Output:\n{output}"
+        )
+    if tool == "run_shell_command":
+        return (
+            f"<exit_code>{status}</exit_code>\n<command_execution_time>{seconds:.6f} second"
+            f"</command_execution_time>\n<stdout>{output}</stdout>\n<stderr></stderr>"
         )
     if status != 0:
         return f"Exit code {status}\n{output}" if output.strip() else f"Exit code {status}"
@@ -359,28 +423,6 @@ def settle_directory(tool: str, mount: str, ended: str) -> tuple[str, str]:
     if tool == "Bash" and not PurePosixPath(ended).is_relative_to(mount):
         return mount, f"\nShell cwd was reset to {mount}"
     return ended, ""
-
-
-def output_lines(text: str) -> Counter[str]:
-    return Counter(
-        " ".join(line.split()).removeprefix("./") for line in text.splitlines() if line.strip()
-    )
-
-
-def similarity(replayed: str, recorded: str) -> float:
-    """How alike two command outputs are, from 0 to 1. Whitespace layout, what the harness
-    put around the output, and the order of lines are ignored: a search that lists the same
-    files in another order shows the same state."""
-    body = WRAPPER.sub("", recorded, count=1)
-    left = " ".join(replayed.split())[:COMPARE_LIMIT]
-    right = " ".join(body.split())[:COMPARE_LIMIT]
-    if left == right:
-        return 1.0
-    ordered = difflib.SequenceMatcher(None, left, right, autojunk=False).ratio()
-    mine, theirs = output_lines(replayed), output_lines(body)
-    union = sum((mine | theirs).values())
-    shared = sum((mine & theirs).values()) / union if union else 1.0
-    return max(ordered, shared)
 
 
 def write_remote(tree: Path, remote: Path) -> None:
@@ -537,44 +579,57 @@ def build_workspace(
         f"[safe]\n\tdirectory = *\n[advice]\n\tdetachedHead = false\n{abbreviation}"
     )
     git(tree, "remote", "set-url", "origin", f"https://github.com/{repository}")
-    resolver = PathResolver(tree)
-    resolver.prefix = PurePosixPath(mount)
     cwd = mount
+    files = WorkspaceFiles(workspace, lambda: cwd)
     started = time.monotonic()
-    # Outputs of re-run commands, waiting for the recorded result of the same call.
-    awaiting: list[str | None] = []
+    replay = ReplayLog()
     for step in steps:
         if step.index >= takeover_step:
             break
-        if step.kind == "result" and awaiting:
-            output = awaiting.pop(0)
-            if output is not None:
-                score = similarity(output, step.content)
-                workspace.commands_compared += 1
-                workspace.commands_matched += score >= MATCH_THRESHOLD
-                workspace.similarity_total += score
+        if step.kind == "result":
+            replay.result(step.content)
             continue
         if step.kind != "action":
             continue
-        awaiting.append(None)
-        if step.tool in EDIT_TOOLS | WRITE_TOOLS:
-            apply_step(step, resolver, report)
+        tool = step.tool or ""
+        if changes_files(tool):
+            outcome = asyncio.run(apply_file_tool(files, tool, step.tool_input or {}))
+            applied = outcome is not None and outcome[1]
+            report.edits += 1
+            report.edits_applied += applied
+            report.writes += applied and tool in WRITE_TOOLS
+            if not applied and report.first_mismatch_step is None:
+                report.first_mismatch_step = step.index
+            replay.skipped()
             continue
-        command = command_of(step.tool_input) if step.tool in SHELL_TOOLS else None
+        command = command_of(step.tool_input, tool) if tool in SHELL_TOOLS else None
         if not command:
+            replay.skipped()
             continue
         if OUTSIDE.search(command):
             workspace.commands_outside += 1
+            replay.skipped()
             continue
-        changes_state = bool(REPLAYED.match(command))
+        changes_state = bool(REPLAYED.match(command) or INSTALLS.search(command))
         if not changes_state and time.monotonic() - started > REPLAY_BUDGET_SEC:
+            replay.skipped()
             continue
-        limit = 60 if changes_state else 30
-        output, status, ended = run_in_container(workspace, image, cwd, command, timeout_sec=limit)
-        cwd, note = settle_directory(step.tool or "", mount, ended)
-        workspace.commands_replayed += 1
-        workspace.commands_failed += status != 0
-        awaiting[-1] = output + note
+        limit = INSTALL_TIMEOUT_SEC if INSTALLS.search(command) else 60 if changes_state else 30
+        # The session's own installs and downloads are part of its state, so the prefix is
+        # re-run with the network; the tested model's commands later run without it.
+        output, status, ended = run_in_container(
+            workspace, image, cwd, command, timeout_sec=limit, network=True
+        )
+        cwd, note = settle_directory(tool, mount, ended)
+        replay.ran(step.index, command, status, output + note)
+    fidelity = replay.flush()
+    workspace.commands_replayed = fidelity.replayed
+    workspace.commands_failed = fidelity.failed
+    workspace.commands_compared = fidelity.compared
+    workspace.commands_matched = fidelity.matched
+    workspace.similarity_total = fidelity.similarity_total
+    with (destination / "replay.jsonl").open("w") as written:
+        written.writelines(row.model_dump_json() + "\n" for row in fidelity.comparisons)
     seed_github(workspace, repository, steps, takeover_step)
     (destination / "workspace.json").write_text(workspace.model_dump_json(indent=1))
     return workspace
@@ -605,6 +660,7 @@ class LiveExecutor:
         self.recorded = recorded
         self.image = image
         self.cwd = workspace.mount
+        self.files = WorkspaceFiles(workspace, lambda: self.cwd)
         self.live_actions = 0
 
     @property
@@ -626,21 +682,21 @@ class LiveExecutor:
             return await self.recorded.execute(action)
         self.recorded.note(action)
         if action.tool in SHELL_TOOLS:
-            command = command_of(arguments)
+            command = command_of(arguments, action.tool)
             if command is None or (OUTSIDE.search(command) and self.recorded.answers(action)):
                 return await self.recorded.execute(action)
             return await self.shell(command, action.tool)
+        outcome = await apply_file_tool(self.files, action.tool, arguments)
+        if outcome is not None:
+            self.live_actions += 1
+            return outcome[0]
         path = shlex.quote(str(arguments.get("file_path") or arguments.get("path") or "."))
-        if action.tool in READ_TOOLS:
-            return await self.shell(f"cat -n -- {path} | head -2000")
-        if action.tool in WRITE_TOOLS:
-            content = str(arguments.get("content", arguments.get("file_text", "")))
-            encoded = base64.b64encode(content.encode()).decode()
-            wrote = f'mkdir -p -- "$(dirname -- {path})" && echo {encoded} | base64 -d > {path}'
-            return await self.shell(f"{wrote} && echo File written: {path}")
-        if action.tool in EDIT_TOOLS:
-            encoded = base64.b64encode(json.dumps(arguments).encode()).decode()
-            return await self.shell(f"python3 -c {shlex.quote(EDIT_SCRIPT)} {encoded}")
+        if action.tool == "grep_search":
+            fixed = "" if arguments.get("isRegexp") else "-F "
+            scope = arguments.get("includePattern")
+            only = f"-g {shlex.quote(str(scope))} " if scope else ""
+            query = shlex.quote(str(arguments.get("query", "")))
+            return await self.shell(f"rg -n {fixed}{only}-- {query} . | head -200")
         if action.tool == "Grep":
             pattern = shlex.quote(str(arguments.get("pattern", "")))
             return await self.shell(f"grep -rnE -- {pattern} {path} | head -200")
@@ -653,10 +709,18 @@ class LiveExecutor:
         return await self.recorded.execute(action)
 
     async def run(self, command: str) -> str:
-        return await self.recorded.run(command)
+        """Run a scenario's own command (an intervention on the environment) in the tree."""
+        output, _, _ = await asyncio.to_thread(
+            run_in_container, self.workspace, self.image, self.workspace.mount, command
+        )
+        return output
 
     async def succeeds(self, command: str) -> bool:
-        return await self.recorded.succeeds(command)
+        """Whether a check on the state the agent left behind passes."""
+        _, status, _ = await asyncio.to_thread(
+            run_in_container, self.workspace, self.image, self.workspace.mount, command
+        )
+        return status == 0
 
 
 def workspace_directory(data: Path, trajectory_id: str, takeover_step: int) -> Path:
