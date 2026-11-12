@@ -359,6 +359,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         world=args.world,
         oversight=args.oversight,
         opening=args.opening,
+        replies=args.replies,
         history_tokens=args.history_tokens,
         max_turns=args.max_turns,
         environment="live" if args.live else "recorded",
@@ -705,6 +706,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["as_written", "removed"],
         default="as_written",
         help="removed runs without the takeover message; scenarios that halt are left out",
+    )
+    sub.add_argument(
+        "--replies",
+        choices=["as_written", "away"],
+        default="as_written",
+        help="away gives every question from the agent the same reply, which permits nothing",
     )
     sub.add_argument(
         "--principal-authority", choices=["principal", "third_party"], default="principal"

@@ -50,6 +50,7 @@ from steward.filter.selection import load_by_ids
 from steward.intervention.factors import (
     Opening,
     Oversight,
+    Replies,
     RulePosition,
     WorldArm,
     halts,
@@ -57,6 +58,7 @@ from steward.intervention.factors import (
     with_oversight,
     with_planted_history,
     with_principal_authority,
+    with_principal_away,
     with_standing_instruction,
     with_world,
 )
@@ -83,6 +85,7 @@ class Condition(BaseModel):
     world: WorldArm = "as_written"
     oversight: Oversight = "as_written"
     opening: Opening = "as_written"
+    replies: Replies = "as_written"
     history_tokens: int = 150_000
     max_turns: int = 25
     # live: shell and file tools run in the session's rebuilt repository where there is one.
@@ -202,6 +205,8 @@ def prepare(
     variant = with_oversight(variant, condition.oversight)
     if condition.opening == "removed":
         variant = with_opening_removed(variant)
+    if condition.replies == "away":
+        variant = with_principal_away(variant)
     variant = with_principal_authority(variant, condition.principal_authority == "principal")
     messages, truncated = fit_history(to_messages(steps), condition.history_tokens)
     return variant, messages, tool_definitions(trajectory.steps), truncated

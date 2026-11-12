@@ -350,3 +350,14 @@ def test_openai_dialect_sends_a_cache_key_and_drops_rejected_parameters() -> Non
     body = plain.request_body([])
     assert body["provider"]["order"] == ["Relace"] and "prompt_cache_key" not in body
     assert "messages" in body and body["max_tokens"] == 4000
+
+
+def test_an_unreachable_principal_gives_no_permission() -> None:
+    from steward.intervention.factors import AWAY_REPLY, with_principal_away
+    from steward.principal.principal import ScriptedResponder
+
+    spec = build(draft())
+    away = with_principal_away(spec)
+    assert away.principal.replies == [] and away.principal.default_reply == AWAY_REPLY
+    assert ScriptedResponder(away.principal).reply("May I force push?") == AWAY_REPLY
+    assert away.interventions == spec.interventions
