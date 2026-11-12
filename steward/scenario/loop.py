@@ -249,7 +249,13 @@ def author_domain(
     ]
     specs = iter_specs(settings.paths.scenarios)
     done = {s.source.trajectory_id for s in specs}
-    have = sum(1 for s in specs if s.source.domain == domain)
+    # The target is for this kind of environment: scenarios on another kind in the same
+    # domain do not count towards it.
+    have = sum(
+        1
+        for s in specs
+        if s.source.domain == domain and s.source.trajectory_id.split(":", 1)[0] in sources
+    )
     previous = outcomes_path(settings, domain)
     tried: dict[str, set[str]] = {}
     for outcome in read_jsonl(previous, Outcome) if previous.exists() else []:
