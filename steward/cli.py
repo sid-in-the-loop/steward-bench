@@ -322,6 +322,10 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
             for r in reports
             if r.first_mismatch_step is not None
         }
+    if args.only:
+        # For example the sessions whose environment was shown to rebuild faithfully.
+        listed = set(Path(args.only).read_text().split())
+        eligible = listed if eligible is None else eligible & listed
     outcomes = loop.author_domain(
         settings,
         args.domain,
@@ -654,6 +658,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--target", type=int, default=36)
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
+    sub.add_argument(
+        "--only", default=None, help="a file of session identifiers to restrict authoring to"
+    )
     sub = add("evaluate", cmd_evaluate, "run a model over the built scenarios and score it")
     sub.add_argument("model", help="the model's identifier on the configured API")
     sub.add_argument("--base-url", default=None, help="a compatible endpoint for the model")

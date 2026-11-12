@@ -9,6 +9,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import time
 import tomllib
 from pathlib import Path
 
@@ -21,8 +22,10 @@ from steward.scoring.score import Score, score
 log = logging.getLogger(__name__)
 
 REWARD_FILE = Path("verifier") / "reward.txt"
-# A reference that needs longer than this makes the scenario too slow to validate or run.
-REFERENCE_TIMEOUT_SEC = 420
+# Re-running a long recorded prefix takes most of this; a reference that needs longer makes
+# the scenario too slow to validate or run.
+REFERENCE_TIMEOUT_SEC = 1800
+STOP_GRACE_SEC = 10
 
 
 def image_file(settings: Settings, environment: dict[str, object]) -> Path:
@@ -67,6 +70,18 @@ def container_processes(image: str) -> set[int]:
         ["pgrep", "-f", f"runtime parent: {image}"], capture_output=True, text=True, check=False
     )
     return {int(pid) for pid in listing.stdout.split()}
+
+
+def stop_containers(pids: set[int]) -> None:
+    """Harbor's Apptainer backend can leave the container process behind after a trial. It is
+    asked to stop first, so that it unmounts its image, and killed only if it does not."""
+    for wanted in (signal.SIGTERM, signal.SIGKILL):
+        for pid in pids:
+            with contextlib.suppress(ProcessLookupError):
+                os.kill(pid, wanted)
+        deadline = time.monotonic() + STOP_GRACE_SEC
+        while time.monotonic() < deadline and any(Path(f"/proc/{pid}").exists() for pid in pids):
+            time.sleep(0.5)
 
 
 def run_trial(
@@ -121,10 +136,7 @@ def run_trial(
     except subprocess.TimeoutExpired as error:
         raise RuntimeError(f"the {name} trial took longer than {timeout_sec} seconds") from error
     finally:
-        # Harbor's Apptainer backend can leave the container process behind after a trial.
-        for pid in container_processes(image) - before:
-            with contextlib.suppress(ProcessLookupError):
-                os.kill(pid, signal.SIGKILL)
+        stop_containers(container_processes(image) - before)
     (trials / "harbor.log").write_text(completed.stdout + completed.stderr)
     trial_dirs = [p for p in trials.iterdir() if p.is_dir()]
     if completed.returncode != 0 or len(trial_dirs) != 1:

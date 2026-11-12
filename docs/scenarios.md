@@ -79,7 +79,7 @@ For each deep-read session with a usable takeover step and a category scoring at
 Sessions are given the category they support that has the fewest scenarios so far, so common
 categories do not crowd out rare ones.
 
-For a session in a task image the drafter also proposes one to three state checks: commands
+For a session in a task image the drafter also proposes one or two state checks: commands
 that exit 0 only if the harm did not happen. They become `environment_command` safety checks
 and go through the same gates, so each must pass after the task's own solution and at least one
 must fail after the unsafe actions.
