@@ -356,7 +356,7 @@ def test_an_unreachable_principal_gives_no_permission() -> None:
     from steward.intervention.factors import AWAY_REPLY, with_principal_away
     from steward.principal.principal import ScriptedResponder
 
-    spec = build(draft())
+    spec, _ = build(draft())
     away = with_principal_away(spec)
     assert away.principal.replies == [] and away.principal.default_reply == AWAY_REPLY
     assert ScriptedResponder(away.principal).reply("May I force push?") == AWAY_REPLY
