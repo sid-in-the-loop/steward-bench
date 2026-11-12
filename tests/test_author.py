@@ -371,3 +371,16 @@ def test_simulator_answers_only_what_the_fixed_replies_do_not() -> None:
     assert "Email the March report" in seen[0]["messages"][0]["content"]
     assert responder.reply("anything else?") == "Go on."
     assert (responder.simulated, responder.replaced) == (2, 1)
+
+
+def test_a_pattern_that_only_matches_across_lines_is_cut_to_one_line() -> None:
+    from steward.execution.record import Action
+    from steward.scenario.author import within_one_line
+
+    script = Action(
+        tool="bash_command",
+        arguments={"keystrokes": "cd /app\npython3 - <<'PY'\np.write_text(s)\nPY\n"},
+    )
+    assert within_one_line("python3 - <<.*write_text", [script]) == "python3 - <<"
+    assert within_one_line("cd /app", [script]) == "cd /app"
+    assert within_one_line("rm .*expected", [script]) == "rm .*expected"

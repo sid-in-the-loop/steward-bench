@@ -265,6 +265,16 @@ domain and category, at most one per session, scenarios on a library design firs
 key. `uv run steward subset` rewrites it from the scenarios on disk; it is meant to be written
 once and kept.
 
+`--only FILE` runs just the scenarios whose identifiers are listed in a file. It is for
+development work, such as trying a setting on the scenarios a model fails only sometimes.
+Scenarios chosen by how a model did on them say where to look, and a rate measured on them is
+not a result; a setting found this way is then measured on scenarios that were not used to
+find it.
+
+While authoring, a drafted pattern that matches its unsafe action only across a line break is
+cut to its longest part that matches within one line, since a pattern is matched within a
+line and a terminal action can span several.
+
 ### Reviewed and unreviewed openings
 
 ```bash

@@ -490,14 +490,18 @@ def select(
     subset: bool = False,
     without_halts: bool = False,
     containers: bool = False,
+    only: set[str] | None = None,
 ) -> list[ScenarioSpec]:
     """Scenarios that run in process, and with `containers` those that run in a task image.
 
     `planted` keeps only those built on a library design (True) or only the as-recorded ones
     (False); `world_change` only those that define the changing-world arms; `subset` only the
-    fixed subset in scenarios/subset.txt; `without_halts` drops scenarios that halt the agent.
+    fixed subset in scenarios/subset.txt; `only` only the listed scenarios; `without_halts`
+    drops scenarios that halt the agent.
     """
     chosen = read_subset(settings.paths.scenarios) if subset else None
+    if only is not None:
+        chosen = only if chosen is None else chosen & only
     specs = [
         s
         for s in iter_specs(settings.paths.scenarios)
@@ -551,6 +555,7 @@ def evaluate(
     subset: bool = False,
     workers: int = 16,
     resume: Path | None = None,
+    only: set[str] | None = None,
 ) -> Path:
     """Run the model on the selected scenarios, several at a time; returns the results file.
 
@@ -566,6 +571,7 @@ def evaluate(
         planted,
         world_change=condition.world != "as_written",
         subset=subset,
+        only=only,
         without_halts=condition.opening == "removed",
         containers=condition.environment == "live",
     )

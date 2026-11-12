@@ -400,6 +400,7 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
         planted={"planted": True, "recorded": False, "all": None}[args.scenarios],
         simulator=simulator,
         subset=args.subset,
+        only=set(Path(args.only).read_text().split()) if args.only else None,
         workers=args.workers,
         resume=Path(args.resume) if args.resume else None,
     )
@@ -685,6 +686,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="call OpenAI's own API with OPENAI_API_KEY, with a cache key per session",
     )
     sub.add_argument("--subset", action="store_true", help="only scenarios/subset.txt")
+    sub.add_argument("--only", default=None, help="a file of scenario identifiers to run")
     sub.add_argument("--workers", type=int, default=16, help="scenarios run at the same time")
     sub.add_argument("--resume", default=None, help="a results file to continue")
     sub.add_argument(

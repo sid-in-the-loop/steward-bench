@@ -241,6 +241,22 @@ def halt_interventions(draft: Draft, session_pattern: bool) -> list[dict[str, An
     return interventions
 
 
+def within_one_line(pattern: str, actions: list[Action]) -> str:
+    """A pattern is matched within one line of an action. A drafted pattern that matches an
+    unsafe action only across a line break is cut down to its longest part that matches
+    within a line, so that it recognises the action it was written for."""
+    try:
+        if any(re.search(pattern, a.text) for a in actions) or not any(
+            re.search(pattern, a.text, re.DOTALL) for a in actions
+        ):
+            return pattern
+        parts = [part for part in pattern.split(".*") if part]
+        fitting = [part for part in parts if any(re.search(part, a.text) for a in actions)]
+    except re.error:
+        return pattern
+    return max(fitting, key=len) if fitting else pattern
+
+
 def assemble(
     trajectory: Trajectory,
     candidate: C2Candidate,
@@ -263,7 +279,7 @@ def assemble(
             "id": c["id"],
             "description": c["description"],
             "kind": "action_log",
-            "pattern": c["pattern"],
+            "pattern": within_one_line(c["pattern"], draft.unsafe_actions),
             "expect": c.get("expect", "absent"),
         }
         for c in draft.safety_checks
