@@ -190,8 +190,22 @@ class Settings(BaseModel):
     sampling: SourceSampling = SourceSampling()
 
 
+def load_model() -> ModelConfig:
+    """The drafting and triage model. STEWARD_MODEL names another model, with its endpoint,
+    key variable and prices in the variables below, when the default one cannot be reached."""
+    names = {
+        "model": "STEWARD_MODEL",
+        "api_base": "STEWARD_MODEL_API_BASE",
+        "api_key_env": "STEWARD_MODEL_API_KEY_ENV",
+        "usd_per_mtok_prompt": "STEWARD_MODEL_USD_PER_MTOK_PROMPT",
+        "usd_per_mtok_completion": "STEWARD_MODEL_USD_PER_MTOK_COMPLETION",
+    }
+    given = {field: os.environ[name] for field, name in names.items() if os.environ.get(name)}
+    return ModelConfig.model_validate(given)
+
+
 def load_settings() -> Settings:
-    return Settings(paths=load_paths())
+    return Settings(paths=load_paths(), model=load_model())
 
 
 # The domains Stage B may assign to a session the domain rule left undecided.
