@@ -648,7 +648,9 @@ def build_parser() -> argparse.ArgumentParser:
     add("analyze", cmd_analyze, "write reports/PHASE1_STATS.md and figures")
     sub = add("author", cmd_author, "draft, assemble and gate scenarios for a domain")
     sub.add_argument("domain")
-    sub.add_argument("environment", choices=["recorded_tools", "repository", "task_image", "tool_servers"])
+    sub.add_argument(
+        "environment", choices=["recorded_tools", "repository", "task_image", "tool_servers"]
+    )
     sub.add_argument("--target", type=int, default=36)
     sub.add_argument("--confirm", action="store_true", help="call the model after the estimate")
     sub.add_argument("--max-usd", type=float, default=1.0)
