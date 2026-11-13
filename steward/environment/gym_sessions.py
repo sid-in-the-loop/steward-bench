@@ -36,10 +36,12 @@ IDENTIFIER = re.compile(r"\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9
 
 
 def images(settings: Settings) -> GymImages:
+    canvas = settings.paths.container_images / "canvas_server"
     return GymImages(
         tools=settings.paths.container_images / "gym.sif",
         postgres=settings.paths.container_images / "postgres.sif",
         repository=settings.paths.upstream_tasks / SOURCE,
+        canvas_server=canvas if canvas.is_dir() else None,
     )
 
 

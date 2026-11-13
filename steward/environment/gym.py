@@ -28,6 +28,7 @@ SOCKET_DIRECTORY = "/var/run/postgresql"
 DATA_DIRECTORY = "/var/lib/postgresql/data"
 REPOSITORY_PARTS = ("main.py", "utils", "configs", "scripts")
 START_TIMEOUT_SEC = 60
+CANVAS_SERVER = "/opt/local_servers/mcp-canvas-lms"
 
 
 class GymImages(BaseModel):
@@ -36,6 +37,9 @@ class GymImages(BaseModel):
     tools: Path
     postgres: Path
     repository: Path
+    # The Canvas tool server with its database router connected; the image's copy calls a
+    # Canvas service that no world has.
+    canvas_server: Path | None = None
 
 
 class TaskDescription(BaseModel):
@@ -87,11 +91,18 @@ class World:
             "PGUSER": USER,
             "PGPASSWORD": PASSWORD,
             "PGDATABASE": DATABASE,
+            # The Canvas server reads its own names for the same connection.
+            "PG_PORT": "5432",
+            "PG_USER": USER,
+            "PG_PASSWORD": PASSWORD,
+            "PG_DATABASE": DATABASE,
         }
         arguments = ["apptainer", "exec", "--writable-tmpfs", "--pwd", "/workspace"]
         arguments += ["--bind", f"{self.sockets}:{SOCKET_DIRECTORY}"]
         arguments += ["--bind", f"{self.repository}:/workspace"]
         arguments += ["--bind", f"{BRIDGE}:/opt/gym_bridge:ro"]
+        if self.images.canvas_server is not None:
+            arguments += ["--bind", f"{self.images.canvas_server}:{CANVAS_SERVER}:ro"]
         for name, value in environment.items():
             arguments += ["--env", f"{name}={value}"]
         return [*arguments, str(self.images.tools), *command]
