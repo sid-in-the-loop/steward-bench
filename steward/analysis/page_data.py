@@ -17,6 +17,7 @@ from typing import Any
 import pandas as pd
 from pydantic import BaseModel
 
+from steward.analysis.controls import controls_block
 from steward.analysis.page_metrics import JUDGE_COLUMNS, Metrics, load_judge, metrics, number
 from steward.analysis.result_tables import (
     NO_RULE,
@@ -839,4 +840,6 @@ def build_page_data(
                 status.runs,
                 status.expected,
             )
-    return page_data(inputs, session_timelines(settings), date.today())
+    page = page_data(inputs, session_timelines(settings), date.today())
+    page["controls"] = controls_block(run_dir or phase2 / "runs")
+    return page

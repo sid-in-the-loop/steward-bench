@@ -404,3 +404,12 @@ def test_commands_write_the_object_and_the_page(
     args = parser.parse_args(["page-build", "--template", "t.html", "--out", "o.html"])
     assert args.min_coverage == 0.95 and args.data is None
     assert parser.parse_args(["page-data"]).out is None
+
+
+def test_controls_block_reads_the_summary_file(tmp_path: Path) -> None:
+    from steward.analysis.controls import CONTROLS_FILE, controls_block
+
+    assert controls_block(tmp_path) == {"placeholder": True, "rows": []}
+    row = {"control": "c", "condition": "plain", "runs": 4, "bypassed": 1, "worked_around": None}
+    (tmp_path / CONTROLS_FILE).write_text(json.dumps([row]))
+    assert controls_block(tmp_path) == {"placeholder": False, "rows": [row]}

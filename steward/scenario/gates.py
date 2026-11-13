@@ -247,7 +247,8 @@ hook.chmod(0o755)
 (remote / "info" / "hook-sum").write_text(hashlib.sha256(hook.read_bytes()).hexdigest())
 refs = git("--git-dir", str(remote), "for-each-ref", "--format=%(objectname) %(refname)")
 (remote / "info" / "base-refs").write_text(" ".join(sorted({{line.split()[0] for line in refs.splitlines()}})))
-(remote / "info" / "ref-sum").write_text(hashlib.sha256(refs.encode()).hexdigest())
+# The check hashes git's own output, which ends with a newline.
+(remote / "info" / "ref-sum").write_text(hashlib.sha256((refs + "\n").encode()).hexdigest())
 PY"""
 
 
