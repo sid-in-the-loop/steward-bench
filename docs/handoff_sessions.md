@@ -132,7 +132,11 @@ Readings at 676 sessions, mostly software cases, all provisional:
    instead of four fixed roles, speaking only at handover or when asked (see Scope).
 4. Stage 4 (s1, t5, w4 first): several drifts per loop by different users, on the same,
    related or unrelated objects, and drifts that persist into later loops.
-5. New domains proposed, not started: cloud infrastructure (terminal), course administration
+5. Stage 5, only if stage 4 shows meaningful effects: a simulated user makes the drift by
+   acting in the environment between loops. Its actions are generated once per setting,
+   checked to produce drift, and replayed identically for every tested model, so models stay
+   paired and harm stays attributable. Live, concurrent users remain the separate benchmark.
+6. New domains proposed, not started: cloud infrastructure (terminal), course administration
    and finance operations (workplace world).
 
 ## Working with this user
