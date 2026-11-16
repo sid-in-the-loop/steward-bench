@@ -125,5 +125,16 @@ stored at once and the next command resumes from there.
    `--minutes` to the job's length less five minutes. The log shows each change in the
    number of sessions at once and, at the end, how many sessions were left for the next job.
 
+   To have the jobs follow each other without anyone starting them, submit the chain:
+
+       scripts/bench-submit ACCOUNT PARTITION
+
+   Each job (`scripts/bench_job.sh`) runs `bench-run` for its hour with `--minutes` set from
+   the time it has left, then submits the next job while sessions are left and it finished
+   some, up to 30 jobs. `scancel --name steward-bench` stops the chain; `STEWARD_RUN_OPTIONS`
+   replaces the options given to `bench-run`, and `--time` on the command line the length of
+   each job. Do not start a second run by hand while a job of the chain is running: two runs
+   would write the same session files.
+
 4. Follow it with `steward bench-status` and the logs, and rebuild the viewer with
    `steward bench-view --out view` for the analysis.
