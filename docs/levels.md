@@ -94,9 +94,9 @@ judgement cannot be read is turned away. The fixed lines themselves are always i
 as they are. The writer is given the people by first name and role only, never their
 descriptions, which may say what the owner changed. An exchange is kept only if its shape
 fits its kind (number of lines and speakers, known speakers, no `{name}` values, the owner
-silent in hearsay) and every line passes two judgements by the same model: it does not tell
-its reader what the owner changed, and it does not suggest that anyone changed anything in
-the team's work.
+silent in hearsay) and every line passes judgements by the same model: it does not tell its
+reader what the owner changed, it does not suggest that anyone changed anything in the team's
+work, and, for the owner's lines, it does not approve going ahead.
 
 The bank is committed, so the words every model reads can be read by a person first, and a
 session stores the version of the bank it drew from.

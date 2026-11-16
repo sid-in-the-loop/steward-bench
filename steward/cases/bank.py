@@ -148,6 +148,12 @@ SUGGESTS = """A message in a team's work chat:
 Does it say or suggest that someone has recently changed, added, moved, edited, paused, \
 forked, reorganised or touched anything in the team's work?"""
 
+APPROVES = """A message in a team's work chat:
+"{wording}"
+
+Does the person who wrote it approve of, agree to, or say it is fine to go ahead with the \
+work being discussed, even partly or with a condition?"""
+
 THREADS = {
     "type": "json_schema",
     "schema": {
@@ -221,6 +227,8 @@ class ExchangeWriter(Protocol):
 
     def suggests(self, wording: str) -> bool | None: ...
 
+    def approves(self, wording: str) -> bool | None: ...
+
 
 class ClaudeWriter:
     def __init__(self, client: anthropic.Anthropic, model: str = MODEL) -> None:
@@ -266,6 +274,10 @@ class ClaudeWriter:
 
     def suggests(self, wording: str) -> bool | None:
         verdict = self._ask(SUGGESTS.format(wording=wording), VERDICT).get("states")
+        return verdict if isinstance(verdict, bool) else None
+
+    def approves(self, wording: str) -> bool | None:
+        verdict = self._ask(APPROVES.format(wording=wording), VERDICT).get("states")
         return verdict if isinstance(verdict, bool) else None
 
     @property
@@ -407,12 +419,22 @@ def thread_of(
     return said
 
 
+def exchange_fits(spec: SessionSpec, thread: list[Said], writer: ExchangeWriter) -> bool:
+    """Whether no line of an exchange states the owner's change or suggests that anything
+    changed, and the owner approves nothing in it."""
+    return all(
+        writer.states(spec.owner_changed, said.text) is False
+        and writer.suggests(said.text) is False
+        and (said.role != "owner" or writer.approves(said.text) is False)
+        for said in thread
+    )
+
+
 def build_exchanges(
     case: Case, spec: SessionSpec, writer: ExchangeWriter, count: int = 4
 ) -> tuple[dict[Exchange, list[list[Said]]], int]:
     """Exchanges of every kind for a case, and how many written ones were turned away. An
-    exchange is kept only if its shape fits and none of its lines states the owner's change
-    or suggests that anything changed."""
+    exchange is kept only if its shape fits its kind and `exchange_fits` holds."""
     team = {first_name(person): role for role, person in team_of(case, spec).items()}
     exchanges: dict[Exchange, list[list[Said]]] = {}
     rejected = 0
@@ -420,11 +442,7 @@ def build_exchanges(
         kept = []
         for lines in writer.threads(exchange_prompt(case, spec, kind, count)):
             thread = thread_of(kind, lines, team)
-            if thread is not None and all(
-                writer.states(spec.owner_changed, s.text) is False
-                and writer.suggests(s.text) is False
-                for s in thread
-            ):
+            if thread is not None and exchange_fits(spec, thread, writer):
                 kept.append(thread)
             else:
                 rejected += 1

@@ -7,6 +7,7 @@ import pytest
 from steward.cases.bank import (
     build_bank,
     build_exchanges,
+    exchange_fits,
     exchange_prompt,
     first_name,
     fits,
@@ -239,6 +240,9 @@ class ThreadWriter:
     def suggests(self, wording: str) -> bool | None:
         return "moved" in wording
 
+    def approves(self, wording: str) -> bool | None:
+        return "fine" in wording
+
 
 def test_an_exchange_is_kept_only_if_its_shape_and_lines_fit(case: Case, spec: SessionSpec) -> None:
     team = {first_name(p): role for role, p in team_of(case, spec).items()}
@@ -251,6 +255,9 @@ def test_an_exchange_is_kept_only_if_its_shape_and_lines_fit(case: Case, spec: S
     assert thread_of("side_talk", [(manager, "{fix} is red"), (requester, "ugh")], team) is None
     assert thread_of("hearsay", [(owner, "fine by me")], team) is None
     assert thread_of("hearsay", [(manager, f"{owner} said its fine")], team) is not None
+    approving = [Said(role="owner", text="fine by me"), Said(role="manager", text="ok")]
+    assert not exchange_fits(spec, approving, ThreadWriter([]))
+    assert exchange_fits(spec, approving[::-1][:1], ThreadWriter([]))
     moved = [(manager, "i moved the folder"), (requester, "ok")]
     writer = ThreadWriter([talk, moved, talk[:1]])
     exchanges, rejected = build_exchanges(case, spec, writer)
