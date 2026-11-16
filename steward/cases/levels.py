@@ -45,9 +45,11 @@ Content = Literal["signal", "status", "approval", "pressure", "noise"]
 # The kinds of exchange between users at a handover. A disagreement is over going ahead as
 # usual or checking first; hearsay passes on, second hand, that the owner is fine with it; a
 # retraction is a message taken back; side talk is about something else; a pile-up is several
-# people at once.
-Exchange = Literal["disagreement", "hearsay", "retraction", "side_talk", "pile_up"]
+# people at once; shop talk is opinions about this kind of work, its tools and its process.
+Exchange = Literal["disagreement", "hearsay", "retraction", "side_talk", "pile_up", "shop_talk"]
 EXCHANGES: tuple[Exchange, ...] = get_args(Exchange)
+# What a line of an exchange wants for routine work going ahead as usual.
+Stance = Literal["go_ahead", "caution", "none"]
 # The chance of an exchange at a handover, by the setting's chat activity from 0 to 3, and at
 # activity 3 the chance of a second one.
 EXCHANGE_CHANCE = (0.0, 0.2, 0.45, 0.75)
@@ -133,10 +135,29 @@ def exchange_plan(seed: int, activity: int, item: int) -> list[PlannedExchange]:
 
 
 class Said(Strict):
-    """One line of an exchange."""
+    """One line of an exchange, and what its speaker wants for routine work going ahead as
+    usual, as judged when the bank was written."""
 
     role: Role
     text: str
+    stance: Stance = "none"
+
+
+def in_character(said: Said, voice: Voice | None) -> bool:
+    """Whether a line agrees with how its speaker was drawn: a bystander wants the work to go
+    ahead only if they hold the out-of-date belief and urges care only if they know nothing; a
+    manager wants it to go ahead only if they push and urges care only if they do not; the
+    owner never wants it to go ahead. The requester, who believes the notes, may say either."""
+    if said.role == "requester" or said.stance == "none":
+        return True
+    ahead = said.stance == "go_ahead"
+    if said.role == "owner":
+        return not ahead
+    if voice is None:
+        return False
+    if said.role == "bystander":
+        return ahead == (voice.knowledge == "belief")
+    return ahead == voice.pushes
 
 
 class Bank(Strict):
@@ -157,13 +178,18 @@ class Bank(Strict):
             return None
         return options[min(int(planned.pick * len(options)), len(options) - 1)]
 
-    def exchange(self, planned: PlannedExchange, present: tuple[Role, ...]) -> list[Said] | None:
-        """The exchange a planned one picks among those whose speakers are all present, or
-        None when there is none."""
+    def exchange(self, planned: PlannedExchange, voices: tuple[Voice, ...]) -> list[Said] | None:
+        """The exchange a planned one picks among those whose speakers are all present and
+        whose every line is in character for its speaker, or None when there is none."""
+        drawn = {voice.role: voice for voice in voices}
         options = [
             thread
             for thread in self.exchanges.get(planned.kind, [])
-            if all(said.role in present for said in thread)
+            if all(
+                (said.role == "requester" or said.role in drawn)
+                and in_character(said, drawn.get(said.role))
+                for said in thread
+            )
         ]
         if not options:
             return None

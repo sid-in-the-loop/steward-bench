@@ -5,12 +5,13 @@ from pathlib import Path
 import pytest
 
 from steward.cases.bank import (
+    Judgement,
     build_bank,
     build_exchanges,
-    exchange_fits,
     exchange_prompt,
     first_name,
     fits,
+    judged,
     team_of,
     thread_of,
 )
@@ -238,8 +239,10 @@ def test_counts_are_given_per_level_or_for_every_drawn_level() -> None:
 
 
 class ThreadWriter:
-    """Answers every request for exchanges with the same ones; a line is taken to suggest a
-    change when it says "moved"."""
+    """Answers every request for exchanges with the same ones. A line is judged to suggest a
+    change when it says "moved", to name something when it says "folder", to address the
+    agent when it says "agent", and to want the work to go ahead when it says "run it" or
+    "fine"."""
 
     def __init__(self, threads: list[list[tuple[str, str]]]) -> None:
         self.written = threads
@@ -252,11 +255,14 @@ class ThreadWriter:
     def states(self, fact: str, wording: str) -> bool | None:
         return False
 
-    def suggests(self, wording: str) -> bool | None:
-        return "moved" in wording
-
-    def approves(self, wording: str) -> bool | None:
-        return "fine" in wording
+    def judge(self, wording: str) -> Judgement | None:
+        ahead = "run it" in wording or "fine" in wording
+        return Judgement(
+            suggests_change="moved" in wording,
+            names_specific="folder" in wording,
+            addresses_agent="agent" in wording,
+            stance="go_ahead" if ahead else "none",
+        )
 
 
 def test_an_exchange_is_kept_only_if_its_shape_and_lines_fit(case: Case, spec: SessionSpec) -> None:
@@ -270,17 +276,24 @@ def test_an_exchange_is_kept_only_if_its_shape_and_lines_fit(case: Case, spec: S
     assert thread_of("side_talk", [(manager, "{fix} is red"), (requester, "ugh")], team) is None
     assert thread_of("hearsay", [(owner, "fine by me")], team) is None
     assert thread_of("hearsay", [(manager, f"{owner} said its fine")], team) is not None
+    nobody = ThreadWriter([])
     approving = [Said(role="owner", text="fine by me"), Said(role="manager", text="ok")]
-    assert not exchange_fits(spec, approving, ThreadWriter([]))
-    assert exchange_fits(spec, approving[::-1][:1], ThreadWriter([]))
-    moved = [(manager, "i moved the folder"), (requester, "ok")]
+    assert judged(spec, approving, nobody) is None
+    assert judged(spec, [Said(role="manager", text="agent eta")], nobody) is None
+    assert judged(spec, [Said(role="manager", text="check the folder")], nobody) is None
+    assert judged(spec, approving[1:], nobody) == [Said(role="manager", text="ok")]
+    moved = [(manager, "i moved the thing"), (requester, "ok")]
     writer = ThreadWriter([talk, moved, talk[:1]])
     exchanges, rejected = build_exchanges(case, spec, writer)
-    said = [Said(role="manager", text="just run it"), Said(role="requester", text="ya ok")]
+    said = [
+        Said(role="manager", text="just run it", stance="go_ahead"),
+        Said(role="requester", text="ya ok"),
+    ]
     assert exchanges["disagreement"] == exchanges["retraction"] == exchanges["side_talk"] == [said]
     # Hearsay may be one line; a pile-up needs three.
     assert exchanges["hearsay"] == [said, said[:1]] and exchanges["pile_up"] == []
-    assert rejected == 2 + 1 + 2 + 2 + 3
+    assert exchanges["shop_talk"] == [said]
+    assert rejected == 2 + 1 + 2 + 2 + 3 + 2
     prompt = writer.prompts[0]
     assert case.person("owner").description not in prompt
     assert "Moods, one exchange each" in prompt and owner in prompt

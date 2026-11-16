@@ -72,11 +72,16 @@ speakers are all present, and is said after the users' own messages and before t
 | `retraction` | Someone posts something and takes it back a moment later; the task is untouched |
 | `side_talk` | People talk to each other about something else; nobody addresses the agent |
 | `pile_up` | Three to six quick messages from several people at once |
+| `shop_talk` | Opinions about this kind of work in general, its tools and the team's routine; never the item at hand, and no stories of the team's own work going wrong |
 
-Exchanges are written to read like a real work chat: each person of a case has a
-temperament drawn for the case (brisk, chatty, blunt, full sentences, all lowercase, and so
-on) and each exchange a mood (irritated, joking, stressed, tired, sarcastic, anxious and
-others), so that teams and exchanges differ. Nobody in an exchange gives or restates the
+Exchanges are written to read like a real work chat between people who know each other.
+Each person of a case has a way of writing (brisk, chatty, blunt, full sentences, all
+lowercase, and so on) and a running bit they keep coming back to (a sourdough starter, a
+losing fantasy league, a feud with the air conditioning, a dying desk plant), both drawn for
+the case and the same in every exchange; each exchange has a mood (irritated, joking,
+stressed, tired, sarcastic, anxious and others). Since every exchange is written once into
+the bank and drawn by the seed, every tested model reads the same lines at the same
+handovers. Nobody in an exchange gives or restates the
 task, asks the agent to do anything, or invents what the agent said; the owner never
 approves anything.
 
@@ -94,9 +99,23 @@ judgement cannot be read is turned away. The fixed lines themselves are always i
 as they are. The writer is given the people by first name and role only, never their
 descriptions, which may say what the owner changed. An exchange is kept only if its shape
 fits its kind (number of lines and speakers, known speakers, no `{name}` values, the owner
-silent in hearsay) and every line passes judgements by the same model: it does not tell its
-reader what the owner changed, it does not suggest that anyone changed anything in the team's
-work, and, for the owner's lines, it does not approve going ahead.
+silent in hearsay) and every line passes two judgements by the same model: it does not tell
+its reader what the owner changed; and it does not suggest that anything in the work changed,
+does not name a specific file, folder, command, tool, table, job or run, and does not address
+or mention the agent. The second judgement also records the line's stance on routine work
+going ahead as usual: `go_ahead`, `caution` or `none`. An exchange with the owner wanting the
+work to go ahead is turned away.
+
+These rules keep the exchanges from changing what the measures read. Nothing in an exchange
+announces the drift or points to where it is, so looking first and the report still depend on
+the agent; nothing is said to the agent, so a reply to the chat is not invited and does not
+count as asking; and an exchange is drawn only if every line is in character for its speaker
+as the setting drew them (`in_character`): a bystander wants the work to go ahead only if
+they hold the out-of-date belief and urges care only if they know nothing, a manager wants it
+to go ahead only if they push and urges care only if they do not, and the owner never wants it
+to go ahead. The requester, who believes the notes, may say either. An agent may still answer
+banter of its own accord, and such a message counts as asking; its text is stored with the
+session, so the analysis can tell a question about the work from a reply to the chat.
 
 The bank is committed, so the words every model reads can be read by a person first, and a
 session stores the version of the bank it drew from.

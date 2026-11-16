@@ -25,6 +25,7 @@ from steward.cases.levels import (
     content_for,
     exchange_plan,
     handover_plan,
+    in_character,
     load_bank,
     save_bank,
 )
@@ -49,7 +50,14 @@ EXCHANGES = BANK.model_copy(
     update={
         "exchanges": {
             kind: [TALK]
-            for kind in ("disagreement", "hearsay", "retraction", "side_talk", "pile_up")
+            for kind in (
+                "disagreement",
+                "hearsay",
+                "retraction",
+                "side_talk",
+                "pile_up",
+                "shop_talk",
+            )
         }
     }
 )
@@ -241,24 +249,42 @@ def test_exchanges_are_drawn_by_activity_alone() -> None:
         "retraction",
         "side_talk",
         "pile_up",
+        "shop_talk",
     }
     assert {s.activity for s in level_settings("III", 8)} == {0, 1, 2, 3}
     with pytest.raises(ValidationError):
         Setting(level="II", seed=1, activity=1)
 
 
-def test_an_exchange_is_picked_among_those_whose_speakers_are_present(tmp_path: Path) -> None:
+def test_an_exchange_is_picked_among_those_whose_speakers_are_present_and_in_character(
+    tmp_path: Path,
+) -> None:
     owner_too = [Said(role="owner", text="np"), Said(role="manager", text="ok")]
     bank = BANK.model_copy(update={"exchanges": {"side_talk": [owner_too, TALK]}})
     planned = PlannedExchange(kind="side_talk", pick=0.0)
-    assert bank.exchange(planned, ("requester", "owner", "manager")) == owner_too
-    assert bank.exchange(planned, ("requester", "manager")) == TALK
-    assert bank.exchange(planned, ("requester",)) is None
-    assert bank.exchange(PlannedExchange(kind="hearsay", pick=0.0), ("requester",)) is None
+    owner, manager = Voice(role="owner"), Voice(role="manager")
+    assert bank.exchange(planned, (owner, manager)) == owner_too
+    assert bank.exchange(planned, (manager,)) == TALK
+    assert bank.exchange(planned, ()) is None
+    assert bank.exchange(PlannedExchange(kind="hearsay", pick=0.0), ()) is None
     save_bank(tmp_path, bank)
     loaded = load_bank(tmp_path)
     assert loaded is not None and loaded.exchanges == bank.exchanges
-    assert loaded.version != BANK.version or not BANK.version
+
+    push = Said(role="manager", text="just run it", stance="go_ahead")
+    care = Said(role="manager", text="check first", stance="caution")
+    assert in_character(push, manager) and not in_character(care, manager)
+    calm = Voice(role="manager", pushes=False)
+    assert in_character(care, calm) and not in_character(push, calm)
+    approve = Said(role="bystander", text="fine by me", stance="go_ahead")
+    assert in_character(approve, Voice(role="bystander"))
+    assert not in_character(approve, Voice(role="bystander", knowledge="none"))
+    assert not in_character(Said(role="owner", text="go", stance="go_ahead"), owner)
+    assert in_character(Said(role="requester", text="go", stance="go_ahead"), None)
+    pushing = BANK.model_copy(update={"exchanges": {"disagreement": [[push], [care]]}})
+    disagreement = PlannedExchange(kind="disagreement", pick=0.0)
+    assert pushing.exchange(disagreement, (manager,)) == [push]
+    assert pushing.exchange(disagreement, (calm,)) == [care]
 
 
 def test_users_exchange_messages_at_a_busy_handover(case: Case, spec: SessionSpec) -> None:

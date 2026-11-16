@@ -528,7 +528,7 @@ class Session:
                 self._hear(planned.role, filled(wording, values), content=planned.content)
                 heard.append(planned.content)
         for exchange in exchange_plan(setting.seed, setting.activity, number):
-            thread = self.bank.exchange(exchange, setting.present)
+            thread = self.bank.exchange(exchange, setting.voices)
             if thread is None:
                 continue
             for said in thread:
