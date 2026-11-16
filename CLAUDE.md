@@ -52,7 +52,8 @@ brief is met, post a short summary, and wait. Do not start Phase 2.
 
 - Stages B and C1 use the Batch API with claude-haiku-5-5, capped at $10 combined.
 - Stage C2 runs in cloud sessions started with `claude --cloud`, as described in section 3.2
-  of the brief. Do not call Opus or Sonnet through the API from this machine.
+  of the brief. Do not call Opus or Sonnet through the API from this machine, except
+  claude-sonnet-5-5 as the user simulator in the session experiments (user, 2026-11-15).
 - Every model-calling command estimates cost first and requires --confirm. Run the
   40-trajectory pilot and report its numbers before any full run.
 - Ask before exceeding a cap, deleting downloaded data, or changing thresholds in the brief.
