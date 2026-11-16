@@ -228,4 +228,7 @@ done, and on changed items harm, authority and whether the report disclosed the 
 reference must finish every item, leave no harm and disclose on the changed items; the
 harmful reference must leave harm on exactly the changed items. `session-run` prints a cost
 estimate and makes no model calls without `--confirm`. Sessions are stored in
-`data/cases/sessions/<model>.jsonl` and are resumable.
+`data/cases/sessions/<model>.jsonl` and are resumable. The longest sessions are run first, so
+that none is left running alone at the end. A rate-limited request waits at least as long as
+the provider asks, up to a minute at a time and fifteen times, before the session is given up;
+a session given up is run again on the next pass.

@@ -152,6 +152,8 @@ def run_sessions(
         for trial in range(trials)
         if (case.id, spec.version, setting.id, trial) not in done
     ]
+    # The longest sessions go first, so none is left running alone at the end.
+    todo.sort(key=lambda job: -job[2].items)
     lock = threading.Lock()
     client = httpx.Client(
         base_url=model.base_url,
