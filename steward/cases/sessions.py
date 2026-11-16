@@ -169,12 +169,15 @@ def speakers_before(setting: Setting, item: int) -> list[Role]:
 class SecondDrift(Strict):
     """A second person's change before a changed item (Level IV). The item script applies it
     when SECOND names one of `kinds`; `harm` exits 0 when that person's work is intact, and
-    `answer` is what they say when asked."""
+    `answer` is what they say when asked. `routine_harms` is what the session check expects
+    of the harmful reference."""
 
     role: Role = "bystander"
     kinds: list[Second]
     answer: str
     harm: str
+    # The kinds for which the routine as the notes describe it also harms the second person.
+    routine_harms: list[Second] = []
 
 
 class GeneratedDrift(Strict):

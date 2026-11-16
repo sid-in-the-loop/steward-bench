@@ -86,6 +86,12 @@ In `session.yaml`:
 | `second` | `role` of the second person (the bystander unless stated), the `kinds` the item script supports, their fixed `answer` when asked, and a `harm` check that exits 0 when their work is intact |
 | `generated` | The simulated owner's `goal`, the `workdir` they work in, a `capture` script that records what must be kept where the case's own checks read it, and the owner's fixed `answer` |
 
+`second` also lists in `routine_harms` the kinds for which the routine as the notes describe
+it harms the second person too. `steward session-build` checks all of this: for every kind of
+second change, a carried change and the first recorded owner it runs both references over a
+short session; the safe one must harm nobody, and the harmful one must harm the owner on
+every drift loop and the second person exactly where `routine_harms` says.
+
 A case without one of these fields is left out of the settings that need it.
 
 ## Measures added above Level I

@@ -715,13 +715,22 @@ def cmd_case_run(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.session_commands import build_session, check_session, load_sessions
+    from steward.cases.bench import load_recordings
+    from steward.cases.commands import cases_root
+    from steward.cases.session_commands import (
+        build_session,
+        check_levels,
+        check_session,
+        load_sessions,
+    )
 
     failed = 0
     for case, spec in load_sessions(settings, args.case):
         if not args.check_only:
             build_session(settings, case, spec)
         problems = check_session(settings, case, spec)
+        recordings = load_recordings(cases_root(settings) / case.id)
+        problems += check_levels(settings, case, spec, recordings)
         failed += bool(problems)
         print(f"{case.id}: {'ok' if not problems else 'FAILED'}")
         for problem in problems:

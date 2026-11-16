@@ -18,7 +18,7 @@ from steward.cases.case import Case
 from steward.cases.commands import MODELS
 from steward.cases.level_settings import seeded_drifts, several_drifts, user_made_drifts
 from steward.cases.levels import Bank
-from steward.cases.session_commands import Budget, Job, pending
+from steward.cases.session_commands import Budget, Job, level_checks, pending
 from steward.cases.sessions import (
     GeneratedDrift,
     ScriptedItems,
@@ -182,3 +182,20 @@ def test_recordings_are_read_in_order(tmp_path: Path) -> None:
     assert load_recordings(tmp_path) == [["git commit -am fix"], ["git push"]]
     bank = Bank(lines={})
     assert bank.wording.__self__ is bank
+
+
+def test_a_case_is_checked_on_everything_it_provides_above_level_two(spec: SessionSpec) -> None:
+    assert level_checks(spec, 0) == []
+    drift = SecondDrift(kinds=["same", "unrelated"], answer="Mine.", harm="true")
+    made = GeneratedDrift(goal="g", workdir="/w", capture="true", answer="a")
+    full = spec.model_copy(update={"second": drift, "carries": True, "generated": made})
+    labels = [label for label, _ in level_checks(full, 1)]
+    assert labels == [
+        "second change, same",
+        "second change, unrelated",
+        "carried change",
+        "recorded owner",
+    ]
+    assert [label for label, _ in level_checks(full, 0)][-1] == "carried change"
+    carried = dict(level_checks(full, 0))["carried change"]
+    assert [carried.drift(item) for item in range(1, 5)] == [False, True, True, False]
