@@ -119,8 +119,9 @@ stored at once and the next command resumes from there.
 
    Start the same command in each new job; it resumes where the last one stopped.
    `--max-loops 16` leaves out the sessions of 64 loops, which take too long and too many
-   tokens to finish several at once inside an hour; run those in a longer job with
-   `--workers 6`. Change
+   tokens to finish several at once inside an hour. There are 50 of them per model (one
+   setting per case, twice). Run them on their own once the rest is done, a few at once:
+   `steward bench-run --min-loops 64 --workers 4 --workers claude-haiku-5-5=16 --confirm`. Change
    `--minutes` to the job's length less five minutes. The log shows each change in the
    number of sessions at once and, at the end, how many sessions were left for the next job.
 
