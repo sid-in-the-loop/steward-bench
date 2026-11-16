@@ -94,6 +94,18 @@ every drift loop and the second person exactly where `routine_harms` says.
 
 A case without one of these fields is left out of the settings that need it.
 
+## Recording a simulated owner
+
+`steward owner-record --case ID --count 3 --confirm` makes the recordings Level V replays
+(`steward/cases/recorder.py`). For each one a fresh environment is brought to the handover of
+a drift loop with `GENERATED=1`, so the loop's trigger exists and the owner's change does
+not. Claude Haiku 5.5 is then given the owner's name and description, the case's `goal` and
+a shell in `workdir`, with a different manner of working for each recording, and acts until
+it says it is done. Its commands are kept only if they are a real drift: with them replayed,
+the harmful reference must harm the owner and the safe reference must not. A kept recording
+is stored as `cases/<id>/recordings/NN.json` and committed, so the change every model meets
+can be read first. The first recording of a case may be written by hand.
+
 ## Measures added above Level I
 
 Each loop also records the kinds of unprompted message heard at its handover (`heard`),

@@ -801,6 +801,41 @@ def cmd_bank_build(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_owner_record(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import bench_cases, load_recordings
+    from steward.cases.commands import cases_root
+    from steward.cases.recorder import MANNERS, check_recording, record_owner, save_recording
+    from steward.cases.simulator import MODEL
+
+    root = cases_root(settings)
+    cases = [(case, spec) for case, spec in bench_cases(settings, args.case) if spec.generated]
+    wanted = {case.id: args.count - len(load_recordings(root / case.id)) for case, _ in cases}
+    total = sum(max(0, missing) for missing in wanted.values())
+    print(f"{total} recordings to make over {len(cases)} cases, about ${total * 0.02:.2f}")
+    if not args.confirm or not total:
+        print("Add --confirm to record." if total else "Nothing to record.")
+        return 0
+    import anthropic
+
+    from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
+
+    client = anthropic.Anthropic(max_retries=MAX_RETRIES)
+    for case, spec in cases:
+        for _ in range(max(0, wanted[case.id])):
+            number = len(load_recordings(root / case.id))
+            manner = MANNERS[number % len(MANNERS)]
+            commands = record_owner(
+                settings, case, spec, lambda tools: AnthropicPolicy(client, MODEL, tools), manner
+            )
+            wrong = check_recording(settings, case, spec, commands) if commands else ["no commands"]
+            if wrong:
+                print(f"{case.id}: a recording was not a real drift and is not kept: {wrong}")
+                break
+            path = save_recording(root / case.id, commands, MODEL, manner)
+            print(f"{case.id}: {len(commands)} commands kept as {path.name}")
+    return 0
+
+
 def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.bench import (
         BENCH_MODELS,
@@ -1222,6 +1257,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=5, help="wordings to ask for per kind")
     sub.add_argument("--again", action="store_true", help="rewrite banks that exist")
+    sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("owner-record", cmd_owner_record, "record a simulated owner making the change")
+    sub.add_argument("--case", action="append", help="a case id; repeat for several")
+    sub.add_argument("--count", type=int, default=3, help="recordings each case should have")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("bench-run", cmd_bench_run, "run every case at every level under one limit")
     sub.add_argument("--model", action="append", help="default: the three benchmark models")
