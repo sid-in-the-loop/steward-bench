@@ -26,59 +26,88 @@ THOUGHT_LIMIT = 1500
 INLINE_LIMIT = 6_000_000
 PROVIDERS = {"anthropic": "Anthropic", "openai": "OpenAI", "openrouter": "OpenRouter"}
 NOTES = {
-    "out_of_date": "handover notes out of date",
-    "accurate": "handover notes accurate",
-    "missing": "no handover notes",
+    "out_of_date": "out of date",
+    "accurate": "accurate",
+    "missing": "none",
 }
 
 
-def loops_in_words(numbers: tuple[int, ...]) -> str:
+def listed(numbers: tuple[int, ...]) -> str:
     if not numbers:
-        return "no drift loop"
-    listed = ", ".join(str(n) for n in numbers[:-1])
-    joined = f"{listed} and {numbers[-1]}" if listed else str(numbers[-1])
-    return f"drift on loop{'s' if len(numbers) > 1 else ''} {joined}"
+        return "none"
+    head = ", ".join(str(n) for n in numbers[:-1])
+    return f"{head} and {numbers[-1]}" if head else str(numbers[-1])
 
 
-def voice_in_words(setting: Setting, names: dict[str, str]) -> list[str]:
-    said = []
+def user_config(setting: Setting, names: dict[str, str]) -> list[dict[str, str]]:
+    """Each user of a setting and how they behave: drawn one by one from Level III, and from
+    the shared speaking rate below it."""
+    users = [
+        {
+            "role": "requester",
+            "name": names.get("requester", "requester"),
+            "speaks": "gives each loop's task",
+            "unrelated": "",
+            "stance": "believes the notes",
+        }
+    ]
+    if not setting.voices:
+        rate = f"unprompted, {setting.speaking} rate"
+        for role in setting.present[1:]:
+            name = names.get(role, role)
+            users.append(
+                {"role": role, "name": name, "speaks": rate, "unrelated": "", "stance": ""}
+            )
+        return users
     for voice in setting.voices:
-        name = names.get(voice.role, voice.role)
-        if voice.rate == 0:
-            said.append(f"{name} ({voice.role}) answers when asked")
-            continue
-        traits = [f"speaks at {round(voice.rate * 100)}% of handovers"]
-        if voice.noise:
-            traits.append(f"{round(voice.noise * 100)}% of it unrelated")
+        stance = ""
         if voice.role == "owner":
-            traits.append("says what changed" if voice.warns else "does not say what changed")
-        if voice.role == "bystander":
-            believes = voice.knowledge == "belief"
-            traits.append("believes nothing changed" if believes else "knows nothing")
-        if voice.role == "manager":
-            traits.append("pushes for speed" if voice.pushes else "does not push")
-        said.append(f"{name} ({voice.role}) {', '.join(traits)}")
-    return said
+            stance = "says what changed" if voice.warns else "does not say what changed"
+        elif voice.role == "bystander":
+            stance = "believes nothing changed" if voice.knowledge == "belief" else "knows nothing"
+        elif voice.role == "manager":
+            stance = "pushes for speed" if voice.pushes else "does not push"
+        speaks = f"{round(voice.rate * 100)}% of handovers" if voice.rate else "only when asked"
+        users.append(
+            {
+                "role": voice.role,
+                "name": names.get(voice.role, voice.role),
+                "speaks": speaks,
+                "unrelated": f"{round(voice.noise * 100)}%" if voice.rate and voice.noise else "",
+                "stance": stance,
+            }
+        )
+    return users
 
 
-def setting_in_words(setting: Setting, names: dict[str, str]) -> str:
-    """A setting as one sentence a reader can follow without the code."""
-    parts = [f"{setting.items} loops", loops_in_words(setting.changed)]
-    if setting.voices:
-        parts += voice_in_words(setting, names)
-    else:
-        present = ", ".join(f"{names.get(r, r)} ({r})" for r in setting.present)
-        parts.append(f"users: {present}")
-        if setting.users > 1:
-            parts.append(f"users speak unprompted at the {setting.speaking} rate")
-    parts.append(NOTES[setting.notes])
+def config_of(setting: Setting, names: dict[str, str]) -> dict[str, Any]:
+    """A setting laid out for the viewer: short tags for the collapsed line, every field as a
+    row, and its users as a table."""
+    drift = len(setting.changed)
+    tags = [f"{setting.items} loops", f"{drift} drift" if drift else "no drift"]
+    tags.append(f"{len(setting.present)} users")
+    rows = [
+        ("Loops", str(setting.items)),
+        ("Drift loops", listed(setting.changed)),
+        ("Handover notes", NOTES[setting.notes]),
+    ]
     if setting.second:
-        parts.append(f"a second person changes the {setting.second} object before each drift loop")
+        rows.append(("Second change", f"{setting.second} object, before each drift loop"))
+        tags.append(f"second: {setting.second}")
     if setting.carried:
-        parts.append(f"the change stays in place for {setting.carried} more loops")
+        rows.append(("Change carried", f"{setting.carried} more loops"))
+        tags.append(f"carried {setting.carried}")
     if setting.generated is not None:
-        parts.append(f"the change is recording {setting.generated} of a simulated owner")
-    return "; ".join(parts) + "."
+        rows.append(("Owner's change", f"recording {setting.generated:02d}"))
+        tags.append(f"recording {setting.generated:02d}")
+    if setting.seed is not None:
+        rows.append(("Seed", str(setting.seed)))
+    rows.append(("Setting", setting.id))
+    return {
+        "tags": tags,
+        "rows": [list(row) for row in rows],
+        "users": user_config(setting, names),
+    }
 
 
 def clipped(text: str | None, limit: int) -> str | None:
@@ -147,7 +176,7 @@ def session_record(run: SessionRun, case: Case, spec: SessionSpec) -> dict[str, 
         "domain": case.domain,
         "level": run.setting.level,
         "setting": run.setting.id,
-        "setting_words": setting_in_words(run.setting, names),
+        "config": config_of(run.setting, names),
         "model": run.model,
         "provider": PROVIDERS.get(model.dialect, "Other") if model else "Other",
         "trial": run.trial,

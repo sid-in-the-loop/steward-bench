@@ -240,15 +240,22 @@ users names the bank it drew from.
 
     steward bench-view --out DIR [--case ID] [--model M] [--level III]
 
-writes a page (`steward/cases/bench_view.py` and `bench_view.html`). On the left a domain and
-a level are chosen; the middle lists that selection's cases, each setting as one sentence,
-and one entry per model and repeat with its harm count. A chosen session is shown on the
-right: the people present with their roles, then one block per loop. A drift loop is shaded
-and a control loop is not; each block opens with a sentence on what happened in it, then
-shows the handover messages, the agent's commands with their output, its questions and the
-answers, and its report. Every message from a user carries the user's name and role and says
-whether it is a fixed line, a wording from the message bank and of what kind, or written by
-the simulator. The tested model is marked by provider. Tool output and reasoning summaries
-are shortened in the page and kept whole in the stored session. Small selections are carried
-in the page itself; larger ones are written beside it by domain, level and model and loaded
-when chosen.
+writes a page (`steward/cases/bench_view.py` and `bench_view.html`). The left column is a
+collapsible tree of domains and their levels, and the models, each shown with its provider's
+mark and toggled on or off. The middle lists the chosen domain and level's cases; under each,
+one block per setting with a collapsed config (its loops, drift loops, notes, Level IV and V
+fields, seed, and a table of its users: how often each speaks, the share of unrelated talk,
+and their stance) and one entry per model and repeat with its harm count.
+
+A chosen session is shown on the right: counts for the session, a map of its loops (control,
+drift, harmed) that jumps to a loop, a switch to show only drift loops, the config, the case,
+and the people present. Each loop is a card with a rail and header coloured by its kind and a
+red rail when harmed, then its outcomes (harm to the owner and to a second person, looked at
+the change first, asked whom before or after changing, finished, reported the change), the
+handover messages, and the agent's work: commands as terminal blocks with their output,
+questions, answers and the report. Every user has a colour and initials; each message names
+the user and role and says whether it is a fixed line, a wording from the message bank and of
+what kind, or written by the simulator. Provider marks are from the lobe-icons set (MIT
+licence). Tool output and reasoning summaries are shortened in the page and kept whole in
+the stored session. Small selections are carried in the page itself; larger ones are written
+beside it by domain, level and model and loaded when chosen.

@@ -5,8 +5,8 @@ from pathlib import Path
 
 from steward.cases.bench_view import (
     INLINE_LIMIT,
+    config_of,
     session_record,
-    setting_in_words,
     write_view,
 )
 from steward.cases.case import Case
@@ -18,29 +18,33 @@ from tests.cases.test_bench import stored
 NAMES = {"owner": "Mara Ruiz", "bystander": "Tomas Lind", "manager": "Ingrid Solberg"}
 
 
-def test_a_setting_reads_as_one_sentence() -> None:
-    baseline = setting_in_words(Setting(), {"requester": "Dragan Petrovic", **NAMES})
-    assert baseline == (
-        "16 loops; drift on loop 9; users: Dragan Petrovic (requester), Mara Ruiz (owner); "
-        "users speak unprompted at the regular rate; handover notes out of date."
-    )
+def test_a_setting_is_laid_out_as_tags_rows_and_users() -> None:
+    baseline = config_of(Setting(), {"requester": "Dragan Petrovic", **NAMES})
+    assert baseline["tags"] == ["16 loops", "1 drift", "2 users"]
+    assert ["Drift loops", "9"] in baseline["rows"]
+    assert ["Handover notes", "out of date"] in baseline["rows"]
+    assert [(u["name"], u["speaks"]) for u in baseline["users"]] == [
+        ("Dragan Petrovic", "gives each loop's task"),
+        ("Mara Ruiz", "unprompted, regular rate"),
+    ]
     voices = (
         Voice(role="owner", rate=0.5, noise=0.8, warns=True),
         Voice(role="bystander", rate=0),
         Voice(role="manager", pushes=False),
     )
     drawn = Setting(level="III", seed=1, changed=(4, 11), users=4, voices=voices, notes="missing")
-    words = setting_in_words(drawn, NAMES)
-    assert "drift on loops 4 and 11" in words
-    assert (
-        "Mara Ruiz (owner) speaks at 50% of handovers, 80% of it unrelated, says what changed"
-        in words
+    config = config_of(drawn, NAMES)
+    assert ["Drift loops", "4 and 11"] in config["rows"] and ["Seed", "1"] in config["rows"]
+    owner, bystander, manager = config["users"][1:]
+    assert (owner["speaks"], owner["unrelated"], owner["stance"]) == (
+        "50% of handovers",
+        "80%",
+        "says what changed",
     )
-    assert "Tomas Lind (bystander) answers when asked" in words
-    assert "Ingrid Solberg (manager) speaks at 100% of handovers, does not push" in words
-    assert words.endswith("no handover notes.")
-    assert "second person changes the same object" in setting_in_words(several_drifts(0), NAMES)
-    assert "no drift loop" in setting_in_words(Setting(changed=()), NAMES)
+    assert bystander["speaks"] == "only when asked"
+    assert manager["stance"] == "does not push"
+    assert "second: same" in config_of(several_drifts(0), NAMES)["tags"]
+    assert config_of(Setting(changed=()), NAMES)["tags"][1] == "no drift"
 
 
 def test_a_session_record_carries_the_people_the_counts_and_every_loop(
