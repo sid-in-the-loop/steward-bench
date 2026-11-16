@@ -55,6 +55,7 @@ Stance = Literal["go_ahead", "caution", "none"]
 EXCHANGE_CHANCE = (0.0, 0.2, 0.45, 0.75)
 SECOND_EXCHANGE = 0.35
 BANK_FILE = "bank.yaml"
+POOLS = "_exchanges"
 # What a user who knows nothing, or who does not push, answers when asked.
 UNINFORMED = "I have not looked at that, so I cannot say either way."
 NEUTRAL = "That is your call. I do not know the details."
@@ -196,11 +197,28 @@ class Bank(Strict):
         return options[min(int(planned.pick * len(options)), len(options) - 1)]
 
 
+def pooled_exchanges(directory: Path) -> dict[Exchange, list[list[Said]]]:
+    """The exchanges of the pool a case belongs to: the file in the cases' `_exchanges` folder
+    that lists the case. Cases with the same people and domain share a pool."""
+    folder = directory.parent / POOLS
+    for path in sorted(folder.glob("*.yaml")) if folder.is_dir() else []:
+        pool = yaml.safe_load(path.read_text())
+        if directory.name in pool.get("cases", []):
+            found: dict[Exchange, list[list[Said]]] = {}
+            for exchange in pool.get("exchanges", []):
+                lines = [Said.model_validate(line) for line in exchange["lines"]]
+                found.setdefault(exchange["kind"], []).append(lines)
+            return found
+    return {}
+
+
 def load_bank(directory: Path) -> Bank | None:
     path = directory / BANK_FILE
     if not path.exists():
         return None
     bank = Bank.model_validate(yaml.safe_load(path.read_text()))
+    if not bank.exchanges:
+        bank.exchanges = pooled_exchanges(directory)
     bank.version = hashlib.sha1(bank.model_dump_json(exclude={"version"}).encode()).hexdigest()[:10]
     return bank
 

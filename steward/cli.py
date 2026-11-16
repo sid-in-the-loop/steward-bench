@@ -773,44 +773,12 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_bank_build(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.bank import (
-        ClaudeWriter,
-        build_bank,
-        build_exchanges,
-        estimate_exchanges_usd,
-        estimate_usd,
-    )
+    from steward.cases.bank import ClaudeWriter, build_bank, estimate_usd
     from steward.cases.bench import bench_cases
     from steward.cases.commands import cases_root
-    from steward.cases.levels import BANK_FILE, load_bank, save_bank
+    from steward.cases.levels import BANK_FILE, save_bank
 
     root = cases_root(settings)
-    if args.exchanges:
-        # Add exchanges to banks that exist, leaving their wordings as they are.
-        banks = [(case, spec, load_bank(root / case.id)) for case, spec in bench_cases(settings)]
-        chosen = [
-            (case, spec, bank)
-            for case, spec, bank in banks
-            if bank is not None
-            and (not args.case or case.id in args.case)
-            and (args.again or not bank.exchanges)
-        ]
-        print(
-            f"{len(chosen)} banks to add exchanges to, about ${estimate_exchanges_usd(len(chosen)):.2f}"
-        )
-        if not args.confirm or not chosen:
-            print("Add --confirm to write them." if chosen else "Nothing to write.")
-            return 0
-        import anthropic
-
-        writer = ClaudeWriter(anthropic.Anthropic())
-        for case, spec, bank in chosen:
-            exchanges, rejected = build_exchanges(case, spec, writer, args.count)
-            save_bank(root / case.id, bank.model_copy(update={"exchanges": exchanges}))
-            kept = ", ".join(f"{kind} {len(threads)}" for kind, threads in exchanges.items())
-            print(f"{case.id}: {kept}; {rejected} turned away")
-        print(f"spent ${writer.cost_usd:.4f}")
-        return 0
     cases = [
         (case, spec)
         for case, spec in bench_cases(settings, args.case)
@@ -830,6 +798,42 @@ def cmd_bank_build(settings: Settings, args: argparse.Namespace) -> int:
         wordings = sum(len(w) for by_kind in bank.lines.values() for w in by_kind.values())
         print(f"{case.id}: {wordings} wordings in {kinds} kinds, {rejected} turned away")
     print(f"spent ${writer.cost_usd:.4f}")
+    return 0
+
+
+def cmd_exchanges_build(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import bench_cases
+    from steward.cases.commands import cases_root
+    from steward.cases.exchanges import (
+        ClaudeExchanges,
+        build_pools,
+        estimate_usd,
+        load_pool,
+        missing,
+        pools_of,
+    )
+
+    root = cases_root(settings)
+    pools = [load_pool(root, pool) for pool in pools_of(bench_cases(settings))]
+    pools = [pool for pool in pools if not args.pool or pool.name in args.pool]
+    if args.again:
+        for pool in pools:
+            pool.exchanges = []
+    parts = sum(len(missing(pool)) for pool in pools)
+    for pool in pools:
+        people = ", ".join(pool.people.values())
+        print(
+            f"{pool.name}: {people}; {len(pool.cases)} cases, {len(missing(pool))} parts to write"
+        )
+    print(f"{parts} parts to write with {args.model}, about ${estimate_usd(parts):.2f}")
+    if not args.confirm or not parts:
+        print("Add --confirm to write them." if parts else "Nothing to write.")
+        return 0
+    import anthropic
+
+    writer = ClaudeExchanges(anthropic.Anthropic(), args.model)
+    build_pools(root, pools, writer, args.workers)
+    print(f"spent ${writer.cost_usd:.2f}")
     return 0
 
 
@@ -1350,9 +1354,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=5, help="wordings to ask for per kind")
     sub.add_argument("--again", action="store_true", help="rewrite banks that exist")
-    sub.add_argument(
-        "--exchanges", action="store_true", help="add exchanges between users to existing banks"
-    )
+    sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("exchanges-build", cmd_exchanges_build, "write the exchanges between users, by team")
+    sub.add_argument("--pool", action="append", help="a pool name; repeat for several")
+    sub.add_argument("--model", default="claude-sonnet-5-5")
+    sub.add_argument("--workers", type=int, default=8, help="parts written at once")
+    sub.add_argument("--again", action="store_true", help="rewrite exchanges that exist")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("case-new", cmd_case_new, "start a case from a working one of its domain")
     sub.add_argument(

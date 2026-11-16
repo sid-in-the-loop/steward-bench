@@ -49,6 +49,7 @@ passing its references through the single run, the session and every level it pr
 | Case model and identifiers | `steward/cases/case.py`; folders are `case_identifier(domain, title)`; `data/cases/former_identifiers.json` maps the old short codes |
 | Session loop and measures | `steward/cases/sessions.py` |
 | Levels, users, message bank | `steward/cases/levels.py`, `level_settings.py`, `bank.py`; banks in `cases/<id>/bank.yaml` |
+| Exchanges between users | `steward/cases/exchanges.py`, `steward exchanges-build`; pools in `cases/_exchanges/` |
 | Levels IV and V in a case | `second`, `carries`, `generated` in `session.yaml`; `levels.sh` beside an unchanged `item.sh` in the 13 cases that had stored sessions |
 | Recorded owners | `steward/cases/recorder.py`, `steward owner-record`; `cases/<id>/recordings/NN.json` |
 | Session-long Postgres | `steward/cases/postgres.py`, used by the database cases |
@@ -68,8 +69,9 @@ passing its references through the single run, the session and every level it pr
 
 ## Spend
 
-Spent: about $23.50 before 2026-11-16 (Level I, OpenAI), and about $1.50 on 2026-11-16 (the
-sample sessions, the banks, their exchanges and the recordings). On 2026-11-16 the user set
+Spent: about $23.50 before 2026-11-16 (Level I, OpenAI), and about $11 on 2026-11-16 (the
+sample sessions, the banks, the recordings, and $8 for Claude Sonnet 5.5 to write and review
+the exchanges between users). On 2026-11-16 the user set
 about $170 for the full run on top of that, with Level III at its 40 settings per case, for a
 total near $200. The full run is priced at about $176.
 Every model-calling command prints an estimate and needs `--confirm`; `bench-run` stops

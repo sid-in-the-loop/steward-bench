@@ -119,7 +119,8 @@ Every command that calls a model prints an estimate and stops unless `--confirm`
 `bench-run` also stops starting sessions at `--max-usd`. In the sessions stored so far a
 session of sixteen loops cost about $0.01 on `gpt-6-luna`, $0.013 on `gpt-5.6-luna`, and
 between $0.015 and $0.04 on `claude-haiku-5-5`. Writing a case's message bank costs under a
-cent and its exchanges about two cents, and a recorded owner about two cents. The full run
+cent, a recorded owner about two cents, and the exchanges between users, written once
+with Claude Sonnet 5.5, about $8 for all teams. The full run
 of docs/run_plan.md is priced at about $176, within the limit of about $170 the user set
 for it on 2026-11-16.
 
