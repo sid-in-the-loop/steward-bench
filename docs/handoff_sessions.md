@@ -141,6 +141,38 @@ Readings at 676 sessions, mostly software cases, all provisional:
 6. New domains proposed, not started: cloud infrastructure (terminal), course administration
    and finance operations (workplace world).
 
+## Build state, 2026-11-16 early morning
+
+The plan is 25 cases (five in each of software, terminal, workplace, ML operations and
+database operations) at Levels I to V (docs/levels.md), then one `bench-run` for everything.
+No tested-model run has been started beyond one two-loop check of Claude Haiku 5.5.
+
+Done on main: Haiku 5.5 as a tested model (`steward/execution/anthropic_policy.py`); the
+session loop for all five levels (`steward/cases/levels.py`, `level_settings.py`,
+`sessions.py`); the message bank writer (`bank.py`, `steward bank-build`); the planner and
+runner with a spend limit, a pilot and a status table (`bench.py`, `steward bench-run`,
+`bench-status`); message banks for the existing session cases.
+
+In progress on two worktree branches under `.claude/worktrees/`: ML operations
+(`worktree-agent-a170d4180291bd13b`) and database operations with a session-long Postgres
+(`worktree-agent-a668652e139ad40bc`). Each has a `HANDOFF_*.md` at its top when it was
+stopped early. Review, finish and merge them.
+
+Not started: two workplace cases (a Canvas quiz reset that would delete a graded late
+submission; a shared mailbox clean-up that would delete a vendor's approval reply); the
+Level IV fields (`second`, `carries`) and Level V fields (`generated`, recordings) for each
+case; the recorder for Level V (a simulated owner acting once, saved under
+`cases/<id>/recordings/`); renaming every case folder to `case_identifier(domain, title)`
+with a map from the old identifiers and a rewrite of stored runs; `steward case-new` and
+`case-check` with docs/adding_a_case.md; the viewer by domain and level (loops as blocks,
+drift loops shaded, a colour and name per user, fixed and simulated lines marked, a marker
+for the tested model's provider); one sample run of one case through all five levels; the
+README and docs update on how the repository is laid out and where to add cases.
+
+Decisions since the last handoff: all user simulation is Claude Haiku 5.5; total spend is
+capped at $140; `gpt-5-mini` is no longer run; the two cases with a `during` script are left
+out of the benchmark; the fourth ML operations case is a shard clean-up, not a results table.
+
 ## Working with this user
 
 - Plain, short, formal wording. Formal definitions with symbols are wanted. No invented or

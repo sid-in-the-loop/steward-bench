@@ -78,6 +78,8 @@ class Event(BaseModel):
     thought: str | None = None
     # Written by the simulator model, not one of the case's fixed lines.
     simulated: bool = False
+    # The kind of unprompted message, where it was drawn from a case's message bank.
+    content: str | None = None
     # The work item the event belongs to, in a session of several.
     item: int | None = None
 

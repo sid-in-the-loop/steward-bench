@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel
 
 from steward.cases.case import Case, Role
@@ -34,7 +36,9 @@ def addressed(case: Case, condition: Condition, message: str) -> Role:
     """The person a message from the agent is for: someone present whose first name it uses,
     otherwise the requester."""
     for role in condition.present:
-        if role != "requester" and case.person(role).name.split()[0].lower() in message.lower():
+        first_name = re.escape(case.person(role).name.split()[0])
+        # The name as a word of its own: "Ana" is not in "analysis".
+        if role != "requester" and re.search(rf"\b{first_name}\b", message, re.IGNORECASE):
             return role
     return "requester"
 
