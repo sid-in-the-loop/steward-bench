@@ -2,12 +2,15 @@
 
 from pathlib import Path
 
+import pytest
+
 from steward.cases.bank import build_bank, fits
 from steward.cases.bench import (
     LEVEL_ONE_TRIALS,
     expected_cost,
     load_recordings,
     measured_cost,
+    parse_counts,
     pilot_jobs,
     plan,
     problems,
@@ -90,7 +93,7 @@ def test_a_case_runs_only_the_settings_it_provides_for(spec: SessionSpec) -> Non
 def test_the_plan_repeats_level_one_and_runs_drawn_settings_once(
     case: Case, spec: SessionSpec
 ) -> None:
-    jobs, left_out = plan(load_settings(), [(case, spec)], ["I", "II", "IV"], count=3)
+    jobs, left_out = plan(load_settings(), [(case, spec)], ["I", "II", "IV"], {"II": 3, "IV": 3})
     by_level = {level: [j for j in jobs if j.setting.level == level] for level in ("I", "II")}
     assert len(by_level["I"]) == 16 * LEVEL_ONE_TRIALS
     assert len(by_level["II"]) == 3 and {j.trial for j in by_level["II"]} == {0}
@@ -161,7 +164,7 @@ def test_costs_come_from_stored_sessions_where_there_are_some(
 def test_a_pilot_takes_one_setting_per_level_of_each_domains_first_case(
     case: Case, spec: SessionSpec
 ) -> None:
-    jobs, _ = plan(load_settings(), [(case, spec)], ["I", "II"], count=3)
+    jobs, _ = plan(load_settings(), [(case, spec)], ["I", "II"], {"II": 3})
     chosen = pilot_jobs(jobs)
     assert [(j.setting.level, j.trial) for j in chosen] == [("I", 0), ("II", 0)]
     assert chosen[0].setting == Setting()
@@ -199,3 +202,12 @@ def test_a_case_is_checked_on_everything_it_provides_above_level_two(spec: Sessi
     assert [label for label, _ in level_checks(full, 0)][-1] == "carried change"
     carried = dict(level_checks(full, 0))["carried change"]
     assert [carried.drift(item) for item in range(1, 5)] == [False, True, True, False]
+
+
+def test_counts_are_given_per_level_or_for_every_drawn_level() -> None:
+    assert parse_counts(["III=20", "II=10"]) == {"III": 20, "II": 10}
+    assert parse_counts(["12"]) == {"II": 12, "III": 12, "IV": 12, "V": 12}
+    assert parse_counts(None) == {}
+    for wrong in ("I=4", "VI=2", "III=many"):
+        with pytest.raises(ValueError):
+            parse_counts([wrong])

@@ -67,10 +67,10 @@ def plan(
     settings: Settings,
     cases: list[SessionCase],
     levels: list[Level],
-    count: int | None = None,
+    counts: dict[Level, int] | None = None,
 ) -> tuple[list[Job], list[str]]:
-    """Every session of the chosen levels, and what was left out and why. `count` caps the
-    settings per case at the drawn levels."""
+    """Every session of the chosen levels, and what was left out and why. `counts` gives the
+    number of settings per case at a drawn level, in place of its default."""
     jobs: list[Job] = []
     left_out: list[str] = []
     root = cases_root(settings)
@@ -78,7 +78,7 @@ def plan(
         bank = load_bank(root / case.id)
         recordings = load_recordings(root / case.id)
         for level in levels:
-            drawn = level_settings(level, count, len(recordings))
+            drawn = level_settings(level, (counts or {}).get(level), len(recordings))
             usable = [s for s in drawn if supports(spec, s)]
             if level == "III" and bank is None:
                 usable = []
@@ -115,6 +115,19 @@ def expected_cost(model: Model, job: Job, measured: dict[int, float]) -> float:
     setting = job.setting
     base = measured.get(setting.items, estimate_usd(model, setting))
     return base * (DRAWN_USERS_FACTOR if setting.level in ("III", "IV", "V") else 1.0)
+
+
+def parse_counts(given: list[str] | None) -> dict[Level, int]:
+    """Counts written as LEVEL=N, such as III=20; a bare N applies to every drawn level."""
+    counts: dict[Level, int] = {}
+    for entry in given or []:
+        level, _, number = entry.rpartition("=")
+        targets: list[Level] = [level] if level else list(LEVELS[1:])  # type: ignore[list-item]
+        if any(target not in LEVELS[1:] for target in targets) or not number.isdigit():
+            raise ValueError(f"a count is LEVEL=N for a drawn level, or N; not {entry!r}")
+        for target in targets:
+            counts[target] = int(number)
+    return counts
 
 
 class Line(BaseModel):

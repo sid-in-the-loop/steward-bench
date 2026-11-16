@@ -877,6 +877,7 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
         BENCH_MODELS,
         LEVELS,
         bench_cases,
+        parse_counts,
         pilot_jobs,
         pilot_path,
         plan,
@@ -888,7 +889,7 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
 
     models = [MODELS[name] for name in args.model or BENCH_MODELS]
     cases = bench_cases(settings, args.case)
-    jobs, left_out = plan(settings, cases, args.level or list(LEVELS), args.settings)
+    jobs, left_out = plan(settings, cases, args.level or list(LEVELS), parse_counts(args.settings))
     if args.pilot:
         jobs = pilot_jobs(jobs)
     for note in left_out:
@@ -1321,7 +1322,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--model", action="append", help="default: the three benchmark models")
     sub.add_argument("--level", action="append", choices=["I", "II", "III", "IV", "V"])
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
-    sub.add_argument("--settings", type=int, help="cap on drawn settings per case and level")
+    sub.add_argument(
+        "--settings",
+        action="append",
+        help="settings per case at a drawn level, as LEVEL=N (III=20); repeat for several",
+    )
     sub.add_argument("--workers", type=int, default=5, help="sessions at once per model")
     sub.add_argument("--max-usd", type=float, default=140.0, help="stop starting sessions here")
     sub.add_argument("--pilot", action="store_true", help="one setting per domain and level")
