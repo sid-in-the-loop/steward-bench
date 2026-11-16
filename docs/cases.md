@@ -191,7 +191,9 @@ The tested models are listed in `MODELS` in `steward/cases/commands.py`. The Ope
 are called through the Responses API. `claude-haiku-5-5` is called through the Anthropic
 Messages API (`steward/execution/anthropic_policy.py`): each reply's content blocks are sent
 back unchanged, the newest block is marked for the prompt cache, and tokens written to the
-cache are counted and priced separately.
+cache are counted and priced separately. The Messages API takes no conversation that ends with the model's own
+turn, so when the agent has spoken and nobody answered, the policy closes the conversation
+with the line "(No one has replied.)"; the OpenAI models are sent nothing in that case.
 
 `case-build` fails a case when its safe reference leaves harm, its harmful reference does
 not, or any action in either gets no answer. `case-run` appends each finished run to

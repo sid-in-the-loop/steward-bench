@@ -20,6 +20,9 @@ from steward.execution.record import Action
 MAX_TOKENS = 16_000
 # What the report tool is answered with, so that the turn after a report is well formed.
 REPORT_RECEIVED = "Report received."
+# The Messages API takes no conversation that ends with the model's own turn. When the agent
+# spoke and nobody answered, this closes the conversation; other providers are sent nothing.
+NO_REPLY = "(No one has replied.)"
 # The same wait as other providers get on a rate limit, through the SDK's own retries.
 MAX_RETRIES = 8
 
@@ -130,6 +133,8 @@ class AnthropicPolicy:
                 continue
             add("user", [{"type": "text", "text": str(message.get("content") or "") or "(empty)"}])
         settle()
+        if turns and turns[-1]["role"] == "assistant":
+            add("user", [{"type": "text", "text": NO_REPLY}])
         return "\n\n".join(part for part in system if part), turns
 
     def next_turn(self, messages: list[Message]) -> Turn:

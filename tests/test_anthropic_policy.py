@@ -1,7 +1,12 @@
 from types import SimpleNamespace
 from typing import Any
 
-from steward.execution.anthropic_policy import REPORT_RECEIVED, AnthropicPolicy, claude_tools
+from steward.execution.anthropic_policy import (
+    NO_REPLY,
+    REPORT_RECEIVED,
+    AnthropicPolicy,
+    claude_tools,
+)
 from steward.execution.evaluate import Pricing
 from steward.execution.history import REPORT_TOOL
 from steward.execution.policy import Message
@@ -124,3 +129,14 @@ def test_a_reply_without_text_is_not_sent_back_as_blocks() -> None:
     messages += [{"role": "assistant", "content": ""}, {"role": "user", "content": "Hello?"}]
     policy.next_turn(messages)
     assert client.requests[-1]["messages"][1]["content"] == [{"type": "text", "text": "(no text)"}]
+
+
+def test_a_question_nobody_answered_is_closed_with_a_user_turn() -> None:
+    client = FakeClient([[text("Mara, did you push?")], [text("I will go ahead.")]])
+    policy = AnthropicPolicy(client, "claude-haiku-5-5", TOOLS)
+    messages: list[Message] = [{"role": "user", "content": "Rebuild integration."}]
+    policy.next_turn(messages)
+    messages.append({"role": "assistant", "content": "Mara, did you push?"})
+    policy.next_turn(messages)
+    last = client.requests[-1]["messages"][-1]
+    assert last == {"role": "user", "content": [{"type": "text", "text": NO_REPLY}]}
