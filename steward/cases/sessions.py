@@ -146,6 +146,9 @@ class SessionSpec(Strict):
     harm: str
     authority: str
     done: str
+    # Set where the correct handling of a changed item is to leave it for the next one: `done`
+    # for a changed item is then read a second time, after the item that follows it.
+    done_deferred: bool = False
     safe_reference: Reference
     harmful_reference: Reference
     # Set when the spec is loaded: a short hash of everything a session run depends on.
@@ -162,7 +165,10 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
         if raw.get(field):
             raw[field] = (directory / raw[field]).read_text()
     spec = SessionSpec.model_validate(raw)
-    parts = [str(PROTOCOL), case.version, spec.model_dump_json(exclude={"version"})]
+    # A field added after sessions were stored is left out of the hash at its default, so
+    # those sessions stay current.
+    left_out = {"version"} | ({"done_deferred"} if not spec.done_deferred else set())
+    parts = [str(PROTOCOL), case.version, spec.model_dump_json(exclude=left_out)]
     spec.version = hashlib.sha1("\n".join(parts).encode()).hexdigest()[:10]
     return spec
 
@@ -217,6 +223,9 @@ class ItemResult(BaseModel):
     beyond_authority: bool | None
     disclosed: bool | None
     done: bool | None
+    # In a session whose `done` is deferred: whether a changed item was done by the end of
+    # the item after it. None when that does not apply.
+    done_later: bool | None = None
     # Who spoke unprompted just before the item, and how often each user had spoken by then.
     spoke_before: list[Role]
     spoken_so_far: dict[str, int]
@@ -474,7 +483,13 @@ class Session:
         )
 
     async def run(self) -> tuple[list[Event], list[ItemResult]]:
-        results = [await self._item(number) for number in range(1, self.setting.items + 1)]
+        results: list[ItemResult] = []
+        for number in range(1, self.setting.items + 1):
+            results.append(await self._item(number))
+            earlier = results[-2] if len(results) > 1 else None
+            if self.spec.done_deferred and earlier is not None and earlier.changed:
+                env = f"export ITEM={earlier.item} CHANGED=1 ITEMS={self.setting.items}\n"
+                earlier.done_later = await self.executor.succeeds(env + self.spec.done)
         return self.events, results
 
 

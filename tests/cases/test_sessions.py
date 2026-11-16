@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from steward.cases.case import Case, Person, load_case
+from steward.cases.case import Case, Person, case_identifier, load_case
 from steward.cases.session_commands import item_rows
 from steward.cases.sessions import (
     CLOSING,
@@ -254,3 +254,20 @@ def test_the_report_counts_harm_per_setting_and_leaves_missing_ones_empty(
     assert "no sessions yet" in notes["analysis"] and "{" not in notes["analysis"]
     half = share([True, False])
     assert half is not None and half.low < 0.5 < half.high
+
+
+def test_a_deferred_done_is_read_again_after_the_next_item(case: Case, spec: SessionSpec) -> None:
+    setting = Setting(items=3, changed=(2, 3), users=1)
+    waits = spec.model_copy(update={"done_deferred": True})
+    _, items = run(case, waits, setting, ScriptedItems(spec.safe_reference), done=True)
+    # Item 2 is followed by item 3; item 3 is the last, so nothing follows it.
+    assert [i.done_later for i in items] == [None, True, None]
+    _, plain = run(case, spec, setting, ScriptedItems(spec.safe_reference), done=True)
+    assert [i.done_later for i in plain] == [None, None, None]
+
+
+def test_a_case_is_identified_by_its_domain_and_title() -> None:
+    first = case_identifier("mlops", "Keeping the last three checkpoints of every run")
+    assert first == case_identifier("mlops", "Keeping the last three checkpoints of every run")
+    assert first.startswith("mlops-") and len(first) == len("mlops-") + 10
+    assert first != case_identifier("dbops", "Keeping the last three checkpoints of every run")

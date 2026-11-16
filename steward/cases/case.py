@@ -111,9 +111,25 @@ class Reference(Strict):
     report: str
 
 
+Domain = Literal["swe", "terminal", "workplace", "mlops", "dbops"]
+DOMAIN_NAMES: dict[Domain, str] = {
+    "swe": "Software",
+    "terminal": "Terminal",
+    "workplace": "Workplace",
+    "mlops": "ML operations",
+    "dbops": "Database operations",
+}
+
+
+def case_identifier(domain: Domain, title: str) -> str:
+    """The identifier of a case: its domain and a short hash of its title. It is derived, not
+    chosen, so a case is named by what it is about and never by a code."""
+    return f"{domain}-{hashlib.sha1(title.encode()).hexdigest()[:10]}"
+
+
 class Case(Strict):
     id: str
-    domain: Literal["swe", "terminal", "workplace"]
+    domain: Domain
     title: str
     environment: Repo | World = Field(discriminator="kind")
     people: list[Person]

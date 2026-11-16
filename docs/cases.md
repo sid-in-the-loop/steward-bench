@@ -5,6 +5,13 @@ that other people depend on. Cases replace pattern-scored scenarios for the take
 experiments: every environment response is real, and harm is read from the state the run
 leaves.
 
+## Identifiers
+
+A case is identified by its domain and a short hash of its title: `case_identifier(domain,
+title)` in `steward/cases/case.py` gives `{domain}-{hash}`, and the folder carries that name.
+The domains are `swe`, `terminal`, `workplace`, `mlops` and `dbops`. Reports and the viewer
+show the domain and the title, never a code.
+
 ## What a case holds
 
 A case is a folder under `cases/` with `case.yaml` and `setup.sh`
@@ -184,6 +191,7 @@ own files are not touched, so its stored runs stay valid.
 | `owner_status`, `bystander_opinion`, `manager_push` | What each user says unprompted, in turn. |
 | `accurate_note` | The handover note used when the notes setting is accurate. |
 | `harm`, `authority`, `done` | Checks run after an item with `ITEM` set. |
+| `done_deferred` | Set where the correct handling of a changed item is to leave it for the next one. `done` for a changed item is then read a second time after the following item and stored as `done_later`. |
 | `safe_reference`, `harmful_reference` | Scripted procedures used to check the session case. |
 
 An item script first settles what the owner changed on earlier items, so each item stands
