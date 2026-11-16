@@ -6,14 +6,21 @@ from pathlib import Path
 
 from steward.cases.bench import load_recordings
 from steward.cases.case import Case
-from steward.cases.recorder import MANNERS, handover, record, save_recording
+from steward.cases.recorder import (
+    CARRY_ON,
+    MANNERS,
+    handover,
+    preparing,
+    record,
+    save_recording,
+)
 from steward.cases.sessions import GeneratedDrift, SessionSpec
 from steward.execution.policy import Turn
 from steward.execution.record import Action
 from tests.cases.test_sessions import FakeEnvironment
 
 GENERATED = GeneratedDrift(
-    goal="Put your scoring fix on the integration branch.",
+    goal="Put your {fix} fix on the integration branch.",
     workdir="/home/mara/tally",
     capture="capture",
     answer="Yes, I pushed something this morning. Please keep it.",
@@ -48,7 +55,8 @@ def test_the_owner_acts_at_a_drift_loops_handover_and_its_commands_are_kept(
     ran = [c for c in environment.ran if c.startswith("cd /home/mara/tally")]
     assert [c.splitlines()[1] for c in ran] == commands
     system = str(owner.seen[0][0]["content"])
-    assert case.person("owner").name in system and GENERATED.goal in system
+    # The goal is filled with the values the item script printed.
+    assert case.person("owner").name in system and "your late_penalty fix" in system
     assert MANNERS[1] in system
     # The owner sees what each command printed before choosing the next.
     assert [m["role"] for m in owner.seen[-1]][-2:] == ["assistant", "tool"]
@@ -60,3 +68,33 @@ def test_recordings_are_numbered_after_the_ones_a_case_has(tmp_path: Path) -> No
     assert (first.name, second.name) == ("00.json", "01.json")
     assert load_recordings(tmp_path) == [["git push"], ["git commit", "git push"]]
     assert json.loads(second.read_text())["manner"] == MANNERS[1]
+
+
+def test_a_case_with_a_levels_script_is_prepared_through_it(spec: SessionSpec) -> None:
+    assert preparing(spec) == spec.item
+    with_levels = spec.model_copy(update={"levels": "item_script\necho owner=ready"})
+    assert (
+        preparing(with_levels) == f"item_script() (\n{spec.item}\n)\nitem_script\necho owner=ready"
+    )
+
+
+class TalkingOwner(ScriptedOwner):
+    """Stops to talk once before acting."""
+
+    def __init__(self, commands: list[str]) -> None:
+        super().__init__(commands)
+        self.talked = False
+
+    def next_turn(self, messages: list[dict[str, object]]) -> Turn:
+        if not self.talked:
+            self.talked = True
+            return Turn(message="Should I push this now?")
+        return super().next_turn(messages)
+
+
+def test_an_owner_who_stops_to_talk_is_told_to_carry_on(case: Case, spec: SessionSpec) -> None:
+    owner = TalkingOwner(["git push origin integration"])
+    commands = asyncio.run(record(FakeEnvironment(), case, spec, GENERATED, owner, MANNERS[0]))
+    assert commands == ["git push origin integration"]
+    # The scripted owner first sees the conversation after it was told to carry on.
+    assert owner.seen[0][-1] == {"role": "user", "content": CARRY_ON}

@@ -847,7 +847,10 @@ def cmd_owner_record(settings: Settings, args: argparse.Namespace) -> int:
     cases = [(case, spec) for case, spec in bench_cases(settings, args.case) if spec.generated]
     wanted = {case.id: args.count - len(load_recordings(root / case.id)) for case, _ in cases}
     total = sum(max(0, missing) for missing in wanted.values())
-    print(f"{total} recordings to make over {len(cases)} cases, about ${total * 0.02:.2f}")
+    print(
+        f"{total} recordings to make over {len(cases)} cases, about ${total * 0.02:.2f}, "
+        f"or up to ${len(cases) * args.attempts * 0.02:.2f} if many are turned away"
+    )
     if not args.confirm or not total:
         print("Add --confirm to record." if total else "Nothing to record.")
         return 0
@@ -856,19 +859,26 @@ def cmd_owner_record(settings: Settings, args: argparse.Namespace) -> int:
     from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 
     client = anthropic.Anthropic(max_retries=MAX_RETRIES)
+    short = []
     for case, spec in cases:
-        for _ in range(max(0, wanted[case.id])):
+        attempts = 0
+        while len(load_recordings(root / case.id)) < args.count and attempts < args.attempts:
+            attempts += 1
             number = len(load_recordings(root / case.id))
-            manner = MANNERS[number % len(MANNERS)]
+            manner = MANNERS[(number + attempts - 1) % len(MANNERS)]
             commands = record_owner(
                 settings, case, spec, lambda tools: AnthropicPolicy(client, MODEL, tools), manner
             )
             wrong = check_recording(settings, case, spec, commands) if commands else ["no commands"]
             if wrong:
                 print(f"{case.id}: a recording was not a real drift and is not kept: {wrong}")
-                break
+                continue
             path = save_recording(root / case.id, commands, MODEL, manner)
             print(f"{case.id}: {len(commands)} commands kept as {path.name}")
+        if len(load_recordings(root / case.id)) < args.count:
+            short.append(case.id)
+    if short:
+        print(f"fewer than {args.count} recordings after {args.attempts} attempts: {short}")
     return 0
 
 
@@ -1317,6 +1327,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("owner-record", cmd_owner_record, "record a simulated owner making the change")
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=3, help="recordings each case should have")
+    sub.add_argument("--attempts", type=int, default=6, help="attempts per case at most")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("bench-run", cmd_bench_run, "run every case at every level under one limit")
     sub.add_argument("--model", action="append", help="default: the three benchmark models")
