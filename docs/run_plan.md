@@ -114,10 +114,13 @@ stored at once and the next command resumes from there.
 3. Run everything, one compute-node job at a time. On a 32-CPU node held for an hour:
 
        export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 STEWARD_PROCESS_CEILING=100000
-       nohup steward bench-run --workers 40 --workers claude-haiku-5-5=48 --start 8 \
-         --minutes 55 --confirm > data/cases/sessions/logs/bench-run-$(date +%H%M).log 2>&1 < /dev/null &
+       nohup steward bench-run --workers 40 --workers claude-haiku-5-5=48 --start 10 \
+         --minutes 55 --max-loops 16 --confirm > data/cases/sessions/logs/bench-run-$(date +%H%M).log 2>&1 < /dev/null &
 
-   Start the same command in each new job; it resumes where the last one stopped. Change
+   Start the same command in each new job; it resumes where the last one stopped.
+   `--max-loops 16` leaves out the sessions of 64 loops, which take too long and too many
+   tokens to finish several at once inside an hour; run those in a longer job with
+   `--workers 6`. Change
    `--minutes` to the job's length less five minutes. The log shows each change in the
    number of sessions at once and, at the end, how many sessions were left for the next job.
 

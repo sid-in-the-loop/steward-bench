@@ -939,6 +939,8 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     jobs, left_out = plan(settings, cases, args.level or list(LEVELS), parse_counts(args.settings))
     if args.pilot:
         jobs = pilot_jobs(jobs)
+    if args.max_loops:
+        jobs = [job for job in jobs if job.setting.items <= args.max_loops]
     for note in left_out:
         print(f"left out: {note}")
     total = 0.0
@@ -1396,6 +1398,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_argument(
         "--minutes", type=float, help="start no session that would not finish within this"
+    )
+    sub.add_argument(
+        "--max-loops",
+        type=int,
+        help="leave out sessions longer than this, for a machine held too briefly for them",
     )
     sub.add_argument("--max-usd", type=float, default=180.0, help="stop starting sessions here")
     sub.add_argument("--pilot", action="store_true", help="one setting per domain and level")

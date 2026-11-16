@@ -90,9 +90,11 @@ process count under 600 of the 1,000 allowed, and never use `pkill -f`.
 - Stored Level IV and V sessions are tied to the version of the case's levels script; a
   change to it reruns them.
 - A recorded owner is kept only when its change is a real drift; a case whose goal leaves the
-  change underspecified gets none (the rebuild case's goal had to be made concrete). Fourteen
-  cases have two recordings; ten have only the hand-written one, as their simulated owners'
-  changes were not captured in three attempts, so their Level V settings all replay it.
+  change underspecified gets none (the rebuild case's goal had to be made concrete). A recording
+  is checked at the loop it was made in and at a later one, so that one naming the values of
+  its own loop is turned away; six model-made recordings failed that during the first run
+  and were removed. Eight cases have two recordings and sixteen have only the hand-written
+  one, so their Level V settings all replay it.
 
 ## Next, in order
 
