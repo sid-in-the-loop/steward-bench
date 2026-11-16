@@ -34,7 +34,7 @@ leave nothing out, and be one or two short sentences the \
 way a busy colleague types in chat, with no name prefix. Copy any text in curly braces, such \
 as {{example}}, exactly as it is written."""
 
-UNRELATED = """{name} is a person in a team's work chat. {description}
+UNRELATED = """{name} is a person in a team's work chat.
 
 Write {count} short messages {name} might post in that chat today about their own work, \
 unrelated to anything else going on: a meeting that moved, a question about a tool, a remark \
@@ -186,8 +186,7 @@ def build_bank(case: Case, spec: SessionSpec, writer: Writer, count: int = 5) ->
         )
         keep(role, content, sources, writer.wordings(prompt))
     for role, person in people.items():
-        prompt = UNRELATED.format(
-            name=person.name, description=person.description, count=count, avoid=case.situation
-        )
+        # The person's description may say what they changed, so it is left out here.
+        prompt = UNRELATED.format(name=person.name, count=count, avoid=case.situation)
         keep(role, "noise", [], writer.wordings(prompt))
     return Bank(lines=lines), rejected

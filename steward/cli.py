@@ -801,6 +801,42 @@ def cmd_bank_build(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_case_new(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.authoring import first_of, new_case
+    from steward.cases.commands import cases_root, load_cases
+
+    cases = load_cases(settings, None)
+    start = next((c for c in cases if c.id == args.like), None) if args.like else None
+    start = start or first_of(cases, args.domain)
+    if start is None or start.domain != args.domain:
+        print(f"no case of the domain {args.domain} to start from")
+        return 1
+    target = new_case(cases_root(settings), start, args.title)
+    print(f"{target} was started from {start.id}. Rewrite its files, then run:")
+    print(f"  steward case-check --case {target.name} --build")
+    return 0
+
+
+def cmd_case_check(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.authoring import provided
+    from steward.cases.commands import cases_root, load_cases
+    from steward.cases.sessions import load_session_spec
+
+    root = cases_root(settings)
+    failed = 0
+    for case in load_cases(settings, args.case):
+        spec = load_session_spec(root / case.id, case)
+        print(f"{case.id}  {case.title}")
+        for line in provided(root / case.id, case, spec):
+            print(f"  {'yes' if line.ok else 'no ':3}  {line.what}: {line.detail}")
+        if args.build:
+            build = argparse.Namespace(case=[case.id], check_only=False)
+            failed += cmd_case_build(settings, build)
+            if spec is not None:
+                failed += cmd_session_build(settings, build)
+    return 1 if failed else 0
+
+
 def cmd_owner_record(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.bench import bench_cases, load_recordings
     from steward.cases.commands import cases_root
@@ -1268,6 +1304,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--count", type=int, default=5, help="wordings to ask for per kind")
     sub.add_argument("--again", action="store_true", help="rewrite banks that exist")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("case-new", cmd_case_new, "start a case from a working one of its domain")
+    sub.add_argument(
+        "--domain", required=True, choices=["swe", "terminal", "workplace", "mlops", "dbops"]
+    )
+    sub.add_argument("--title", required=True, help="a plain description; it names the case")
+    sub.add_argument("--like", help="the case to start from; default: the domain's first")
+    sub = add("case-check", cmd_case_check, "say what a case provides at each level")
+    sub.add_argument("--case", action="append", help="a case id; repeat for several")
+    sub.add_argument("--build", action="store_true", help="also build it and run its references")
     sub = add("owner-record", cmd_owner_record, "record a simulated owner making the change")
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=3, help="recordings each case should have")
