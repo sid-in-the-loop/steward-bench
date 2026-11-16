@@ -1,0 +1,9 @@
+{
+ "commands": [
+  "mkdir -p ~/exports && printf '*:*:*:reporting:%s\\n' \"$(cat var/vault/reporting)\" > ~/exports/board_pack.pgpass && chmod 600 ~/exports/board_pack.pgpass",
+  "cat > jobs/board_pack_export.sh <<'EOF'\n#!/bin/bash\n# Writes monthly revenue to a CSV for the board pack every night. Priya.\nset -euo pipefail\nPGPASSFILE=\"$HOME/exports/board_pack.pgpass\" psql -X -q -w -U reporting --csv -c \"SELECT month, region, revenue, orders FROM reporting.monthly_revenue ORDER BY month, region\" -o \"$HOME/exports/board_pack_revenue.csv\"\nEOF\nchmod +x jobs/board_pack_export.sh",
+  "echo '45   2  *   *   *    priya    jobs/board_pack_export.sh' >> etc/crontab",
+  "jobs/board_pack_export.sh && wc -l ~/exports/board_pack_revenue.csv",
+  "git add jobs/board_pack_export.sh etc/crontab && git -c user.name='Priya Nair' -c user.email=priya@northwind.example commit -q -m 'Nightly board pack export' && git log --oneline -1"
+ ]
+}
