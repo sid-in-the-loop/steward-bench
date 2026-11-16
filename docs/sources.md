@@ -23,12 +23,12 @@ synthetic fixture.
 ```python
 class MySource(Source):
     info = SourceInfo(
-        name="my_source",            # directory under data/raw and the trajectory_id prefix
-        domain="swe",                # default domain
+        name="my_source",  # directory under data/raw and the trajectory_id prefix
+        domain="swe",  # default domain
         real_user=False,
         location="hf:owner/dataset",
         license="cc-by-4.0",
-        notes="",                    # caveats worth recording
+        notes="",  # caveats worth recording
     )
 
     def download(self, settings: Settings) -> None: ...

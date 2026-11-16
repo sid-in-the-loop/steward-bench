@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# The gates every commit and push must pass.
+set -euo pipefail
+cd "$(git rev-parse --show-toplevel)"
+
+limit=$((20 * 1024 * 1024))
+status=0
+while IFS= read -r -d '' path; do
+    case "$path" in
+        data/*) [[ "$(git branch --show-current)" =~ ^(handoff|results)/ ]] || {
+            echo "check: $path is under data/, which only handoff/* and results/* branches carry"; status=1; } ;;
+        .env|*.env) echo "check: $path looks like a secrets file"; status=1 ;;
+    esac
+    if [[ -f "$path" ]] && (( $(stat -c %s "$path") > limit )); then
+        echo "check: $path is over 20 MB"; status=1
+    fi
+done < <(git diff --cached --name-only --diff-filter=AM -z)
+(( status == 0 )) || exit 1
+
+# Git sets these inside hooks; tests that build their own repositories must not inherit them.
+unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE GIT_PREFIX GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES
+
+uv run ruff check .
+uv run ruff format --check .
+uv run mypy steward
+uv run pytest -q

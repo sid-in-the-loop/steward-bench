@@ -61,6 +61,7 @@ analyze ────────────> reports/PHASE1_STATS.md, reports/f
 ```bash
 uv sync                                  # Python 3.12, dependencies pinned in uv.lock
 cp .env.example .env                     # then fill in OPENROUTER_API_KEY and HF_TOKEN
+git config core.hooksPath .githooks      # run scripts/check before every commit and push
 uv run pytest                            # every test runs on synthetic fixtures
 uv run steward sources                   # list sources
 uv run steward download swe_chat && uv run steward ingest swe_chat
