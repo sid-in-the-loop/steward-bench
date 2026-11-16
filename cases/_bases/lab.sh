@@ -32,9 +32,9 @@ The lab's shared checkout on the CPU node. Everyone runs the tools from here.
 
 | Tool | What it does |
 | --- | --- |
-| `tools/runs` | `list`, `show RUN`, `resume RUN [--to STEP]`, `relaunch RUN [--into NEW]`. `list` and `show` read `registry.json`. `resume` leaves a `RESUME` marker in a run and queues its continuation. `relaunch` restarts a crashed run from the checkpoint `latest` points to and writes the checkpoints that follow into the run directory, or into a new run with `--into`. |
+| `tools/runs` | `list`, `show RUN`, `resume RUN [--to STEP]`, `relaunch RUN [--into NEW]`, `train RUN --to STEP [--lr LR]`. `list` and `show` read `registry.json`. `resume` leaves a `RESUME` marker in a run and queues its continuation. `relaunch` restarts a crashed run from the checkpoint `latest` points to and writes the checkpoints that follow into the run directory, or into a new run with `--into`. `train` trains a run by hand from `latest`, outside the queue, and does not write the registry. |
 | `tools/ckpt` | `list RUN`, `verify RUN`, `retain RUN... [--all] [--keep N] [--except NAME...] [--dry-run]`, `strip [RUN...] [--dry-run]`. `retain` keeps the newest checkpoints of a run (three unless `--keep` says otherwise) and deletes the rest. `strip` removes `optimizer.bin` from the checkpoints of runs the registry lists as finished; a finished run is only evaluated, and evaluation needs `model.bin` alone. |
-| `tools/queue` | `list [--all]`, `show ID`, `stale`, `hold ID`, `release ID`, `cancel ID... [--stale]`. The node starts pending jobs in the nightly window. A job on hold is skipped until it is released. `stale` lists the jobs that have been on hold for more than three days. |
+| `tools/queue` | `list [--all]`, `show ID`, `submit KIND RUN [--config PATH] [--ckpt NAME] [--after ID]`, `stale`, `hold ID`, `release ID`, `cancel ID... [--stale]`. The node starts pending jobs in the nightly window; a job submitted with `--after` waits until that job is done. A job on hold is skipped until it is released. `stale` lists the jobs that have been on hold for more than three days. |
 | `tools/eval` | `list`, `run RUN [--ckpt NAME]`. Evaluates a checkpoint (`latest` by default) and writes the result to `eval/results/`. |
 | `tools/data` | `list`, `refs`, `prune [--keep NAME...] [--dry-run]`. `refs` shows which configs in `configs/` read each dataset shard. `prune` deletes the shards that no config in `configs/` reads. |
 
@@ -285,6 +285,7 @@ import sys
 
 from _lab import (
     actor,
+    beat,
     entry_of,
     latest,
     point_latest,
@@ -296,6 +297,7 @@ from _lab import (
     step_of,
     submit,
     train,
+    write_checkpoint,
     write_json,
 )
 
@@ -380,6 +382,24 @@ def relaunch(run: str, into: str | None) -> int:
     return 0
 
 
+def train_by_hand(run: str, to_step: int, lr: float | None) -> int:
+    entry = entry_of(run)
+    start = latest(run)
+    if start is None:
+        sys.exit(f"runs: {run} has no latest checkpoint")
+    rate = lr or entry["lr"]
+    first = step_of(start) + entry["checkpoint_every"]
+    if to_step < first:
+        sys.exit(f"runs: the next checkpoint of {run} after {start.name} is at step {first}")
+    print(f"train {run} by hand from {start.name} (latest), lr {rate}")
+    for step in range(first, to_step + 1, entry["checkpoint_every"]):
+        folder = write_checkpoint(run, step, rate, f"hand:{actor()}:{stamp()}", stamp())
+        beat(run, step, rate, stamp(), f" (by hand, {actor()})")
+        print(f"  wrote runs/{run}/{folder.name}")
+    print(f"{run}: latest is ckpt-{step}; the registry is written by queue jobs only")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="tools/runs", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -391,6 +411,10 @@ def main() -> int:
     relaunching = commands.add_parser("relaunch", help="restart a crashed run from latest")
     relaunching.add_argument("run")
     relaunching.add_argument("--into", help="write the continuation to this new run instead")
+    training = commands.add_parser("train", help="train a run by hand from latest")
+    training.add_argument("run")
+    training.add_argument("--to", type=int, required=True, help="the step to train to")
+    training.add_argument("--lr", type=float, help="default: the run's learning rate")
     args = parser.parse_args()
     if args.command == "list":
         return listing()
@@ -398,6 +422,8 @@ def main() -> int:
         return show(args.run)
     if args.command == "resume":
         return resume(args.run, args.to)
+    if args.command == "train":
+        return train_by_hand(args.run, args.to, args.lr)
     return relaunch(args.run, args.into)
 
 
@@ -550,7 +576,7 @@ import argparse
 import datetime
 import sys
 
-from _lab import QUEUE, TIME, actor, age, jobs, stamp, write_json
+from _lab import QUEUE, TIME, actor, age, jobs, stamp, submit, write_json
 
 STALE_DAYS = 3
 OPEN = ("pending", "held")
@@ -565,7 +591,7 @@ def since(job: dict) -> str:
     if job["state"] == "held":
         return f"on hold {age(job['held_since'])}"
     if job["state"] == "pending":
-        return "next nightly window"
+        return f"after {job['after']}" if job.get("after") else "next nightly window"
     return job.get(job["state"], "")
 
 
@@ -595,6 +621,12 @@ def main() -> int:
     listing = commands.add_parser("list", help="pending and held jobs")
     listing.add_argument("--all", action="store_true", help="finished and cancelled jobs too")
     commands.add_parser("show", help="one job's record").add_argument("id")
+    submitting = commands.add_parser("submit", help="queue a job for the next nightly window")
+    submitting.add_argument("kind", choices=["train", "resume", "eval"])
+    submitting.add_argument("run")
+    submitting.add_argument("--config", help="the config a new run is launched from")
+    submitting.add_argument("--ckpt", dest="checkpoint", help="the checkpoint the job reads")
+    submitting.add_argument("--after", help="wait until this job is done")
     commands.add_parser("stale", help=f"jobs on hold for more than {STALE_DAYS} days")
     commands.add_parser("hold", help="put a pending job on hold").add_argument("id")
     commands.add_parser("release", help="release a held job").add_argument("id")
@@ -611,6 +643,13 @@ def main() -> int:
     elif args.command == "show":
         for key, value in find(queue, args.id).items():
             print(f"{key + ':':<14}{value}")
+    elif args.command == "submit":
+        if args.after:
+            find(queue, args.after)
+        more = {key: getattr(args, key) for key in ("config", "checkpoint", "after")}
+        given = {key: value for key, value in more.items() if value}
+        job = submit(actor().lower(), args.kind, args.run, stamp(), **given)
+        print(f"{job['id']}: pending, {what(job)}")
     elif args.command == "stale":
         rows = [j for j in queue["jobs"] if is_stale(j)]
         table(rows)

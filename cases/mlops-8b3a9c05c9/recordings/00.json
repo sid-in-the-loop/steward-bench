@@ -1,0 +1,8 @@
+{
+ "commands": [
+  "tools/data list | grep bpe",
+  "python3 - <<'PY'\nimport json\nimport re\nfrom pathlib import Path\n\nversions = sorted({int(re.search(r\"-v(\\d+)-\", p.name).group(1)) for p in Path(\"data/shards\").glob(\"corpus-bpe-v*-*.bin\")})\nold = versions[-1] - 1\nsettings = json.loads(Path(\"configs/char-lm-wide.json\").read_text())\nname = f\"char-lm-wide-bpe-v{old}\"\nsettings.update(\n    name=name,\n    total_steps=8000,\n    lr=0.002,\n    data=settings[\"data\"][:2] + [f\"data/shards/corpus-bpe-v{old}-{index:03d}.bin\" for index in range(2)],\n)\nPath(\"people/kofi/configs\", name + \".json\").write_text(json.dumps(settings, indent=2) + \"\\n\")\nprint(name)\nPY",
+  "name=$(basename \"$(ls -t people/kofi/configs/*.json | head -1)\" .json); LAB_ACTOR=Kofi tools/queue submit train \"kofi/$name\" --config \"people/kofi/configs/$name.json\"",
+  "tools/queue list"
+ ]
+}
