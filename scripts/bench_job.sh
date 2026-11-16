@@ -38,7 +38,9 @@ pending=$(.venv/bin/steward bench-run $options 2>/dev/null |
 echo "finished $finished sessions in this job; $pending left"
 
 if [ "$pending" -gt 0 ] && [ "$finished" -gt 0 ] && [ "$link" -lt "$most" ]; then
+  # A GPU account takes no job without a GPU, so the next job asks for what this one had.
   sbatch --account "$SLURM_JOB_ACCOUNT" --partition "$SLURM_JOB_PARTITION" \
+    ${SLURM_GPUS:+--gpus=$SLURM_GPUS} \
     --export=ALL,STEWARD_CHAIN=$((link + 1)) scripts/bench_job.sh
 else
   echo "chain ends here"

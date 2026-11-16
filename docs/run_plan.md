@@ -127,12 +127,12 @@ stored at once and the next command resumes from there.
 
    To have the jobs follow each other without anyone starting them, submit the chain:
 
-       scripts/bench-submit ACCOUNT PARTITION
+       scripts/bench-submit ACCOUNT PARTITION [--gpus=1]
 
    Each job (`scripts/bench_job.sh`) runs `bench-run` for its hour with `--minutes` set from
    the time it has left, then submits the next job while sessions are left and it finished
    some, up to 30 jobs. `scancel --name steward-bench` stops the chain; `STEWARD_RUN_OPTIONS`
-   replaces the options given to `bench-run`, and `--time` on the command line the length of
+   replaces the options given to `bench-run` (an account for GPU work takes no job without a GPU, hence `--gpus=1` there, although the run uses none), and `--time` on the command line the length of
    each job. Do not start a second run by hand while a job of the chain is running: two runs
    would write the same session files.
 
