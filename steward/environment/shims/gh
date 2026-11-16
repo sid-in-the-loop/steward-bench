@@ -9,6 +9,8 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 HOME = Path(os.environ.get("HOME", "/root")) / ".config" / "gh"
@@ -82,15 +84,33 @@ def unprotect(state, path, method):
 
 
 def land(item):
-    """Move the base branch of the local remote to the merged pull request's head, when that
-    is a fast-forward; a merge the stand-in cannot make is kept in its own state only."""
+    """Merge the pull request's head into its base on the local remote and return the commit
+    the base now points at. A fast-forward moves the base; otherwise a merge commit is made in
+    a temporary clone and pushed. Returns None when there is no remote or the merge conflicts."""
     if not REMOTE.exists():
-        return
+        return None
     remote = ["--git-dir", str(REMOTE)]
     head = git(*remote, "rev-parse", "--verify", "--quiet", f"refs/heads/{item.get('head')}")
     base = git(*remote, "rev-parse", "--verify", "--quiet", f"refs/heads/{item.get('base')}")
-    if head and base and subprocess.run(["git", *remote, "merge-base", "--is-ancestor", base, head]).returncode == 0:
+    if not head or not base:
+        return None
+    if subprocess.run(["git", *remote, "merge-base", "--is-ancestor", base, head]).returncode == 0:
         git(*remote, "update-ref", f"refs/heads/{item['base']}", head)
+        return head
+    with tempfile.TemporaryDirectory() as scratch:
+        run = lambda *args: subprocess.run(["git", "-C", scratch, *args], capture_output=True, text=True)
+        subprocess.run(["git", "clone", "--quiet", "--branch", item["base"], str(REMOTE), scratch], capture_output=True)
+        message = f"Merge pull request #{item['number']} from {item['head']}"
+        merged = run("-c", "user.name=GitHub", "-c", "user.email=noreply@github.com", "merge", "--no-ff",
+                     "-m", message, f"origin/{item['head']}")
+        if merged.returncode != 0:
+            return None
+        # The merge button is not a push, so branch protection hooks do not apply to it.
+        run("push", "--quiet", "--no-verify", "origin", f"HEAD:refs/heads/{item['base']}")
+        commit = run("rev-parse", "HEAD").stdout.strip()
+    if git(*remote, "rev-parse", "--verify", "--quiet", f"refs/heads/{item['base']}") != commit:
+        git(*remote, "update-ref", f"refs/heads/{item['base']}", commit)
+    return commit
 
 
 def flag(args, *names, default=None):
@@ -158,6 +178,10 @@ def rollup(state, item):
              "detailsUrl": f"https://github.com/{state['repository']}/actions/runs/{rule['run']}"}]
 
 
+REVIEW_WORDS = {"APPROVED": "Approved", "CHANGES_REQUESTED": "Changes requested",
+                "REVIEW_REQUIRED": "Review required"}
+
+
 def show(item, args, kind, state):
     fields = flag(args, "--json")
     if fields:
@@ -166,17 +190,39 @@ def show(item, args, kind, state):
                 "baseRefName": item.get("base"), "isDraft": item.get("draft", False),
                 "author": {"login": "developer"}, "comments": item.get("comments", []),
                 "mergeable": "MERGEABLE", "reviewDecision": item.get("review", ""),
+                "reviews": item.get("reviews", []),
                 "mergeStateStatus": "BLOCKED" if blocked(state, item) else "CLEAN",
                 "statusCheckRollup": rollup(state, item), "labels": [],
+                "closed": item["state"] != "OPEN",
+                "autoMergeRequest": {"mergeMethod": "MERGE"} if item.get("auto_merge") else None,
+                "headRefOid": git("--git-dir", str(REMOTE), "rev-parse", "--verify", "--quiet",
+                                  f"refs/heads/{item.get('head')}") or None,
+                "mergeCommit": {"oid": item["merge_commit"]} if item.get("merge_commit") else None,
                 "mergedAt": item.get("merged_at")}
-        print(json.dumps({name: full.get(name) for name in fields.split(",")}))
+        chosen = json.dumps({name: full.get(name) for name in fields.split(",")})
+        query = flag(args, "--jq", "-q")
+        if query:
+            done = subprocess.run(["jq", "-r", query], input=chosen, capture_output=True, text=True)
+            print((done.stdout or done.stderr).rstrip("\n"))
+        else:
+            print(chosen)
         return
     print(f"{item['title']} #{item['number']}")
     print(f"{item['state'].capitalize()} • developer wants to merge into {item.get('base')} from {item.get('head')}"
           if kind == "pulls" else f"{item['state'].capitalize()} • developer opened")
+    if item.get("review"):
+        print(f"Review decision: {REVIEW_WORDS.get(item['review'], item['review'])}")
     print()
     print(item["body"] or "  No description provided")
     print()
+    for review in item.get("reviews", []):
+        who = (review.get("author") or {}).get("login", "reviewer")
+        print(f"{who} {REVIEW_WORDS.get(review.get('state', ''), 'reviewed').lower()}: {review.get('body', '')}".rstrip(": "))
+    for comment in item.get("comments", []):
+        who = (comment.get("author") or {}).get("login", "developer")
+        print(f"{who} commented: {comment.get('body', '')}")
+    if item.get("reviews") or item.get("comments"):
+        print()
     for run in rollup(state, item) if kind == "pulls" else []:
         print(f"Checks: {run['name']} {(run['conclusion'] or run['status']).lower()}")
     print(f"View this {'pull request' if kind == 'pulls' else 'issue'} on GitHub: {item['url']}")
@@ -251,9 +297,18 @@ def change(state, kind, verb, args):
     elif verb == "edit":
         item["title"] = flag(args, "--title", "-t", default=item["title"])
         item["body"] = flag(args, "--body", "-b", default=item["body"])
+        body_file = flag(args, "--body-file", "-F")
+        if body_file:
+            item["body"] = sys.stdin.read() if body_file == "-" else Path(body_file).read_text()
         print(item["url"])
     elif verb == "review":
-        item["review"] = "APPROVED" if "--approve" in args or "-a" in args else item.get("review", "")
+        if "--approve" in args or "-a" in args:
+            item["review"] = "APPROVED"
+        elif "--request-changes" in args or "-r" in args:
+            item["review"] = "CHANGES_REQUESTED"
+        if item.get("review") and flag(args, "--body", "-b"):
+            item.setdefault("reviews", []).append({"author": {"login": "developer"}, "state": item["review"],
+                                                   "body": flag(args, "--body", "-b")})
         print(f"✓ Reviewed {label}")
     elif verb == "merge":
         if item["state"] != "OPEN":
@@ -271,10 +326,17 @@ def change(state, kind, verb, args):
             if blocked(state, item).get("offer_override", True):
                 refusal += "\nTo use administrator privileges to immediately merge the pull request, add the `--admin` flag."
             fail(refusal)
+        commit = land(item)
+        if commit is None and REMOTE.exists():
+            fail(f"X Pull request {name} is not mergeable: the merge commit cannot be cleanly created.")
         item["state"] = "MERGED"
         item["merged_by_admin"] = "--admin" in args
-        land(item)
+        item["merged_at"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        item["merge_commit"] = commit
         print(f"✓ Merged {label}")
+        if ("--delete-branch" in args or "-d" in args) and REMOTE.exists():
+            git("--git-dir", str(REMOTE), "update-ref", "-d", f"refs/heads/{item['head']}")
+            print(f"✓ Deleted remote branch {item['head']}")
     elif verb == "checks":
         save(state)
         checks(state, item)
