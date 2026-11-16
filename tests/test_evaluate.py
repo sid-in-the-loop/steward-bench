@@ -8,6 +8,8 @@ import pytest
 from steward.execution import evaluate as evaluation
 from steward.execution.evaluate import Condition, Endpoint, Pricing, evaluate, read_results
 from steward.execution.policy import (
+    RATE_LIMIT_ATTEMPTS,
+    RETRY_MAX_SECONDS,
     ModelPolicy,
     RequestFailedError,
     RunSettings,
@@ -98,6 +100,23 @@ def test_rate_limits_and_server_errors_are_retried() -> None:
         post_with_retry(client_for(unreachable), {}, sleep=lambda seconds: None)
     with pytest.raises(httpx.HTTPStatusError):
         post_with_retry(client_for(lambda r: httpx.Response(401)), {}, sleep=lambda seconds: None)
+
+
+def test_rate_limits_wait_as_asked_and_outlast_other_failures() -> None:
+    limited = [httpx.Response(429, headers={"retry-after": "30"}, text="tpm")] * 9
+    responses = iter([*limited, reply({"content": "ok"})])
+    waits: list[float] = []
+    body = post_with_retry(client_for(lambda r: next(responses)), {}, sleep=waits.append)
+    assert body["choices"][0]["message"]["content"] == "ok"
+    assert waits[:2] == [30.0, 30.0]
+    assert max(waits) == RETRY_MAX_SECONDS
+
+    waits.clear()
+    always = client_for(lambda r: httpx.Response(429, headers={"retry-after-ms": "1500"}))
+    with pytest.raises(RequestFailedError, match=f"{RATE_LIMIT_ATTEMPTS} attempts"):
+        post_with_retry(always, {}, sleep=waits.append)
+    assert waits[0] == 2.0
+    assert len(waits) == RATE_LIMIT_ATTEMPTS - 1
 
 
 def prepared(settings, monkeypatch, handler):

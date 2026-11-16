@@ -106,6 +106,22 @@ class RequestFailedError(RuntimeError):
 
 RETRY_ATTEMPTS = 5
 RETRY_BASE_SECONDS = 2.0
+# A rate limit clears within a minute, and giving up on one discards a whole session, so rate
+# limits are waited out far longer than other failures.
+RATE_LIMIT_ATTEMPTS = 15
+RETRY_MAX_SECONDS = 60.0
+
+
+def retry_after_seconds(response: httpx.Response) -> float:
+    """The wait the server asks for, from `retry-after-ms` or `retry-after`; 0 if none."""
+    for header, scale in (("retry-after-ms", 0.001), ("retry-after", 1.0)):
+        value = response.headers.get(header)
+        if value is not None:
+            try:
+                return float(value) * scale
+            except ValueError:
+                continue
+    return 0.0
 
 
 CHAT_COMPLETIONS = "/chat/completions"
@@ -121,26 +137,41 @@ def post_with_retry(
     path: str = CHAT_COMPLETIONS,
 ) -> dict[str, Any]:
     """POST a model request, retrying rate limits, server errors and transport errors with
-    exponential backoff. A 200 reply without its result field is retried as a server error."""
+    exponential backoff. A rate limit waits at least as long as the server asks and is retried
+    up to RATE_LIMIT_ATTEMPTS times; other failures up to RETRY_ATTEMPTS times. A 200 reply
+    without its result field is retried as a server error."""
     problem = ""
-    for attempt in range(RETRY_ATTEMPTS):
-        if attempt:
-            sleep(RETRY_BASE_SECONDS * 2 ** (attempt - 1))
+    failures = rate_limits = 0
+    asked = 0.0
+    while failures < RETRY_ATTEMPTS and rate_limits < RATE_LIMIT_ATTEMPTS:
+        tries = failures + rate_limits
+        if tries:
+            backoff = RETRY_BASE_SECONDS * 2 ** (tries - 1)
+            sleep(min(RETRY_MAX_SECONDS, max(backoff, asked)))
+        asked = 0.0
         try:
             response = client.post(path, json=body)
         except httpx.TransportError as error:
             problem = f"{type(error).__name__}: {error}"
+            failures += 1
             continue
-        if response.status_code == 429 or response.status_code >= 500:
+        if response.status_code == 429:
+            problem = f"HTTP 429: {response.text[:200]}"
+            asked = retry_after_seconds(response)
+            rate_limits += 1
+            continue
+        if response.status_code >= 500:
             problem = f"HTTP {response.status_code}: {response.text[:200]}"
+            failures += 1
             continue
         response.raise_for_status()
         reply: dict[str, Any] = response.json()
         if REPLY_FIELD[path] not in reply:
             problem = f"no {REPLY_FIELD[path]} in reply: {str(reply.get('error'))[:200]}"
+            failures += 1
             continue
         return reply
-    raise RequestFailedError(f"gave up after {RETRY_ATTEMPTS} attempts: {problem}")
+    raise RequestFailedError(f"gave up after {failures + rate_limits} attempts: {problem}")
 
 
 class ModelPolicy:
