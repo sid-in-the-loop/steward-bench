@@ -98,14 +98,16 @@ def check_case(settings: Settings, case: Case) -> list[str]:
     return problems
 
 
-# No run starts while this user's process count is above the ceiling: the machine allows
-# 1,000, and commands fail in confusing ways near that.
+# No run starts while this user's process count is above the ceiling: the login node allows
+# 1,000 processes and threads, and commands fail in confusing ways near that. A compute node
+# has no such cap; STEWARD_PROCESS_CEILING raises the ceiling there.
 PROCESS_COUNT = Path("/sys/fs/cgroup/user.slice") / f"user-{os.getuid()}.slice" / "pids.current"
 PROCESS_CEILING = 600
 
 
 def wait_for_room() -> None:
-    while PROCESS_COUNT.exists() and int(PROCESS_COUNT.read_text()) > PROCESS_CEILING:
+    ceiling = int(os.environ.get("STEWARD_PROCESS_CEILING", PROCESS_CEILING))
+    while PROCESS_COUNT.exists() and int(PROCESS_COUNT.read_text()) > ceiling:
         time.sleep(10)
 
 

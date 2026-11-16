@@ -920,6 +920,7 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
         LEVELS,
         bench_cases,
         parse_counts,
+        parse_workers,
         pilot_jobs,
         pilot_path,
         plan,
@@ -955,7 +956,10 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.simulator import ClaudeSimulator
 
     simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings))
-    runs = run_bench(settings, models, jobs, args.workers, args.max_usd, simulator)
+    workers = parse_workers(args.workers, [m.name for m in models], 5)
+    runs = run_bench(
+        settings, models, jobs, workers, args.max_usd, simulator, args.start, args.minutes
+    )
     print(f"simulator: {simulator.input_tokens} input tokens, {simulator.output_tokens} output")
     if args.pilot:
         summary = summarise_pilot(runs, {case.id: case.domain for case, _ in cases})
@@ -1373,7 +1377,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="append",
         help="settings per case at a drawn level, as LEVEL=N (III=20); repeat for several",
     )
-    sub.add_argument("--workers", type=int, default=5, help="sessions at once per model")
+    sub.add_argument(
+        "--workers",
+        action="append",
+        help="most sessions at once per model, as N or MODEL=N; repeat for several (default 5)",
+    )
+    sub.add_argument(
+        "--start",
+        type=int,
+        help="sessions at once to begin with; the number then follows the rate limits",
+    )
+    sub.add_argument(
+        "--minutes", type=float, help="start no session that would not finish within this"
+    )
     sub.add_argument("--max-usd", type=float, default=180.0, help="stop starting sessions here")
     sub.add_argument("--pilot", action="store_true", help="one setting per domain and level")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")

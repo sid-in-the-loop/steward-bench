@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -29,6 +31,7 @@ from steward.cases.sessions import (
     session_case,
 )
 from steward.cases.simulator import Simulator
+from steward.cases.throttle import Deadline, Throttle
 from steward.config import Settings
 from steward.execution.evaluate import workspace_image
 from steward.execution.policy import Message, Policy
@@ -270,7 +273,15 @@ def pending(path: Path, jobs: list[Job]) -> list[Job]:
     is left running alone at the end."""
     done = {stored_key(run) for run in stored_sessions(path)}
     todo = [job for job in jobs if job.key not in done]
-    todo.sort(key=lambda job: -job.setting.items)
+    # Within one length, every case and level gets its first settings before any gets its
+    # later ones, so a run stopped part way has an even sample.
+    seen: dict[tuple[str, str], int] = defaultdict(int)
+    rounds = {}
+    for job in todo:
+        group = (job.case.id, job.setting.level)
+        rounds[id(job)] = seen[group]
+        seen[group] += 1
+    todo.sort(key=lambda job: (-job.setting.items, rounds[id(job)]))
     return todo
 
 
@@ -281,9 +292,15 @@ def run_jobs(
     workers: int,
     simulator: Simulator | None = None,
     budget: Budget | None = None,
+    start: int | None = None,
+    deadline: Deadline | None = None,
 ) -> list[SessionRun]:
-    """Run every job not already in the model's session file. Each finished session is
-    appended at once, so an interrupted command resumes where it stopped."""
+    """Run every job not already in the model's session file, at most `workers` at once.
+    With `start` below `workers` the number at once begins there and follows the provider's
+    rate limits and the machine's load (`Throttle`); Anthropic requests go through their own
+    client, so for those only the load counts. A job that would not finish before the
+    deadline is not started. Each finished session is appended at once, so an interrupted
+    command resumes where it stopped."""
     path = sessions_path(settings, model.name)
     path.parent.mkdir(parents=True, exist_ok=True)
     dropped = drop_faulty_sessions(path)
@@ -291,37 +308,55 @@ def run_jobs(
         print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")
     todo = pending(path, jobs)
     budget = budget or Budget(None)
+    deadline = deadline or Deadline(None)
+    throttle = Throttle(model.name, start or workers, workers)
     lock = threading.Lock()
     client = httpx.Client(
         base_url=model.base_url,
         headers={"Authorization": f"Bearer {os.environ.get(model.api_key_env, '')}"},
         timeout=httpx.Timeout(300.0, connect=30.0),
+        event_hooks={"response": [throttle.observe]},
     )
+    skipped = 0
 
     def work(job: Job) -> SessionRun | None:
+        nonlocal skipped
         case, setting = job.case, job.setting
         if not budget.room:
             return None
-        wait_for_room()
+        throttle.acquire()
         try:
-            run = run_session(
-                settings,
-                case,
-                job.spec,
-                setting,
-                model_policy(client, model, case),
-                model.name,
-                job.trial,
-                model.pricing,
-                simulator,
-                job.bank,
-                job.recording,
-            )
-        except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
-            print(
-                f"failed {case.id} {setting.id} trial {job.trial}: {type(error).__name__}: {error}"
-            )
-            return None
+            if not deadline.fits(setting.items):
+                with lock:
+                    skipped += 1
+                return None
+            wait_for_room()
+            began = time.monotonic()
+            try:
+                run = run_session(
+                    settings,
+                    case,
+                    job.spec,
+                    setting,
+                    model_policy(client, model, case),
+                    model.name,
+                    job.trial,
+                    model.pricing,
+                    simulator,
+                    job.bank,
+                    job.recording,
+                )
+            except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
+                print(
+                    f"failed {case.id} {setting.id} trial {job.trial}: "
+                    f"{type(error).__name__}: {error}"
+                )
+                return None
+        finally:
+            throttle.release()
+        seconds = time.monotonic() - began
+        deadline.finished(setting.items, seconds)
+        run.seconds = round(seconds, 1)
         budget.add(run.cost_usd)
         with lock, path.open("a") as out:
             out.write(run.model_dump_json() + "\n")
@@ -330,16 +365,24 @@ def run_jobs(
             f"{model.name} {case.id} {setting.id} t{job.trial}: "
             f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed items, "
             f"{sum(i.ending == 'reported' for i in run.items)} of {len(run.items)} reported, "
-            f"{run.usage.requests} requests, ${run.cost_usd:.4f}",
+            f"{run.usage.requests} requests, ${run.cost_usd:.4f}, {seconds:.0f} s",
             flush=True,
         )
         return run
 
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        finished = [r for r in pool.map(work, todo) if r is not None]
+    stop = threading.Event()
+    throttle.run_adjusting(stop)
+    try:
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            finished = [r for r in pool.map(work, todo) if r is not None]
+    finally:
+        stop.set()
+        client.close()
     if not budget.room:
         left = len(todo) - len(finished)
         print(f"{model.name}: stopped at the ${budget.limit:.2f} limit with {left} sessions left")
+    if skipped:
+        print(f"{model.name}: {skipped} sessions left for the next machine, past the deadline")
     return finished
 
 

@@ -68,9 +68,10 @@ passing its references through the single run, the session and every level it pr
 
 ## Spend
 
-The cap for the benchmark is $140 in total across every API. Spent: about $23.50 before
-2026-11-16 (Level I, OpenAI), and about $0.50 overnight (the sample sessions, the banks and
-the recordings). The full run is priced at about $137 with Level III at 20 settings per case.
+Spent: about $23.50 before 2026-11-16 (Level I, OpenAI), and about $1.50 on 2026-11-16 (the
+sample sessions, the banks, their exchanges and the recordings). On 2026-11-16 the user set
+about $170 for the full run on top of that, with Level III at its 40 settings per case, for a
+total near $200. The full run is priced at about $176.
 Every model-calling command prints an estimate and needs `--confirm`; `bench-run` stops
 starting sessions at `--max-usd`.
 
@@ -87,11 +88,13 @@ process count under 600 of the 1,000 allowed, and never use `pkill -f`.
 - Stored Level IV and V sessions are tied to the version of the case's levels script; a
   change to it reruns them.
 - A recorded owner is kept only when its change is a real drift; a case whose goal leaves the
-  change underspecified gets none (the rebuild case's goal had to be made concrete).
+  change underspecified gets none (the rebuild case's goal had to be made concrete). Fourteen
+  cases have two recordings; ten have only the hand-written one, as their simulated owners'
+  changes were not captured in three attempts, so their Level V settings all replay it.
 
 ## Next, in order
 
-1. The steps of docs/run_plan.md: record the third owner per case, pilot, review, full run.
+1. The steps of docs/run_plan.md: pilot, review, then the full run in hourly compute-node jobs.
 2. Analysis of the stored sessions; the old Level I results page is
    https://claude.ai/artifact/NV94YiqrqyHS26XUeDw7Ti and is to be rebuilt from the new data.
 3. New cases with `steward case-new`, once the analysis shows which kinds of drift separate

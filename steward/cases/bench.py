@@ -28,6 +28,7 @@ from steward.cases.session_commands import (
 )
 from steward.cases.sessions import BASELINE, SessionRun, SessionSpec, Setting
 from steward.cases.simulator import Simulator
+from steward.cases.throttle import Deadline
 from steward.config import Settings
 
 LEVELS: tuple[Level, ...] = ("I", "II", "III", "IV", "V")
@@ -240,22 +241,39 @@ def summarise_pilot(runs: list[SessionRun], domains: dict[str, Domain]) -> Pilot
     )
 
 
+def parse_workers(given: list[str] | None, models: list[str], default: int) -> dict[str, int]:
+    """The most sessions at once per model, from entries N (every model) or MODEL=N."""
+    workers = dict.fromkeys(models, default)
+    for entry in given or []:
+        name, _, number = entry.rpartition("=")
+        if not number.isdigit() or int(number) < 1 or (name and name not in workers):
+            raise ValueError(f"workers are N or MODEL=N for a model being run; not {entry!r}")
+        for target in [name] if name else models:
+            workers[target] = int(number)
+    return workers
+
+
 def run_bench(
     settings: Settings,
     models: list[Model],
     jobs: list[Job],
-    workers: int,
+    workers: dict[str, int],
     limit: float | None,
     simulator: Simulator | None = None,
+    start: int | None = None,
+    minutes: float | None = None,
 ) -> list[SessionRun]:
-    """Run the jobs for every model at once, each model with its own workers, all under one
-    limit in dollars."""
+    """Run the jobs for every model at once, each model with its own sessions at once, all
+    under one limit in dollars and one deadline."""
     budget = Budget(limit)
+    deadline = Deadline.after(minutes)
     finished: list[SessionRun] = []
     lock = threading.Lock()
 
     def one(model: Model) -> None:
-        runs = run_jobs(settings, model, jobs, workers, simulator, budget)
+        most = workers[model.name]
+        first = min(start, most) if start else most
+        runs = run_jobs(settings, model, jobs, most, simulator, budget, first, deadline)
         with lock:
             finished.extend(runs)
 

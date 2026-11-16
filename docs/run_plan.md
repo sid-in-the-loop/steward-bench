@@ -1,8 +1,9 @@
 # Run plan
 
-This is the full run of the benchmark: 25 cases, five levels, three models. The numbers
-below are from `steward bench-run --settings III=20` on 2026-11-16 and are estimates priced
-from the sessions stored so far; the pilot replaces them with measured ones.
+This is the full run of the benchmark: 25 cases, five levels, three models, with Level III at
+its default of 40 settings per case. The numbers below are from `steward bench-run` on
+2026-11-16 and are estimates priced from the sessions stored so far; the pilot replaces them
+with measured ones.
 
 ## What runs
 
@@ -13,7 +14,7 @@ the drawn levels run each setting once, and every model gets the same settings.
 |---|---|---|---|
 | I | 16, twice each | 800 | One of the six single-factor experiments, including sessions of 2, 4, 16 and 64 loops |
 | II | 20 | 500 | Which of 16 loops drift: 1, 2 or 4 of them |
-| III | 20 | 500 | The drift loops, the notes, and each user: present or not, rate, share of unrelated talk, belief, stance |
+| III | 40 | 1,000 | The drift loops, the notes, each user (present or not, rate, share of unrelated talk, belief, stance), and the chat activity 0 to 3, ten settings each |
 | IV | 16 | 376 | A second person's change of each kind the case supports, or a change carried for three loops |
 | V | 10 | 240 | One drift loop whose change is a recorded owner's |
 
@@ -55,55 +56,70 @@ is why Levels IV and V have fewer than 25 times their settings.
 
 | Model | Level I | Level II | Level III | Level IV | Level V | Sessions to run | Cost |
 |---|---|---|---|---|---|---|---|
-| gpt-6-luna | $5.89 | $4.59 | $5.97 | $4.48 | $2.86 | 2,078 | $23.79 |
-| gpt-5.6-luna | $8.42 | $8.38 | $10.89 | $8.19 | $5.23 | 2,018 | $41.11 |
-| claude-haiku-5-5 | $23.74 | $12.30 | $15.99 | $12.01 | $7.66 | 2,410 | $71.70 |
-| Total | | | | | | 6,506 | $136.58 |
+| gpt-6-luna | $6.54 | $5.30 | $13.82 | $5.20 | $3.32 | 2,581 | $34.18 |
+| gpt-5.6-luna | $8.62 | $8.69 | $22.59 | $8.49 | $5.42 | 2,518 | $53.81 |
+| claude-haiku-5-5 | $23.74 | $12.30 | $32.04 | $12.05 | $7.69 | 2,913 | $87.82 |
+| Total | | | | | | 8,012 | $175.80 |
 
 About 1,280 Level I sessions of the two luna models on the cases that existed before are
-already stored and are not run again. Running Level III at its default of 40 settings per
-case would bring the total to about $169, over the $140 limit. The estimate for
-`claude-haiku-5-5` rests on few stored sessions and may move most after the pilot.
-`bench-run` stops starting sessions at `--max-usd` whatever the estimate says.
+already stored and are not run again. The user set the limit for this run at about $170 on
+2026-11-16, on top of about $25 spent before; `bench-run` stops starting sessions at
+`--max-usd`, $180 by default, whatever the estimate says. The estimate for `claude-haiku-5-5`
+rests on few stored sessions and may move most after the pilot.
 
 ## Time
 
-At each provider's rate limit of about 2 million tokens a minute per model, used at 85%,
-the two luna models need about 10 to 11 hours each, run at the same time. The time for
-`claude-haiku-5-5` depends on Anthropic's limit for this account, which the pilot measures.
-On the login node a model may use at most two workers, which is far too slow for this; run
-on compute nodes, where 8 to 10 workers per model keep each one at its rate limit.
+The run is bound by each provider's rate limit, not by the machine.
+
+| Model | Limit | Input tokens to send | Bound |
+|---|---|---|---|
+| gpt-6-luna | 2M tokens a minute, cached tokens included | about 1.8B | about 17 hours at 85% of the limit |
+| gpt-5.6-luna | 2M tokens a minute, cached tokens included | about 1.4B | about 13 hours |
+| claude-haiku-5-5 | 10M uncached input and 2M output tokens, 45,000 requests a minute; cache reads do not count | about 110M uncached | none in practice: about 200,000 requests, so the time is set by how many sessions run at once, about 6 hours at 40 |
+
+`gpt-6-luna` is the critical path: the whole run takes about 17 to 18 hours of machine time
+whatever the number of CPUs. To keep a model at its limit, about 30 of its sessions must run
+at once, since each spends most of its time waiting on the model.
+
+`bench-run` finds that number itself. With `--start` below `--workers`, each model begins
+with `--start` sessions at once and, every 30 seconds, adds two while every slot is busy,
+the provider has sent no rate limit since the last check and the load is under 0.85 per CPU;
+a rate limit cuts the number to 70%. Anthropic requests go through their own client, so for
+`claude-haiku-5-5` only the load counts. With `--minutes`, a session is started only if it
+would finish within that many minutes, judged from how long the model's sessions of that
+length have taken so far, so nothing is cut off when the job ends. Sessions start longest
+first, and within one length every case and level gets its first settings before any gets
+its later ones, so a run stopped part way leaves an even sample. Every finished session is
+stored at once and the next command resumes from there.
 
 ## Steps
 
-1. Record two more simulated owners per case, so each Level V case has three recordings and
-   its ten settings do not all replay the same one (about $1). Read a few of the new
-   recordings before going on.
+1. Run the pilot on a compute node: the baseline at Level I and the first setting of every
+   other level, for the first case of each domain and each model (about 75 sessions, under
+   $3, about 30 minutes).
 
-       steward owner-record --count 3 --confirm
+       export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 STEWARD_PROCESS_CEILING=100000
+       steward bench-run --pilot --workers 8 --confirm
 
-2. Run the pilot: the baseline at Level I and the first setting of every other level, for
-   the first case of each domain and each model (about 75 sessions, under $3).
-
-       steward bench-run --settings III=20 --pilot --confirm
-
-3. Read the pilot. `data/cases/pilot.json` has the measured cost per model, the share of
+2. Read the pilot. `data/cases/pilot.json` has the measured cost per model, the share of
    input read from the cache, and how many sessions are complete records. Open the sessions:
 
        steward bench-view --out view
        steward bench-status
 
    Check that every session is complete, that the drift is discoverable on a drift loop as
-   each case intends, that users say what their settings say, and that the measured cost
-   keeps the full run under $140; if it does not, lower `III=` before the full run.
+   each case intends, that users and their exchanges say what their settings say, and that
+   the measured cost keeps the full run within the limit; if it does not, lower `III=`.
 
-4. Run everything, on a compute node, in the background:
+3. Run everything, one compute-node job at a time. On a 32-CPU node held for an hour:
 
-       export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1
-       nohup steward bench-run --settings III=20 --workers 8 --max-usd 140 --confirm \
-         > data/cases/sessions/logs/bench-run.log 2>&1 < /dev/null &
+       export OPENBLAS_NUM_THREADS=1 OMP_NUM_THREADS=1 STEWARD_PROCESS_CEILING=100000
+       nohup steward bench-run --workers 40 --workers claude-haiku-5-5=48 --start 8 \
+         --minutes 55 --confirm > data/cases/sessions/logs/bench-run-$(date +%H%M).log 2>&1 < /dev/null &
 
-   The run resumes where it stopped, so it can be started again in each new job.
+   Start the same command in each new job; it resumes where the last one stopped. Change
+   `--minutes` to the job's length less five minutes. The log shows each change in the
+   number of sessions at once and, at the end, how many sessions were left for the next job.
 
-5. Follow it with `steward bench-status` and the log, and rebuild the viewer with
+4. Follow it with `steward bench-status` and the logs, and rebuild the viewer with
    `steward bench-view --out view` for the analysis.

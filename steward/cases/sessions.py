@@ -368,6 +368,8 @@ class SessionRun(BaseModel):
     items: list[ItemResult]
     usage: Usage
     cost_usd: float
+    # Wall-clock seconds the session took, where the runner measured it.
+    seconds: float | None = None
 
 
 class ScriptedItems:

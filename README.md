@@ -59,7 +59,7 @@ Running a case needs Apptainer and the images under `data/apptainer/` (`workspac
 ```bash
 uv run steward session-build              # build every case and run its references
 uv run steward bench-run --pilot --confirm            # one setting per domain and level
-uv run steward bench-run --confirm --max-usd 140      # everything not yet stored
+uv run steward bench-run --confirm --max-usd 180      # everything not yet stored
 uv run steward bench-status                           # planned, stored and complete sessions
 uv run steward bench-view --out view                  # the session viewer
 ```
@@ -119,8 +119,9 @@ Every command that calls a model prints an estimate and stops unless `--confirm`
 `bench-run` also stops starting sessions at `--max-usd`. In the sessions stored so far a
 session of sixteen loops cost about $0.01 on `gpt-6-luna`, $0.013 on `gpt-5.6-luna`, and
 between $0.015 and $0.04 on `claude-haiku-5-5`. Writing a case's message bank costs under a
-cent, and a recorded owner about two cents. The full run of docs/run_plan.md is priced at
-about $137 against the $140 agreed for the benchmark.
+cent and its exchanges about two cents, and a recorded owner about two cents. The full run
+of docs/run_plan.md is priced at about $176, within the limit of about $170 the user set
+for it on 2026-11-16.
 
 ## Limitations
 

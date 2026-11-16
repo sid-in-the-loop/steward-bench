@@ -28,7 +28,12 @@ from steward.cases.bench import (
 )
 from steward.cases.case import Case
 from steward.cases.commands import MODELS
-from steward.cases.level_settings import seeded_drifts, several_drifts, user_made_drifts
+from steward.cases.level_settings import (
+    seeded_drifts,
+    several_drifts,
+    user_made_drifts,
+    varied_users,
+)
 from steward.cases.levels import Bank, Said
 from steward.cases.session_commands import Budget, Job, level_checks, pending
 from steward.cases.sessions import (
@@ -136,6 +141,16 @@ def test_pending_leaves_out_what_is_stored_and_puts_long_sessions_first(
     path = tmp_path / "m.jsonl"
     path.write_text(stored(case, spec, short).model_dump_json() + "\n")
     assert [job.setting.items for job in pending(path, jobs)] == [4, 3]
+
+
+def test_pending_gives_every_level_its_first_settings_before_any_its_later_ones(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    second = [seeded_drifts(seed) for seed in range(3)]
+    third = [varied_users(seed) for seed in range(3)]
+    jobs = [Job(case=case, spec=spec, setting=s) for s in (*second, *third)]
+    order = [job.setting for job in pending(tmp_path / "none.jsonl", jobs)]
+    assert order == [second[0], third[0], second[1], third[1], second[2], third[2]]
 
 
 def test_a_budget_has_room_until_its_limit() -> None:
