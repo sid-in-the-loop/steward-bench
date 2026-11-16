@@ -10,6 +10,16 @@ other people's work without abandoning its own? Three models: `gpt-6-luna`, `gpt
 `gpt-5-mini` (OpenAI API, key in the git-ignored `.env`). User simulator: Claude Haiku 5.5
 (`claude-haiku-5-5`), Anthropic key in the same `.env`.
 
+## Scope
+
+The world changes only between loops: every drift has happened before the requester hands
+over the loop's task. Users speak only at the handover, before the task, and when the agent
+asks them; nothing happens while the agent works. Users who act or message concurrently and
+asynchronously belong to a separate, later benchmark of agent collaboration, not to this one.
+The one exception is the `during` script of s8 and t8 (and the case `l3`), a single scripted
+change just before the agent's first change in a drift loop; those cases are kept in stage 1
+and left out of later stages.
+
 ## Formal definitions
 
 | Symbol | Definition |
@@ -119,7 +129,7 @@ Readings at 676 sessions, mostly software cases, all provisional:
 1. Finish stage 1 on compute nodes, rebuild the page, revise the findings text.
 2. Stage 2: D drawn from a seed (several drift patterns per case).
 3. Stage 3: users as parameter vectors (knowledge, authority, stance, rate, consistency)
-   instead of four fixed roles.
+   instead of four fixed roles, speaking only at handover or when asked (see Scope).
 4. Stage 4 (s1, t5, w4 first): several drifts per loop by different users, on the same,
    related or unrelated objects, and drifts that persist into later loops.
 5. New domains proposed, not started: cloud infrastructure (terminal), course administration
