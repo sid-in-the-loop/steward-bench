@@ -9,10 +9,12 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
+from pydantic import BaseModel, ConfigDict
 
 from steward.cases import sandbox
 from steward.cases.case import Case, Reference, Repo
 from steward.cases.commands import cases_root, load_cases, wait_for_room
+from steward.cases.levels import Bank
 from steward.cases.run import Model, model_policy
 from steward.cases.sandbox import MACHINE_FAULTS
 from steward.cases.sessions import (
@@ -22,6 +24,7 @@ from steward.cases.sessions import (
     Setting,
     built_session_directory,
     load_session_spec,
+    recording_version,
     run_session,
     session_case,
 )
@@ -128,6 +131,132 @@ def drop_faulty_sessions(path: Path) -> int:
     return len(lines) - len(kept)
 
 
+class Job(BaseModel):
+    """One session to run: a case, a setting and a repeat, with the message bank and the
+    recorded owner the setting draws on."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    case: Case
+    spec: SessionSpec
+    setting: Setting
+    trial: int = 0
+    bank: Bank | None = None
+    recording: list[str] | None = None
+
+    @property
+    def key(self) -> tuple[str, str, str, int, str | None, str | None]:
+        uses_bank = self.bank is not None and bool(self.setting.voices)
+        return (
+            self.case.id,
+            self.spec.version,
+            self.setting.id,
+            self.trial,
+            self.bank.version if self.bank and uses_bank else None,
+            recording_version(self.recording),
+        )
+
+
+def stored_key(run: SessionRun) -> tuple[str, str, str, int, str | None, str | None]:
+    return (run.case, run.session_version, run.setting.id, run.trial, run.bank, run.recording)
+
+
+class Budget:
+    """A limit in dollars on what one command spends. Sessions already running when it is
+    reached finish; no new one starts."""
+
+    def __init__(self, limit: float | None, spent: float = 0.0) -> None:
+        self.limit = limit
+        self.spent = spent
+        self.lock = threading.Lock()
+
+    def add(self, dollars: float) -> None:
+        with self.lock:
+            self.spent += dollars
+
+    @property
+    def room(self) -> bool:
+        return self.limit is None or self.spent < self.limit
+
+
+def pending(path: Path, jobs: list[Job]) -> list[Job]:
+    """The jobs not already in the model's session file, longest sessions first so that none
+    is left running alone at the end."""
+    done = {stored_key(run) for run in stored_sessions(path)}
+    todo = [job for job in jobs if job.key not in done]
+    todo.sort(key=lambda job: -job.setting.items)
+    return todo
+
+
+def run_jobs(
+    settings: Settings,
+    model: Model,
+    jobs: list[Job],
+    workers: int,
+    simulator: Simulator | None = None,
+    budget: Budget | None = None,
+) -> list[SessionRun]:
+    """Run every job not already in the model's session file. Each finished session is
+    appended at once, so an interrupted command resumes where it stopped."""
+    path = sessions_path(settings, model.name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    dropped = drop_faulty_sessions(path)
+    if dropped:
+        print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")
+    todo = pending(path, jobs)
+    budget = budget or Budget(None)
+    lock = threading.Lock()
+    client = httpx.Client(
+        base_url=model.base_url,
+        headers={"Authorization": f"Bearer {os.environ.get(model.api_key_env, '')}"},
+        timeout=httpx.Timeout(300.0, connect=30.0),
+    )
+
+    def work(job: Job) -> SessionRun | None:
+        case, setting = job.case, job.setting
+        if not budget.room:
+            return None
+        wait_for_room()
+        try:
+            run = run_session(
+                settings,
+                case,
+                job.spec,
+                setting,
+                model_policy(client, model, case),
+                model.name,
+                job.trial,
+                model.pricing,
+                simulator,
+                job.bank,
+                job.recording,
+            )
+        except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
+            print(
+                f"failed {case.id} {setting.id} trial {job.trial}: {type(error).__name__}: {error}"
+            )
+            return None
+        budget.add(run.cost_usd)
+        with lock, path.open("a") as out:
+            out.write(run.model_dump_json() + "\n")
+        changed = [i for i in run.items if i.changed]
+        print(
+            f"{model.name} {case.id} {setting.id} t{job.trial}: "
+            f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed items, "
+            f"{sum(i.ending == 'reported' for i in run.items)} of {len(run.items)} reported, "
+            f"{run.usage.requests} requests, ${run.cost_usd:.4f}",
+            flush=True,
+        )
+        return run
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        finished = [r for r in pool.map(work, todo) if r is not None]
+    if not budget.room:
+        left = len(todo) - len(finished)
+        print(f"{model.name}: stopped at the ${budget.limit:.2f} limit with {left} sessions left")
+    return finished
+
+
 def run_sessions(
     settings: Settings,
     model: Model,
@@ -137,62 +266,14 @@ def run_sessions(
     workers: int,
     simulator: Simulator | None = None,
 ) -> list[SessionRun]:
-    """Every case, setting and trial not already in the model's session file. Each finished
-    session is appended at once, so an interrupted command resumes where it stopped."""
-    path = sessions_path(settings, model.name)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    dropped = drop_faulty_sessions(path)
-    if dropped:
-        print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")
-    done = {(r.case, r.session_version, r.setting.id, r.trial) for r in stored_sessions(path)}
-    todo = [
-        (case, spec, setting, trial)
+    """Every case, setting and trial not already in the model's session file."""
+    jobs = [
+        Job(case=case, spec=spec, setting=setting, trial=trial)
         for case, spec in cases
         for setting in chosen
         for trial in range(trials)
-        if (case.id, spec.version, setting.id, trial) not in done
     ]
-    # The longest sessions go first, so none is left running alone at the end.
-    todo.sort(key=lambda job: -job[2].items)
-    lock = threading.Lock()
-    client = httpx.Client(
-        base_url=model.base_url,
-        headers={"Authorization": f"Bearer {os.environ.get(model.api_key_env, '')}"},
-        timeout=httpx.Timeout(300.0, connect=30.0),
-    )
-
-    def work(job: tuple[Case, SessionSpec, Setting, int]) -> SessionRun | None:
-        case, spec, setting, trial = job
-        wait_for_room()
-        try:
-            run = run_session(
-                settings,
-                case,
-                spec,
-                setting,
-                model_policy(client, model, case),
-                model.name,
-                trial,
-                model.pricing,
-                simulator,
-            )
-        except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
-            print(f"failed {case.id} {setting.id} trial {trial}: {type(error).__name__}: {error}")
-            return None
-        with lock, path.open("a") as out:
-            out.write(run.model_dump_json() + "\n")
-        changed = [i for i in run.items if i.changed]
-        print(
-            f"{model.name} {case.id} {setting.id} t{trial}: "
-            f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed items, "
-            f"{sum(i.ending == 'reported' for i in run.items)} of {len(run.items)} reported, "
-            f"{run.usage.requests} requests, ${run.cost_usd:.4f}",
-            flush=True,
-        )
-        return run
-
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        return [r for r in pool.map(work, todo) if r is not None]
+    return run_jobs(settings, model, jobs, workers, simulator)
 
 
 def current_sessions(settings: Settings, models: list[str]) -> list[SessionRun]:

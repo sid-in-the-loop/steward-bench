@@ -60,9 +60,10 @@ neutral answer; everyone else answers as at Level I.
 `cases/<id>/bank.yaml` holds the wordings each user can say, by kind of message. A wording
 may use the `{name}` values the item script prints. `steward bank-build` writes the bank by
 having Claude Haiku 5.5 reword the case's fixed lines and write unrelated remarks for each
-person; a wording is kept only if it passes the plan check: a signal must match the case's
-`disclose` pattern and keep every `{name}` of the fixed line, and no other kind may match
-`disclose`. The fixed lines themselves are always in the bank. The bank is committed, so the
+person. Each written wording is then judged by the same model on one question: does this
+message tell its reader what the owner changed? A signal is kept only if it does and keeps
+every `{name}` of the fixed line; any other kind is kept only if it does not. A wording whose
+judgement cannot be read is turned away. The fixed lines themselves are always in the bank. The bank is committed, so the
 words every model reads can be read by a person first, and a session stores the version of
 the bank it drew from.
 
@@ -94,3 +95,21 @@ whether the second person's work was harmed (`second_harm`), whether the loop ca
 earlier change (`carried`), and for a case with `done_deferred` whether a drift loop's task
 was done by the end of the next loop (`done_later`). Every message drawn from the bank is
 stored with its kind.
+
+## Running the benchmark
+
+    steward bank-build --confirm                 write the message banks (a few cents)
+    steward bench-run                            print the plan and its cost; no model calls
+    steward bench-run --pilot --confirm          one setting per domain and level
+    steward bench-run --confirm --max-usd 140    everything not yet stored
+    steward bench-status                         planned, stored and complete sessions
+
+`bench-run` plans every benchmark case at every level for the three models in
+`BENCH_MODELS`, leaves out the settings a case does not provide for and says so, and prices
+what is left from the mean cost of each model's stored sessions of the same length. The
+models run at the same time under one limit: when the limit is reached, sessions already
+running finish and no new one starts. A full run is refused until a pilot has been run and
+its summary stored. Finished sessions are appended to `data/cases/sessions/<model>.jsonl`,
+so a stopped run resumes where it was. A stored session is complete when every loop is
+recorded with its events, every drift loop has its harm check, and a session with drawn
+users names the bank it drew from.

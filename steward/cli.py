@@ -763,6 +763,117 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bank_build(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bank import ClaudeWriter, build_bank, estimate_usd
+    from steward.cases.bench import bench_cases
+    from steward.cases.commands import cases_root
+    from steward.cases.levels import BANK_FILE, save_bank
+
+    root = cases_root(settings)
+    cases = [
+        (case, spec)
+        for case, spec in bench_cases(settings, args.case)
+        if args.again or not (root / case.id / BANK_FILE).exists()
+    ]
+    print(f"{len(cases)} banks to write, about ${estimate_usd(len(cases)):.2f}")
+    if not args.confirm or not cases:
+        print("Add --confirm to write them." if cases else "Nothing to write.")
+        return 0
+    import anthropic
+
+    writer = ClaudeWriter(anthropic.Anthropic())
+    for case, spec in cases:
+        bank, rejected = build_bank(case, spec, writer, args.count)
+        save_bank(root / case.id, bank)
+        kinds = sum(len(by_kind) for by_kind in bank.lines.values())
+        wordings = sum(len(w) for by_kind in bank.lines.values() for w in by_kind.values())
+        print(f"{case.id}: {wordings} wordings in {kinds} kinds, {rejected} turned away")
+    print(f"spent ${writer.cost_usd:.4f}")
+    return 0
+
+
+def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import (
+        BENCH_MODELS,
+        LEVELS,
+        bench_cases,
+        pilot_jobs,
+        pilot_path,
+        plan,
+        run_bench,
+        summarise,
+        summarise_pilot,
+    )
+    from steward.cases.commands import MODELS, simulator_cache
+
+    models = [MODELS[name] for name in args.model or BENCH_MODELS]
+    cases = bench_cases(settings, args.case)
+    jobs, left_out = plan(settings, cases, args.level or list(LEVELS), args.settings)
+    if args.pilot:
+        jobs = pilot_jobs(jobs)
+    for note in left_out:
+        print(f"left out: {note}")
+    total = 0.0
+    for line in summarise(settings, models, jobs):
+        total += line.usd
+        print(
+            f"{line.model:18} Level {line.level:3} {line.pending:5} of {line.planned:5} "
+            f"sessions to run, about ${line.usd:.2f}"
+        )
+    print(f"{len(cases)} cases, about ${total:.2f} in all; limit ${args.max_usd:.2f}")
+    if not args.confirm:
+        print("Add --confirm to run.")
+        return 0
+    if not args.pilot and not pilot_path(settings).exists():
+        print("Run the pilot first: steward bench-run --pilot --confirm")
+        return 1
+    import anthropic
+
+    from steward.cases.simulator import ClaudeSimulator
+
+    simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings))
+    runs = run_bench(settings, models, jobs, args.workers, args.max_usd, simulator)
+    print(f"simulator: {simulator.input_tokens} input tokens, {simulator.output_tokens} output")
+    if args.pilot:
+        summary = summarise_pilot(runs, {case.id: case.domain for case, _ in cases})
+        pilot_path(settings).write_text(summary.model_dump_json(indent=2))
+        print(summary.model_dump_json(indent=2))
+    return 0
+
+
+def cmd_bench_status(settings: Settings, args: argparse.Namespace) -> int:
+    from collections import Counter
+
+    from steward.cases.bench import BENCH_MODELS, LEVELS, bench_cases, plan, problems
+    from steward.cases.case import DOMAIN_NAMES
+    from steward.cases.session_commands import sessions_path, stored_key, stored_sessions
+
+    cases = bench_cases(settings, args.case)
+    jobs, _ = plan(settings, cases, list(LEVELS))
+    wanted = {job.key: job for job in jobs}
+    print(f"{'model':18} {'domain':20} level  planned  stored  complete")
+    for name in args.model or BENCH_MODELS:
+        stored: Counter[tuple[str, str]] = Counter()
+        complete: Counter[tuple[str, str]] = Counter()
+        seen = set()
+        for run in stored_sessions(sessions_path(settings, name)):
+            key = stored_key(run)
+            if key not in wanted or key in seen:
+                continue
+            seen.add(key)
+            cell = (wanted[key].case.domain, run.setting.level)
+            stored[cell] += 1
+            complete[cell] += not problems(run)
+        planned = Counter((job.case.domain, job.setting.level) for job in jobs)
+        for (domain, level), count in sorted(planned.items()):
+            cell = (domain, level)
+            print(
+                f"{name:18} {DOMAIN_NAMES[domain]:20} {level:5} {count:8} "
+                f"{stored[cell]:7} {complete[cell]:9}"
+            )
+    return 0
+
+
 def cmd_session_table(settings: Settings, args: argparse.Namespace) -> int:
     import csv
 
@@ -1098,6 +1209,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--samples", type=int, default=20)
     sub.add_argument("--workers", type=int, default=6)
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("bank-build", cmd_bank_build, "write the message bank of each benchmark case")
+    sub.add_argument("--case", action="append", help="a case id; repeat for several")
+    sub.add_argument("--count", type=int, default=5, help="wordings to ask for per kind")
+    sub.add_argument("--again", action="store_true", help="rewrite banks that exist")
+    sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("bench-run", cmd_bench_run, "run every case at every level under one limit")
+    sub.add_argument("--model", action="append", help="default: the three benchmark models")
+    sub.add_argument("--level", action="append", choices=["I", "II", "III", "IV", "V"])
+    sub.add_argument("--case", action="append", help="a case id; repeat for several")
+    sub.add_argument("--settings", type=int, help="cap on drawn settings per case and level")
+    sub.add_argument("--workers", type=int, default=5, help="sessions at once per model")
+    sub.add_argument("--max-usd", type=float, default=140.0, help="stop starting sessions here")
+    sub.add_argument("--pilot", action="store_true", help="one setting per domain and level")
+    sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("bench-status", cmd_bench_status, "count planned, stored and complete sessions")
+    sub.add_argument("--model", action="append")
+    sub.add_argument("--case", action="append")
     sub = add("session-build", cmd_session_build, "build the session cases and check them")
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--check-only", action="store_true", help="do not rebuild, only check")

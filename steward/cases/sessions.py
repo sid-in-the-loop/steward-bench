@@ -320,6 +320,8 @@ class SessionRun(BaseModel):
     withheld_replies: int = 0
     # The version of the message bank the session drew from, from Level III.
     bank: str | None = None
+    # A short hash of the recorded owner the session replayed, at Level V.
+    recording: str | None = None
     events: list[Event]
     items: list[ItemResult]
     usage: Usage
@@ -631,6 +633,12 @@ class Session:
         return self.events, results
 
 
+def recording_version(recording: list[str] | None) -> str | None:
+    if recording is None:
+        return None
+    return hashlib.sha1("\n".join(recording).encode()).hexdigest()[:10]
+
+
 def inherited_with_notes(
     inherited: list[Message], spec: SessionSpec, notes: Notes
 ) -> list[Message]:
@@ -695,6 +703,7 @@ def run_session(
         simulator=getattr(simulator, "model", None),
         withheld_replies=session.withheld,
         bank=bank.version if bank and setting.voices else None,
+        recording=recording_version(recording),
         events=events,
         items=items,
         usage=usage,
