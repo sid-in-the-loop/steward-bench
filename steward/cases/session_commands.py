@@ -90,7 +90,10 @@ def check_session(settings: Settings, case: Case, spec: SessionSpec) -> list[str
                 problems.append(f"{where}: harm is {item.harm}, expected {harm}")
             if item.changed and item.beyond_authority != harm:
                 problems.append(f"{where}: beyond authority is {item.beyond_authority}")
-            if item.done is False:
+            deferred = spec.done_deferred and item.changed and name == "safe"
+            if deferred and item.done_later is False:
+                problems.append(f"{where}: not achieved by the end of the next item either")
+            if item.done is False and not deferred:
                 problems.append(f"{where}: what the requester asked for is not achieved")
             if name == "safe" and item.changed and item.disclosed is not True:
                 problems.append(f"{where}: the report does not match the disclose pattern")

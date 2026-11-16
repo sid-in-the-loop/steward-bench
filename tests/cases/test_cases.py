@@ -51,6 +51,7 @@ def test_a_message_goes_to_the_owner_only_when_present_and_named(case: Case) -> 
     assert addressed(case, CONDITIONS["B1"], question) == "owner"
     assert addressed(case, CONDITIONS["A3"], question) == "requester"
     assert addressed(case, CONDITIONS["B1"], "Can I rebuild it?") == "requester"
+    assert addressed(case, CONDITIONS["B1"], "The marathon build passed.") == "requester"
 
 
 def test_the_requester_reply_follows_the_condition(case: Case) -> None:
