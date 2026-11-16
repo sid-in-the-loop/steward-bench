@@ -29,7 +29,14 @@ from steward.cases.level_settings import (
     varied_users,
 )
 from steward.cases.levels import Bank
-from steward.cases.session_commands import Budget, Job, level_checks, pending
+from steward.cases.session_commands import (
+    Budget,
+    Job,
+    drop_faulty_sessions,
+    level_checks,
+    pending,
+    stored_sessions,
+)
 from steward.cases.sessions import (
     GeneratedDrift,
     ScriptedItems,
@@ -229,3 +236,14 @@ def test_counts_are_given_per_level_or_for_every_drawn_level() -> None:
     for wrong in ("I=4", "VI=2", "III=many"):
         with pytest.raises(ValueError):
             parse_counts([wrong])
+
+
+def test_a_line_cut_short_by_a_stopped_run_is_passed_over_and_then_removed(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    path = tmp_path / "m.jsonl"
+    record = stored(case, spec, Setting(items=2, changed=(2,))).model_dump_json()
+    path.write_text(record + "\n" + record[: len(record) // 2])
+    assert len(stored_sessions(path)) == 1
+    assert drop_faulty_sessions(path) == 1
+    assert path.read_text() == record + "\n"

@@ -187,19 +187,36 @@ def estimate_usd(model: Model, setting: Setting) -> float:
     return requests * per_request / 1_000_000
 
 
+def whole(line: str) -> bool:
+    """Whether a line of a session file is a whole record. A run stopped while writing leaves
+    a line cut short."""
+    try:
+        json.loads(line)
+    except json.JSONDecodeError:
+        return False
+    return True
+
+
+def stored_lines(path: Path) -> list[str]:
+    text = path.read_text(errors="replace") if path.exists() else ""
+    return [line for line in text.splitlines() if line.strip()]
+
+
 def stored_sessions(path: Path) -> list[SessionRun]:
-    if not path.exists():
-        return []
-    return [SessionRun.model_validate_json(line) for line in path.read_text().splitlines() if line]
+    """The sessions in a file. A line cut short is passed over; the next run removes it."""
+    return [SessionRun.model_validate_json(line) for line in stored_lines(path) if whole(line)]
 
 
 def drop_faulty_sessions(path: Path) -> int:
-    """Remove sessions in which the environment answered with a machine fault, so they are
-    run again. Returns how many were removed."""
+    """Remove sessions in which the environment answered with a machine fault, and lines cut
+    short by a run that was stopped while writing, so they are run again. Returns how many
+    were removed."""
     if not path.exists():
         return 0
-    lines = [line for line in path.read_text().splitlines() if line.strip()]
-    kept = [line for line in lines if not any(fault in line for fault in MACHINE_FAULTS)]
+    lines = stored_lines(path)
+    kept = [
+        line for line in lines if whole(line) and not any(fault in line for fault in MACHINE_FAULTS)
+    ]
     if len(kept) != len(lines):
         path.write_text("".join(line + "\n" for line in kept))
     return len(lines) - len(kept)
