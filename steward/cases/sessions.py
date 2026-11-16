@@ -127,6 +127,12 @@ class Setting(BaseModel):
     def voice(self, role: Role) -> Voice | None:
         return next((voice for voice in self.voices if voice.role == role), None)
 
+    @property
+    def beyond_item_script(self) -> bool:
+        """Whether the session has a second change, a carried change or a recorded owner:
+        what a case's levels script provides when it has one."""
+        return bool(self.second or self.carried or self.generated is not None)
+
 
 BASELINE = Setting()
 EXPERIMENTS: dict[str, list[Setting]] = {
@@ -204,6 +210,11 @@ class SessionSpec(Strict):
     history: list[HistoryStep] | None = None
     item: str
     during: str | None = None
+    # A script that takes the place of `item` in a session with a second change, a carried
+    # change or a recorded owner. It honours SECOND, CARRIED and GENERATED and calls the item
+    # script, unchanged, as the shell function `item_script`. A case that names one keeps
+    # the version its sessions without those settings were stored under.
+    levels: str | None = None
     manager: Person
     task: str
     requester_reply: str
@@ -227,24 +238,40 @@ class SessionSpec(Strict):
     harmful_reference: Reference
     # Set when the spec is loaded: a short hash of everything a session run depends on.
     version: str = ""
+    # Set with `version` for a case with a levels script: a short hash of the version and of
+    # what the case provides for Levels IV and V.
+    levels_version: str = ""
+
+
+# What a case provides for Levels IV and V.
+PROVIDED = ("levels", "carries", "second", "generated")
 
 
 def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
-    """Read `session.yaml` beside a case; `start`, `item` and `during` name scripts there."""
+    """Read `session.yaml` beside a case; `start`, `item`, `during` and `levels` name scripts
+    there."""
     path = directory / SESSION_FILE
     if not path.exists():
         return None
     raw = yaml.safe_load(path.read_text())
-    for field in ("start", "item", "during"):
+    for field in ("start", "item", "during", "levels"):
         if raw.get(field):
             raw[field] = (directory / raw[field]).read_text()
     spec = SessionSpec.model_validate(raw)
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
-    added = ("done_deferred", "carries", "second", "generated")
-    left_out = {"version"} | {name for name in added if not getattr(spec, name)}
+    added = ("done_deferred", *PROVIDED)
+    left_out = {"version", "levels_version"} | {n for n in added if not getattr(spec, n)}
+    # With a levels script, what the case provides above Level III is hashed apart, so the
+    # sessions stored before it was provided stay current.
+    if spec.levels:
+        left_out |= set(PROVIDED)
     parts = [str(PROTOCOL), case.version, spec.model_dump_json(exclude=left_out)]
     spec.version = hashlib.sha1("\n".join(parts).encode()).hexdigest()[:10]
+    if spec.levels:
+        provided = spec.model_dump_json(include=set(PROVIDED))
+        both = f"{spec.version}\n{provided}".encode()
+        spec.levels_version = hashlib.sha1(both).hexdigest()[:10]
     return spec
 
 
@@ -325,6 +352,8 @@ class SessionRun(BaseModel):
     bank: str | None = None
     # A short hash of the recorded owner the session replayed, at Level V.
     recording: str | None = None
+    # The version of what the case's levels script provides, for a session that used it.
+    levels_version: str | None = None
     events: list[Event]
     items: list[ItemResult]
     usage: Usage
@@ -415,8 +444,15 @@ class Session:
             f"SECOND={second} CARRIED={int(setting.carried_into(self.item))} GENERATED={made}\n"
         )
 
+    def _item_script(self) -> str:
+        """What prepares an item: the item script, or the levels script around it."""
+        levels = self.spec.levels
+        if levels is None or not self.setting.beyond_item_script:
+            return self.spec.item
+        return f"item_script() (\n{self.spec.item}\n)\n{levels}"
+
     async def _prepare(self, changed: bool) -> dict[str, str]:
-        script = self._environment(changed) + self.spec.item
+        script = self._environment(changed) + self._item_script()
         ok, printed = await self.executor.checked(script, VALUES_LIMIT)
         if not ok:
             raise RuntimeError(f"{self.case.id}: item {self.item} could not be prepared: {printed}")
@@ -707,6 +743,7 @@ def run_session(
         withheld_replies=session.withheld,
         bank=bank.version if bank and setting.voices else None,
         recording=recording_version(recording),
+        levels_version=(spec.levels_version or None) if setting.beyond_item_script else None,
         events=events,
         items=items,
         usage=usage,

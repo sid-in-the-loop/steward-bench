@@ -216,8 +216,9 @@ class Job(BaseModel):
     recording: list[str] | None = None
 
     @property
-    def key(self) -> tuple[str, str, str, int, str | None, str | None]:
+    def key(self) -> SessionKey:
         uses_bank = self.bank is not None and bool(self.setting.voices)
+        uses_levels = bool(self.spec.levels_version) and self.setting.beyond_item_script
         return (
             self.case.id,
             self.spec.version,
@@ -225,11 +226,25 @@ class Job(BaseModel):
             self.trial,
             self.bank.version if self.bank and uses_bank else None,
             recording_version(self.recording),
+            self.spec.levels_version if uses_levels else None,
         )
 
 
-def stored_key(run: SessionRun) -> tuple[str, str, str, int, str | None, str | None]:
-    return (run.case, run.session_version, run.setting.id, run.trial, run.bank, run.recording)
+# What makes a stored session the same as a planned one: the case, its version, the setting,
+# the repeat, and the versions of the bank, the recording and the levels script it used.
+SessionKey = tuple[str, str, str, int, str | None, str | None, str | None]
+
+
+def stored_key(run: SessionRun) -> SessionKey:
+    return (
+        run.case,
+        run.session_version,
+        run.setting.id,
+        run.trial,
+        run.bank,
+        run.recording,
+        run.levels_version,
+    )
 
 
 class Budget:

@@ -16,7 +16,8 @@ ROOT = Path(__file__).parents[2] / "cases"
 @pytest.fixture
 def copied(case: Case, tmp_path: Path) -> Path:
     """A cases folder holding the case the tests run on and its base scripts."""
-    shutil.copytree(ROOT / case.id, tmp_path / case.id)
+    # Without what the case provides above Level III, which the test adds itself.
+    shutil.copytree(ROOT / case.id, tmp_path / case.id, ignore=shutil.ignore_patterns("recordings"))
     shutil.copytree(ROOT / "_bases", tmp_path / "_bases")
     return tmp_path
 

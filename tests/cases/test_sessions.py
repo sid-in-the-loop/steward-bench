@@ -1,9 +1,11 @@
 """The session loop, its settings and its speaking schedule, on a fake environment."""
 
 import asyncio
+import shutil
 from pathlib import Path
 
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from steward.cases.case import Case, Person, case_identifier
@@ -19,6 +21,7 @@ from steward.cases.sessions import (
     addresses,
     filled,
     inherited_with_notes,
+    load_session_spec,
     speakers_before,
 )
 from steward.execution.policy import Turn, Usage
@@ -251,6 +254,56 @@ def test_a_deferred_done_is_read_again_after_the_next_item(case: Case, spec: Ses
     assert [i.done_later for i in items] == [None, True, None]
     _, plain = run(case, spec, setting, ScriptedItems(spec.safe_reference), done=True)
     assert [i.done_later for i in plain] == [None, None, None]
+
+
+def session_copy(folder: Path, levels: str | None, **fields: object) -> Path:
+    """A copy of the s1 session with only the given Level IV and V fields."""
+    folder.mkdir()
+    shutil.copy(ROOT / "s1" / "item.sh", folder / "item.sh")
+    raw = yaml.safe_load((ROOT / "s1" / "session.yaml").read_text())
+    for name in ("levels", "carries", "second", "generated"):
+        raw.pop(name, None)
+    if levels is not None:
+        (folder / "levels.sh").write_text(levels)
+        raw["levels"] = "levels.sh"
+    (folder / "session.yaml").write_text(yaml.safe_dump(raw | fields))
+    return folder
+
+
+def test_a_levels_script_leaves_the_session_version_as_it_was(case: Case, tmp_path: Path) -> None:
+    plain = load_session_spec(session_copy(tmp_path / "plain", None), case)
+    first = load_session_spec(session_copy(tmp_path / "a", "item_script\n", carries=True), case)
+    other = load_session_spec(
+        session_copy(tmp_path / "b", "item_script\ntrue\n", carries=True), case
+    )
+    assert plain is not None and first is not None and other is not None
+    assert plain.levels_version == ""
+    assert first.version == other.version == plain.version
+    assert first.levels_version and first.levels_version != other.levels_version
+
+
+def test_a_field_set_without_a_levels_script_changes_the_version(
+    case: Case, tmp_path: Path
+) -> None:
+    plain = load_session_spec(session_copy(tmp_path / "plain", None), case)
+    inline = load_session_spec(session_copy(tmp_path / "inline", None, carries=True), case)
+    assert plain is not None and inline is not None
+    assert inline.version != plain.version and inline.levels_version == ""
+
+
+def test_the_levels_script_prepares_only_sessions_that_need_it(
+    case: Case, spec: SessionSpec
+) -> None:
+    provided = spec.model_copy(update={"levels": "echo from-levels", "carries": True})
+    plain, carried = FakeEnvironment(), FakeEnvironment()
+    run(case, provided, Setting(items=2, changed=(2,), users=1), Asks([]), env=plain)
+    assert not any("from-levels" in command for command in plain.ran)
+    setting = Setting(level="IV", seed=0, items=3, changed=(2,), users=1, carried=1)
+    run(case, provided, setting, Asks([]), env=carried)
+    prepared = [command for command in carried.ran if "from-levels" in command]
+    assert len(prepared) == 3
+    assert all(f"item_script() (\n{spec.item}\n)\n" in command for command in prepared)
+    assert "CARRIED=1" in prepared[2] and "CARRIED=0" in prepared[1]
 
 
 def test_a_case_is_identified_by_its_domain_and_title() -> None:
