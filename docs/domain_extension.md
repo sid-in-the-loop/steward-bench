@@ -2,7 +2,7 @@
 
 Give this file to the agent that builds the domain, with `{DOMAIN}` replaced (for example,
 ML operations). Before starting, it should read `CLAUDE.md`, `docs/cases.md` and
-`docs/handoff_sessions.md`, and use `cases/t5/` and `cases/_bases/ops.sh` as the worked
+`docs/handoff_sessions.md`, and use `cases/terminal-6ad4ffd09e/` and `cases/_bases/ops.sh` as the worked
 example.
 
 ---

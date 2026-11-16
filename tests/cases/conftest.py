@@ -12,12 +12,12 @@ ROOT = Path(__file__).parents[2] / "cases"
 
 @pytest.fixture(scope="session")
 def case() -> Case:
-    return load_case(ROOT / "s1")
+    return load_case(ROOT / "swe-082dc18eaa")
 
 
 @pytest.fixture(scope="session")
 def spec(case: Case) -> SessionSpec:
-    loaded = load_session_spec(ROOT / "s1", case)
+    loaded = load_session_spec(ROOT / "swe-082dc18eaa", case)
     assert loaded is not None
     # The tests add what a case provides for Levels IV and V themselves.
     plain = {"levels": None, "carries": False, "second": None, "generated": None}

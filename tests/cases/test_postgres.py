@@ -69,7 +69,7 @@ def fake_server_for(monkeypatch: pytest.MonkeyPatch) -> list[FakeServer]:
 
 
 def test_a_case_without_a_database_keeps_the_version_it_had() -> None:
-    case = load_case(ROOT / "t5")
+    case = load_case(ROOT / "terminal-6ad4ffd09e")
     assert isinstance(case.environment, Repo) and case.environment.database is None
     as_before = case.model_dump_json(include=RUN_FIELDS, exclude={"environment": {"database"}})
     assert '"database"' not in as_before
@@ -252,7 +252,7 @@ def test_a_case_without_a_database_starts_no_server(
 ) -> None:
     built(tmp_path, monkeypatch)
     servers = fake_server_for(monkeypatch)
-    prepared = run.prepare_repository(settings, load_case(ROOT / "t5"))
+    prepared = run.prepare_repository(settings, load_case(ROOT / "terminal-6ad4ffd09e"))
     prepared.close()
     assert servers == []
 

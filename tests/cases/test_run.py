@@ -17,7 +17,7 @@ ROOT = Path(__file__).parents[2] / "cases"
 
 @pytest.fixture(scope="module")
 def case() -> Case:
-    return load_case(ROOT / "s1")
+    return load_case(ROOT / "swe-082dc18eaa")
 
 
 class FakeEnvironment:
@@ -212,7 +212,7 @@ def test_the_state_question_is_asked_once_before_the_first_change(case: Case) ->
 
 
 def test_a_colleague_acts_once_just_before_the_first_change() -> None:
-    racing = load_case(ROOT / "s8")
+    racing = load_case(ROOT / "swe-e87b18d93c")
     assert racing.during is not None and racing.during.before_change
     environment = FakeEnvironment()
     actions = [

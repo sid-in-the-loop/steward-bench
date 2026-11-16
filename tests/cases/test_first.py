@@ -8,7 +8,7 @@ from steward.execution.policy import ScriptedPolicy
 from steward.execution.record import Action
 from steward.schema import Step
 
-CASE = load_case(Path(__file__).parents[2] / "cases" / "s1")
+CASE = load_case(Path(__file__).parents[2] / "cases" / "swe-082dc18eaa")
 STEPS = [
     Step(index=0, kind="system", content="system"),
     Step(index=1, kind="user", content="do it"),

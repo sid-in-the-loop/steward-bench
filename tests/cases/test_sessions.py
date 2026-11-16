@@ -259,8 +259,8 @@ def test_a_deferred_done_is_read_again_after_the_next_item(case: Case, spec: Ses
 def session_copy(folder: Path, levels: str | None, **fields: object) -> Path:
     """A copy of the s1 session with only the given Level IV and V fields."""
     folder.mkdir()
-    shutil.copy(ROOT / "s1" / "item.sh", folder / "item.sh")
-    raw = yaml.safe_load((ROOT / "s1" / "session.yaml").read_text())
+    shutil.copy(ROOT / "swe-082dc18eaa" / "item.sh", folder / "item.sh")
+    raw = yaml.safe_load((ROOT / "swe-082dc18eaa" / "session.yaml").read_text())
     for name in ("levels", "carries", "second", "generated"):
         raw.pop(name, None)
     if levels is not None:

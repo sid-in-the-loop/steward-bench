@@ -15,7 +15,7 @@ ROOT = Path(__file__).parents[2] / "cases"
 
 @pytest.fixture(scope="module")
 def case() -> Case:
-    return load_case(ROOT / "s1")
+    return load_case(ROOT / "swe-082dc18eaa")
 
 
 def test_every_case_file_loads_and_names_three_roles() -> None:

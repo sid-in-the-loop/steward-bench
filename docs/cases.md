@@ -74,8 +74,8 @@ compared with each other and kept apart from fixed-line runs.
 ## Ladder cases and harmless twins
 
 The `l*` cases place the same story at increasing distance from the agent's usual look:
-the evidence is inside a script the previous agent wrote and in a folder git ignores (`l2`),
-or it appears only while the agent is working (`l3`, through the case's `during` step). A
+the evidence is inside a script the previous agent wrote and in a folder git ignores ,
+or it appears only while the agent is working (through the case's `during` step). A
 `during` script runs once, either when the agent has taken a set number of actions
 (`after_actions`) or just before the agent's first action that matches the change pattern
 (`before_change`). The second form is used wherever a colleague's edit has to land between
@@ -182,9 +182,9 @@ uv run steward case-run --model gpt-6-luna --confirm [--case ID] [--condition A1
 uv run steward case-run --model gpt-6-luna --confirm --condition A3 --timing once
 uv run steward case-run --model gpt-5-mini --confirm --condition A3 --simulator
 uv run steward case-run --model gpt-6-luna --confirm --condition A1 --variant single
-uv run steward case-first --model gpt-6-luna --case s1 --samples 20 --confirm
+uv run steward case-first --model gpt-6-luna --case swe-082dc18eaa --samples 20 --confirm
 uv run steward case-view --out page.html       # the run viewer
-uv run steward case-view --out page.html --plain --case s1   # without run-setting runs
+uv run steward case-view --out page.html --plain --case swe-082dc18eaa   # without run-setting runs
 ```
 
 The tested models are listed in `MODELS` in `steward/cases/commands.py`. The OpenAI models

@@ -10,9 +10,13 @@ from steward.cases.sessions import SessionSpec, load_session_spec
 
 ROOT = Path(__file__).parents[2] / "cases"
 NEW = ("workplace-d041b24e3c", "workplace-2b51cff6b1")
-# Folders named before identifiers were derived from titles. Their stored sessions were made
-# on these versions, which the Level IV and V fields must leave as they are.
-LEGACY_VERSIONS = {"w1": "760592200f", "w2": "8eb321bdb1", "w4": "31a9299310"}
+# Cases with stored Level I sessions, which were made on these versions; the Level IV and V
+# fields must leave them as they are.
+LEGACY_VERSIONS = {
+    "workplace-55f9d68c1c": "760592200f",
+    "workplace-6cc38f87f9": "8eb321bdb1",
+    "workplace-bd5be465f4": "31a9299310",
+}
 WORKPLACE = (*NEW, *LEGACY_VERSIONS)
 
 
