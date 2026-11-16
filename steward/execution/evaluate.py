@@ -119,13 +119,16 @@ class Pricing(BaseModel):
     prompt: float
     completion: float
     cached: float | None = None
+    cache_write: float | None = None
 
     def cost(self, usage: Usage) -> float:
         cached_price = self.prompt if self.cached is None else self.cached
-        fresh = usage.prompt_tokens - usage.cached_tokens
+        write_price = self.prompt if self.cache_write is None else self.cache_write
+        fresh = usage.prompt_tokens - usage.cached_tokens - usage.cache_write_tokens
         dollars = (
             fresh * self.prompt
             + usage.cached_tokens * cached_price
+            + usage.cache_write_tokens * write_price
             + usage.completion_tokens * self.completion
         )
         return dollars / 1_000_000

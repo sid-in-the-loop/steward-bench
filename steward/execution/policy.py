@@ -81,6 +81,8 @@ class Usage(BaseModel):
     requests: int = 0
     prompt_tokens: int = 0
     cached_tokens: int = 0
+    # Input tokens written to the cache, where the provider bills those at their own rate.
+    cache_write_tokens: int = 0
     completion_tokens: int = 0
     providers: list[str] = []
 

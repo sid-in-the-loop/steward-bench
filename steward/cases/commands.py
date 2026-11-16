@@ -31,6 +31,12 @@ MODELS = {
         ("gpt-5-mini", 0.25, 0.025, 2.00),
     ]
 }
+MODELS["claude-haiku-5-5"] = Model(
+    name="claude-haiku-5-5",
+    dialect="anthropic",
+    api_key_env="ANTHROPIC_API_KEY",
+    pricing=Pricing(prompt=0.10, cached=0.01, cache_write=0.125, completion=0.50),
+)
 # What one run is assumed to use when estimating cost: tokens of fresh input, cached input
 # and output.
 ASSUMED_TOKENS = (60_000, 400_000, 12_000)

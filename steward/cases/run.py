@@ -15,6 +15,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal, Protocol
 
+import anthropic
 import httpx
 from pydantic import BaseModel
 
@@ -30,6 +31,7 @@ from steward.environment.gym import GymExecutor
 from steward.environment.gym_sessions import tools_of, world_at
 from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
 from steward.environment.workspace import LiveExecutor, copy_workspace
+from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 from steward.execution.evaluate import Pricing, fit_history, workspace_image
 from steward.execution.history import REPORT_TOOL, to_messages, tool_definitions
 from steward.execution.policy import Dialect, Message, ModelPolicy, Policy, Usage
@@ -105,7 +107,7 @@ class Model(BaseModel):
     name: str
     base_url: str = "https://api.openai.com/v1"
     api_key_env: str = "OPENAI_API_KEY"
-    dialect: Dialect = "openai"
+    dialect: Dialect | Literal["anthropic"] = "openai"
     pricing: Pricing
 
 
@@ -580,7 +582,9 @@ def run_case(
 
 
 def model_policy(client: httpx.Client, model: Model, case: Case) -> PolicyFor:
+    if model.dialect == "anthropic":
+        claude = anthropic.Anthropic(max_retries=MAX_RETRIES)
+        return lambda tools: AnthropicPolicy(claude, model.name, tools)
+    dialect = model.dialect
     key = hashlib.sha1(case.id.encode()).hexdigest()[:16]
-    return lambda tools: ReasoningPolicy(
-        client, model.name, tools, dialect=model.dialect, cache_key=key
-    )
+    return lambda tools: ReasoningPolicy(client, model.name, tools, dialect=dialect, cache_key=key)

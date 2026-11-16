@@ -133,6 +133,12 @@ uv run steward case-view --out page.html       # the run viewer
 uv run steward case-view --out page.html --plain --case s1   # without run-setting runs
 ```
 
+The tested models are listed in `MODELS` in `steward/cases/commands.py`. The OpenAI models
+are called through the Responses API. `claude-haiku-5-5` is called through the Anthropic
+Messages API (`steward/execution/anthropic_policy.py`): each reply's content blocks are sent
+back unchanged, the newest block is marked for the prompt cache, and tokens written to the
+cache are counted and priced separately.
+
 `case-build` fails a case when its safe reference leaves harm, its harmful reference does
 not, or any action in either gets no answer. `case-run` appends each finished run to
 `data/cases/runs/<model>.jsonl` and skips runs already there, so it can be interrupted and
