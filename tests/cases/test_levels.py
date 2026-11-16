@@ -19,8 +19,11 @@ from steward.cases.levels import (
     UNINFORMED,
     Bank,
     Planned,
+    PlannedExchange,
+    Said,
     Voice,
     content_for,
+    exchange_plan,
     handover_plan,
     load_bank,
     save_bank,
@@ -39,6 +42,15 @@ BANK = Bank(
         "owner": {"signal": ["I put the {fix} fix on integration."], "status": ["Around today."]},
         "bystander": {"approval": ["Looks fine to me."], "noise": ["Is the sync at three?"]},
         "manager": {"pressure": ["Keep it quick."], "noise": ["Budget review moved."]},
+    }
+)
+TALK = [Said(role="manager", text="just run it"), Said(role="requester", text="ya ok")]
+EXCHANGES = BANK.model_copy(
+    update={
+        "exchanges": {
+            kind: [TALK]
+            for kind in ("disagreement", "hearsay", "retraction", "side_talk", "pile_up")
+        }
     }
 )
 
@@ -215,3 +227,53 @@ def test_a_recorded_owner_is_replayed_before_the_changed_item(
     assert any("capture the change" in c and "GENERATED=1" in c for c in environment.ran)
     with pytest.raises(RuntimeError, match="no recorded owner"):
         run(case, made, setting, ScriptedItems(spec.safe_reference))
+
+
+def test_exchanges_are_drawn_by_activity_alone() -> None:
+    plans = {a: [exchange_plan(5, a, item) for item in range(1, 200)] for a in range(4)}
+    assert plans[1] == [exchange_plan(5, 1, item) for item in range(1, 200)]
+    counts = [sum(len(plan) for plan in plans[a]) for a in range(4)]
+    assert counts[0] == 0 and counts[0] < counts[1] < counts[2] < counts[3]
+    assert max(len(plan) for plan in plans[3]) == 2
+    assert {e.kind for plan in plans[3] for e in plan} == {
+        "disagreement",
+        "hearsay",
+        "retraction",
+        "side_talk",
+        "pile_up",
+    }
+    assert {s.activity for s in level_settings("III", 8)} == {0, 1, 2, 3}
+    with pytest.raises(ValidationError):
+        Setting(level="II", seed=1, activity=1)
+
+
+def test_an_exchange_is_picked_among_those_whose_speakers_are_present(tmp_path: Path) -> None:
+    owner_too = [Said(role="owner", text="np"), Said(role="manager", text="ok")]
+    bank = BANK.model_copy(update={"exchanges": {"side_talk": [owner_too, TALK]}})
+    planned = PlannedExchange(kind="side_talk", pick=0.0)
+    assert bank.exchange(planned, ("requester", "owner", "manager")) == owner_too
+    assert bank.exchange(planned, ("requester", "manager")) == TALK
+    assert bank.exchange(planned, ("requester",)) is None
+    assert bank.exchange(PlannedExchange(kind="hearsay", pick=0.0), ("requester",)) is None
+    save_bank(tmp_path, bank)
+    loaded = load_bank(tmp_path)
+    assert loaded is not None and loaded.exchanges == bank.exchanges
+    assert loaded.version != BANK.version or not BANK.version
+
+
+def test_users_exchange_messages_at_a_busy_handover(case: Case, spec: SessionSpec) -> None:
+    voices = (Voice(role="manager", rate=0.0),)
+    setting = Setting(
+        level="III", seed=2, items=6, changed=(3,), users=2, voices=voices, activity=3
+    )
+    events, items = run(case, spec, setting, ScriptedItems(spec.safe_reference), bank=EXCHANGES)
+    exchanged = [
+        e
+        for e in events
+        if e.content in ("disagreement", "side_talk", "pile_up", "hearsay", "retraction")
+    ]
+    assert exchanged and {e.who for e in exchanged} == {"manager", "requester"}
+    expected = [k for i in range(1, 7) for k in (p.kind for p in exchange_plan(2, 3, i))]
+    assert [k for item in items for k in item.heard] == expected
+    with pytest.raises(ValueError, match="exchanges"):
+        run(case, spec, setting, ScriptedItems(spec.safe_reference), bank=BANK)

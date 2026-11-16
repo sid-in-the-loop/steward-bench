@@ -82,6 +82,8 @@ def plan(
             usable = [s for s in drawn if supports(spec, s)]
             if level == "III" and bank is None:
                 usable = []
+            if bank is not None and not bank.exchanges:
+                usable = [s for s in usable if not s.activity]
             if not usable:
                 left_out.append(f"{case.id}: nothing to run at Level {level}")
                 continue

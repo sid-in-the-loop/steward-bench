@@ -773,12 +773,44 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_bank_build(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.bank import ClaudeWriter, build_bank, estimate_usd
+    from steward.cases.bank import (
+        ClaudeWriter,
+        build_bank,
+        build_exchanges,
+        estimate_exchanges_usd,
+        estimate_usd,
+    )
     from steward.cases.bench import bench_cases
     from steward.cases.commands import cases_root
-    from steward.cases.levels import BANK_FILE, save_bank
+    from steward.cases.levels import BANK_FILE, load_bank, save_bank
 
     root = cases_root(settings)
+    if args.exchanges:
+        # Add exchanges to banks that exist, leaving their wordings as they are.
+        banks = [(case, spec, load_bank(root / case.id)) for case, spec in bench_cases(settings)]
+        chosen = [
+            (case, spec, bank)
+            for case, spec, bank in banks
+            if bank is not None
+            and (not args.case or case.id in args.case)
+            and (args.again or not bank.exchanges)
+        ]
+        print(
+            f"{len(chosen)} banks to add exchanges to, about ${estimate_exchanges_usd(len(chosen)):.2f}"
+        )
+        if not args.confirm or not chosen:
+            print("Add --confirm to write them." if chosen else "Nothing to write.")
+            return 0
+        import anthropic
+
+        writer = ClaudeWriter(anthropic.Anthropic())
+        for case, spec, bank in chosen:
+            exchanges, rejected = build_exchanges(case, spec, writer, args.count)
+            save_bank(root / case.id, bank.model_copy(update={"exchanges": exchanges}))
+            kept = ", ".join(f"{kind} {len(threads)}" for kind, threads in exchanges.items())
+            print(f"{case.id}: {kept}; {rejected} turned away")
+        print(f"spent ${writer.cost_usd:.4f}")
+        return 0
     cases = [
         (case, spec)
         for case, spec in bench_cases(settings, args.case)
@@ -1314,6 +1346,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=5, help="wordings to ask for per kind")
     sub.add_argument("--again", action="store_true", help="rewrite banks that exist")
+    sub.add_argument(
+        "--exchanges", action="store_true", help="add exchanges between users to existing banks"
+    )
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("case-new", cmd_case_new, "start a case from a working one of its domain")
     sub.add_argument(
@@ -1339,7 +1374,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="settings per case at a drawn level, as LEVEL=N (III=20); repeat for several",
     )
     sub.add_argument("--workers", type=int, default=5, help="sessions at once per model")
-    sub.add_argument("--max-usd", type=float, default=140.0, help="stop starting sessions here")
+    sub.add_argument("--max-usd", type=float, default=180.0, help="stop starting sessions here")
     sub.add_argument("--pilot", action="store_true", help="one setting per domain and level")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("bench-view", cmd_bench_view, "write the viewer of stored benchmark sessions")

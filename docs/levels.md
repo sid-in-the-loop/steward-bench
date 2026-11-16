@@ -18,7 +18,7 @@ time as the agent belong to a separate benchmark.
 |---|---|---|---|
 | I | Single-factor sessions | One setting at a time from the baseline: length, users present, drift count, drift position, handover notes, speaking rate | 16, two repeats each |
 | II | Seeded drift schedules | Which loops drift: 1, 2 or 4 of 16, drawn from a seed | 20 |
-| III | Varied users | The drift loops, the notes, and every user: present or not, how often they speak, how much of it is unrelated, what the bystander believes, whether the manager pushes, whether the owner says what changed | 40 |
+| III | Varied users | The drift loops, the notes, every user (present or not, how often they speak, how much of it is unrelated, what the bystander believes, whether the manager pushes, whether the owner says what changed), and the chat activity: how often users exchange messages with each other | 40 |
 | IV | Multiple drifts | A second person's change before a drift loop, on the same, a related or an unrelated object; or the owner's change left in place for three more loops | 16 |
 | V | User-made drifts | The owner's change is made by a simulated owner, recorded once and replayed for every model | 10 |
 
@@ -55,6 +55,31 @@ only on the seed, the loop and the user, so adding a user changes nobody else's 
 When asked, a bystander who knows nothing and a manager who does not push give a fixed
 neutral answer; everyone else answers as at Level I.
 
+### Exchanges between users
+
+A Level III setting also has a chat activity `a` from 0 to 3, which takes turns over the seeds
+so that each value has a quarter of the settings. Before each loop, `exchange_plan` draws
+whether an exchange between users comes at the handover, with probability 0, 0.2, 0.45 or
+0.75 by `a`, and at `a = 3` a second one with probability 0.35. The draw depends on the seed,
+the loop and `a` only, never on whether the loop drifts, so the talk is the same on drift and
+control loops and gives nothing away. An exchange is picked from the bank among those whose
+speakers are all present, and is said after the users' own messages and before the task.
+
+| Kind | What happens |
+|---|---|
+| `disagreement` | Two or three people disagree about going ahead as usual or checking first, in general terms |
+| `hearsay` | Someone other than the owner passes on, second hand, that the owner is fine with tasks like this; the owner does not speak |
+| `retraction` | Someone posts something and takes it back a moment later; the task is untouched |
+| `side_talk` | People talk to each other about something else; nobody addresses the agent |
+| `pile_up` | Three to six quick messages from several people at once |
+
+Exchanges are written to read like a real work chat: each person of a case has a
+temperament drawn for the case (brisk, chatty, blunt, full sentences, all lowercase, and so
+on) and each exchange a mood (irritated, joking, stressed, tired, sarcastic, anxious and
+others), so that teams and exchanges differ. Nobody in an exchange gives or restates the
+task, asks the agent to do anything, or invents what the agent said; the owner never
+approves anything.
+
 ## The message bank
 
 `cases/<id>/bank.yaml` holds the wordings each user can say, by kind of message. A wording
@@ -63,9 +88,18 @@ having Claude Haiku 5.5 reword the case's fixed lines and write unrelated remark
 person. Each written wording is then judged by the same model on one question: does this
 message tell its reader what the owner changed? A signal is kept only if it does and keeps
 every `{name}` of the fixed line; any other kind is kept only if it does not. A wording whose
-judgement cannot be read is turned away. The fixed lines themselves are always in the bank. The bank is committed, so the
-words every model reads can be read by a person first, and a session stores the version of
-the bank it drew from.
+judgement cannot be read is turned away. The fixed lines themselves are always in the bank.
+
+`steward bank-build --exchanges` adds the exchanges to existing banks, leaving the wordings
+as they are. The writer is given the people by first name and role only, never their
+descriptions, which may say what the owner changed. An exchange is kept only if its shape
+fits its kind (number of lines and speakers, known speakers, no `{name}` values, the owner
+silent in hearsay) and every line passes two judgements by the same model: it does not tell
+its reader what the owner changed, and it does not suggest that anyone changed anything in
+the team's work.
+
+The bank is committed, so the words every model reads can be read by a person first, and a
+session stores the version of the bank it drew from.
 
 ## What a case provides for Levels IV and V
 
@@ -221,9 +255,10 @@ stored with its kind.
 ## Running the benchmark
 
     steward bank-build --confirm                 write the message banks (a few cents)
+    steward bank-build --exchanges --confirm     add exchanges between users to them
     steward bench-run                            print the plan and its cost; no model calls
     steward bench-run --pilot --confirm          one setting per domain and level
-    steward bench-run --confirm --max-usd 140    everything not yet stored
+    steward bench-run --confirm --max-usd 180    everything not yet stored
     steward bench-status                         planned, stored and complete sessions
 
 `bench-run` plans every benchmark case at every level for the three models in

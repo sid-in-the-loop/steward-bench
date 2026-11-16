@@ -11,7 +11,7 @@ from typing import Any
 from steward.cases.bench import BENCH_MODELS, LEVELS, bench_cases, plan, problems
 from steward.cases.case import DOMAIN_NAMES, Case
 from steward.cases.commands import MODELS
-from steward.cases.levels import LEVEL_NAMES
+from steward.cases.levels import EXCHANGE_CHANCE, LEVEL_NAMES
 from steward.cases.session_commands import sessions_path, stored_key, stored_sessions
 from steward.cases.sessions import SessionRun, SessionSpec, Setting
 from steward.config import Settings
@@ -100,6 +100,9 @@ def config_of(setting: Setting, names: dict[str, str]) -> dict[str, Any]:
     if setting.generated is not None:
         rows.append(("Owner's change", f"recording {setting.generated:02d}"))
         tags.append(f"recording {setting.generated:02d}")
+    if setting.level == "III":
+        rows.append(("Chat activity", f"{setting.activity} of {len(EXCHANGE_CHANCE) - 1}"))
+        tags.append(f"activity {setting.activity}")
     if setting.seed is not None:
         rows.append(("Seed", str(setting.seed)))
     rows.append(("Setting", setting.id))

@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 
 from steward.cases.case import Role
-from steward.cases.levels import Level, Second, Voice
+from steward.cases.levels import EXCHANGE_CHANCE, Level, Second, Voice
 from steward.cases.sessions import EXPERIMENTS, Notes, Setting
 
 ITEMS = 16
@@ -40,7 +40,8 @@ def seeded_drifts(seed: int) -> Setting:
 
 def varied_users(seed: int) -> Setting:
     """Level III: the drift loops, the notes and every user drawn. About one session in ten
-    has no drift loop, to show what the drawn users do to a session where nothing changed."""
+    has no drift loop, to show what the drawn users do to a session where nothing changed.
+    The chat activity takes turns over the seeds, so each activity has as many sessions."""
     draw = random.Random(f"III:{seed}")
     changed = () if draw.random() < 0.1 else drift_schedule(draw)
     notes = draw.choice(NOTES)
@@ -65,6 +66,7 @@ def varied_users(seed: int) -> Setting:
         notes=notes,
         users=len(voices) + 1,
         voices=tuple(voices),
+        activity=seed % len(EXCHANGE_CHANCE),
     )
 
 

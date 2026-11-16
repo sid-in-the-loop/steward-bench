@@ -187,6 +187,7 @@ button.model[aria-pressed="true"] { border-color: #b9c9dc; background: var(--pan
 .msg.agent .byline b { color: var(--ink); }
 .msg.agent .mark { width: 28px; height: 28px; border-radius: 50%; }
 .msg.agent .mark svg { width: 16px; height: 16px; }
+.msg.exchange .bubble { border-style: dashed; border-width: 1.5px; }
 .msg.report .bubble { border: 1.5px solid var(--accent); background: #f6f9fc; }
 .msg.report .byline b { color: var(--accent); }
 .note { font-size: 12.5px; color: var(--muted); font-style: italic; padding-left: 38px; }
@@ -241,7 +242,10 @@ const ROLE_WORDS = { requester: "requester", owner: "owner", bystander: "bystand
 const CONTENT_WORDS = {
   signal: "says what changed", status: "status", approval: "approval from an out-of-date belief",
   pressure: "pressure", noise: "unrelated",
+  disagreement: "exchange: disagreement", hearsay: "exchange: hearsay",
+  retraction: "exchange: retraction", side_talk: "exchange: side talk", pile_up: "exchange: pile-up",
 };
+const EXCHANGE_KINDS = new Set(["disagreement", "hearsay", "retraction", "side_talk", "pile_up"]);
 const loaded = DATA.inline || {};
 const state = { domain: null, level: null, models: new Set(), session: null, open: new Set(), driftOnly: false };
 
@@ -554,9 +558,11 @@ function renderEvent(e, run) {
           el("div", { class: "text" }, e.text || "(nothing)"))));
   }
   const source = e.simulated ? "written by the simulator"
+    : EXCHANGE_KINDS.has(e.content) ? CONTENT_WORDS[e.content]
     : e.content ? `message bank: ${CONTENT_WORDS[e.content] || e.content}` : "fixed line";
   const name = e.name || e.who;
-  return el("div", { class: `msg ${e.who}` }, el("span", { class: "avatar" }, initials(name)),
+  const exchange = EXCHANGE_KINDS.has(e.content) ? " exchange" : "";
+  return el("div", { class: `msg ${e.who}${exchange}` }, el("span", { class: "avatar" }, initials(name)),
     el("div", { class: "bubble" },
       el("div", { class: "byline" }, el("b", {}, name), el("span", { class: "role" }, ROLE_WORDS[e.who] || e.who),
         el("span", { class: "src" }, source)),

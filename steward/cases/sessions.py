@@ -20,13 +20,16 @@ from pydantic import BaseModel, model_validator
 
 from steward.cases.case import Case, HistoryStep, Person, Reference, Repo, Role, Strict
 from steward.cases.levels import (
+    EXCHANGE_CHANCE,
     NEUTRAL,
     UNINFORMED,
     Bank,
     Content,
+    Exchange,
     Level,
     Second,
     Voice,
+    exchange_plan,
     handover_plan,
 )
 from steward.cases.run import (
@@ -84,6 +87,8 @@ class Setting(BaseModel):
     carried: int = 0
     # Level V: which recording of a simulated owner makes the change.
     generated: int | None = None
+    # Level III: how often users exchange messages with each other at a handover, 0 to 3.
+    activity: int = 0
 
     @model_validator(mode="after")
     def within_range(self) -> Setting:
@@ -99,6 +104,10 @@ class Setting(BaseModel):
             raise ValueError("users counts the requester and every drawn user")
         if len({voice.role for voice in self.voices}) != len(self.voices):
             raise ValueError("a user is drawn once")
+        if not 0 <= self.activity < len(EXCHANGE_CHANCE):
+            raise ValueError("chat activity is 0 to 3")
+        if self.activity and self.level != "III":
+            raise ValueError("chat activity is drawn at Level III")
         return self
 
     @property
@@ -332,8 +341,9 @@ class ItemResult(BaseModel):
     # the change of an earlier one.
     second_harm: bool | None = None
     carried: bool = False
-    # The kinds of unprompted message heard at this item's handover, from Level III.
-    heard: list[Content] = []
+    # The kinds of unprompted message and exchange heard at this item's handover, from
+    # Level III.
+    heard: list[Content | Exchange] = []
     # Who spoke unprompted just before the item, and how often each user had spoken by then.
     spoke_before: list[Role]
     spoken_so_far: dict[str, int]
@@ -405,6 +415,8 @@ class Session:
         self.recording = recording
         if any(voice.rate > 0 for voice in setting.voices) and bank is None:
             raise ValueError(f"{case.id}: users who speak unprompted need a message bank")
+        if setting.activity and (bank is None or not bank.exchanges):
+            raise ValueError(f"{case.id}: chat activity needs a message bank with exchanges")
         self.messages = inherited_with_notes(inherited, spec, setting.notes)
         self.events: list[Event] = []
         self.turn = 0
@@ -424,12 +436,17 @@ class Session:
         )
 
     def _hear(
-        self, role: Role, text: str, simulated: bool = False, content: Content | None = None
+        self,
+        role: Role,
+        text: str,
+        simulated: bool = False,
+        content: Content | Exchange | None = None,
     ) -> None:
         name = self.person(role).name
         self.spoken[role] += 1
         self._record(role, "message", text, name=name, simulated=simulated, content=content)
-        named = text if role == "requester" else f"{name}: {text}"
+        # The requester's own task and answers come unnamed; in an exchange everyone is named.
+        named = text if role == "requester" and content is None else f"{name}: {text}"
         self.messages.append({"role": "user", "content": named})
 
     def _thought(self) -> str | None:
@@ -494,17 +511,27 @@ class Session:
             return NEUTRAL if voice is not None and not voice.pushes else spec.manager_push[0]
         return spec.requester_reply
 
-    def _handover(self, number: int, changed: bool, values: dict[str, str]) -> list[Content]:
-        """Say what the drawn users say unprompted before an item, in the bank's words."""
+    def _handover(
+        self, number: int, changed: bool, values: dict[str, str]
+    ) -> list[Content | Exchange]:
+        """Say what the drawn users say unprompted before an item, then any exchanges between
+        them, in the bank's words."""
         setting = self.setting
         if not setting.voices or self.bank is None or setting.seed is None:
             return []
-        heard: list[Content] = []
+        heard: list[Content | Exchange] = []
         for planned in handover_plan(setting.seed, setting.voices, number, changed):
             wording = self.bank.wording(planned)
             if wording is not None:
                 self._hear(planned.role, filled(wording, values), content=planned.content)
                 heard.append(planned.content)
+        for exchange in exchange_plan(setting.seed, setting.activity, number):
+            thread = self.bank.exchange(exchange, setting.present)
+            if thread is None:
+                continue
+            for said in thread:
+                self._hear(said.role, filled(said.text, values), content=exchange.kind)
+            heard.append(exchange.kind)
         return heard
 
     async def _replay(self, changed: bool) -> None:

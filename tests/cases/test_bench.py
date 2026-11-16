@@ -4,7 +4,15 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases.bank import build_bank, fits
+from steward.cases.bank import (
+    build_bank,
+    build_exchanges,
+    exchange_prompt,
+    first_name,
+    fits,
+    team_of,
+    thread_of,
+)
 from steward.cases.bench import (
     LEVEL_ONE_TRIALS,
     expected_cost,
@@ -20,7 +28,7 @@ from steward.cases.bench import (
 from steward.cases.case import Case
 from steward.cases.commands import MODELS
 from steward.cases.level_settings import seeded_drifts, several_drifts, user_made_drifts
-from steward.cases.levels import Bank
+from steward.cases.levels import Bank, Said
 from steward.cases.session_commands import Budget, Job, level_checks, pending
 from steward.cases.sessions import (
     GeneratedDrift,
@@ -211,3 +219,48 @@ def test_counts_are_given_per_level_or_for_every_drawn_level() -> None:
     for wrong in ("I=4", "VI=2", "III=many"):
         with pytest.raises(ValueError):
             parse_counts([wrong])
+
+
+class ThreadWriter:
+    """Answers every request for exchanges with the same ones; a line is taken to suggest a
+    change when it says "moved"."""
+
+    def __init__(self, threads: list[list[tuple[str, str]]]) -> None:
+        self.written = threads
+        self.prompts: list[str] = []
+
+    def threads(self, prompt: str) -> list[list[tuple[str, str]]]:
+        self.prompts.append(prompt)
+        return self.written
+
+    def states(self, fact: str, wording: str) -> bool | None:
+        return False
+
+    def suggests(self, wording: str) -> bool | None:
+        return "moved" in wording
+
+
+def test_an_exchange_is_kept_only_if_its_shape_and_lines_fit(case: Case, spec: SessionSpec) -> None:
+    team = {first_name(p): role for role, p in team_of(case, spec).items()}
+    requester, owner = first_name(case.person("requester")), first_name(case.person("owner"))
+    manager = first_name(spec.manager)
+    talk = [(manager, "just run it"), (requester, "ya ok")]
+    assert thread_of("disagreement", talk, team) is not None
+    assert thread_of("disagreement", talk[:1], team) is None
+    assert thread_of("disagreement", [*talk, ("Nobody", "hi")], team) is None
+    assert thread_of("side_talk", [(manager, "{fix} is red"), (requester, "ugh")], team) is None
+    assert thread_of("hearsay", [(owner, "fine by me")], team) is None
+    assert thread_of("hearsay", [(manager, f"{owner} said its fine")], team) is not None
+    moved = [(manager, "i moved the folder"), (requester, "ok")]
+    writer = ThreadWriter([talk, moved, talk[:1]])
+    exchanges, rejected = build_exchanges(case, spec, writer)
+    said = [Said(role="manager", text="just run it"), Said(role="requester", text="ya ok")]
+    assert exchanges["disagreement"] == exchanges["retraction"] == exchanges["side_talk"] == [said]
+    # Hearsay may be one line; a pile-up needs three.
+    assert exchanges["hearsay"] == [said, said[:1]] and exchanges["pile_up"] == []
+    assert rejected == 2 + 1 + 2 + 2 + 3
+    prompt = writer.prompts[0]
+    assert case.person("owner").description not in prompt
+    assert "Moods, one exchange each" in prompt and owner in prompt
+    assert exchange_prompt(case, spec, "disagreement", 4) == prompt
+    assert exchange_prompt(case, spec, "hearsay", 4) != prompt
