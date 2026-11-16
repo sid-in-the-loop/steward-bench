@@ -1,161 +1,143 @@
 # Steward Bench
 
-Steward Bench measures whether AI agents act as good stewards when they take over someone else's
-long-running session part way through. Later phases rebuild the environment at a step t of a
-real recorded trajectory, hand the history up to t to a new model, change the situation at t,
-and score the continuation with deterministic checks.
+Steward Bench measures what an AI agent does when it takes over routine work from a previous
+agent and the work has changed since the handover notes were written. Following the notes
+as written would destroy a colleague's work. The question is whether the agent protects
+that work and still finishes its own task.
 
-Phase 1 finds the material for those scenarios in three domains: swe, terminal_devops and
-workplace. It collects agent trajectories from public sources, normalizes them into one format,
-filters them in four stages, and keeps the best 120 distinct tasks per domain.
+Each case is one routine job in a real environment: a git repository, an operations
+checkout, a workplace of mail and calendars, a machine-learning lab, or a Postgres database.
+The agent runs real commands, other people answer when asked, and harm is read from the
+state the environment is left in, never from what the agent says.
 
-Start with reports/PHASE1.md: it explains what was produced and how to read it. The lists
-themselves are in reports/top_120/.
+## The benchmark at a glance
 
-Phase 2 turns those sessions into scenarios: a takeover step, one controlled intervention, and
-scripted checks. docs/phase2_design.md is the design, docs/scenarios.md is how it works, and
-reports/PHASE2.md counts what is built. The scenarios are in scenarios/.
+A session runs one case as a series of loops in one conversation and one environment. In
+each loop the requester hands over the routine task again and the agent works until it
+reports. On a drift loop the owner has changed something before the handover, so the
+routine as the notes describe it causes harm; on a control loop nothing has changed and the
+routine is correct. Nothing changes while the agent is working.
 
-The takeover experiments run on cases: twelve small situations with real environments, a
-second person whose work is at risk, eight user conditions and five measures read from
-state. docs/cases.md describes them and the `steward case-*` commands.
+| Level | Name | What varies between sessions |
+|---|---|---|
+| I | Single-factor sessions | One setting at a time from a baseline: length, users present, number and position of drift loops, handover notes, how often users speak |
+| II | Seeded drift schedules | Which loops drift, drawn from a seed |
+| III | Varied users | Each user's presence, rate of speaking, share of unrelated talk, belief and stance, drawn from a seed |
+| IV | Multiple drifts | A second person's change on the same, a related or an unrelated object, or a change left in place over later loops |
+| V | User-made drifts | The owner's change is made by a simulated owner, recorded once and replayed for every model |
 
-## Architecture
+The cases cover five domains with five cases each:
 
-```
-sources ──download──> data/raw/<source>/
-        ──ingest────> data/normalized/<source>/{meta.parquet, steps.jsonl.gz}  common format
-        infer-commits  base commits for public-repo sessions without one
-Stage A ────────────> data/stage_a/<source>.parquet      rules A1 to A5, moment tags, prescore (free)
-Stage B ────────────> data/stage_b/results.jsonl         triage, Haiku 5.5 on a batch API
-Stage C1 ───────────> data/stage_c1/results.jsonl        eight criteria scored 0 to 3, Haiku 5.5
-Stage C2 ───────────> data/stage_c2/results.jsonl        deep read, Opus in cloud sessions
-rank ───────────────> data/ranked/<domain>/top_120.csv   best 120 distinct tasks per domain
-                       reports/top_120/<domain>.csv       the same lists, committed
-analyze ────────────> reports/PHASE1_STATS.md, reports/figures/
-```
+| Domain | Environment | Example routine and drift |
+|---|---|---|
+| Software | A git repository with a remote, tests and a stand-in for `gh` | Rebuild an integration branch that a teammate has pushed a fix to |
+| Terminal | An operations checkout with small tools over files | Apply retention to a partition whose backup no longer holds every row |
+| Workplace | Mail, calendar, sheets, forms and Canvas tools over a recorded world | Recreate meeting events that a colleague has already sent invitations for |
+| ML operations | A shared lab checkout with checkpoints, a queue and a registry | Keep the last three checkpoints of a run whose older checkpoint is now a baseline |
+| Database operations | A Postgres server that stays up for the session | Apply a migration to a table a colleague's backfill is holding |
 
-| Module | Responsibility |
-|---|---|
-| steward/schema.py | Pydantic models: Step, Trajectory and every stage result |
-| steward/config.py | Paths, thresholds, caps and model settings in one place |
-| steward/store.py | Reading and writing normalized sources and JSONL outputs |
-| steward/sources/ | One loader per source, shared transcript parsers, the domain rule, the registry |
-| steward/filter/tags.py | Moment-kind regex patterns |
-| steward/filter/stage_a.py | Checks A1 to A5, tags and prescore |
-| steward/filter/render.py | Stage B summaries and the windowed rendering for C1 and C2 |
-| steward/filter/batch.py | Batch API client: estimate, cost guard, submit, poll, collect, spend log |
-| steward/filter/stage_b.py, stage_c1.py | Input selection, requests and result parsing |
-| steward/filter/stage_c2.py | C2 selection, shards, handoff branches, cloud sessions and result merge |
-| steward/filter/redact.py | Secret redaction for text that leaves the cluster |
-| steward/filter/rank.py | The final list of 120 distinct tasks per domain |
-| steward/filter/validate.py | Schema validation for every stage output |
-| steward/analysis/ | Builds PHASE1_STATS.md: inputs, the corpus and score sections, plotting, and the report assembly |
-| steward/scenario/ | The scenario specification, the authoring loop, the compiler to Harbor tasks, the report |
-| steward/environment/ | Container executor with history replay, repository reconstruction, the recorded-tool emulator, feasibility audit |
-| steward/principal/ | The principal's fixed messages, replies and intervention schedule |
-| steward/intervention/ | Experimental factors as transforms of a scenario or its history |
-| steward/execution/ | History conversion, policies, the agent loop, the Harbor agent, model evaluation |
-| steward/scoring/ | Scripted task and safety scoring |
-| steward/cli.py | The single entry point, `steward <command>` |
-| prompts/ | The Stage B, C1 and C2 prompts, with a README that explains every output field |
+The tested models are `gpt-6-luna`, `gpt-5.6-luna` and `claude-haiku-5-5`. Claude Haiku 5.5
+also writes the users' reworded lines, answers a user's follow-up questions and plays the
+simulated owner; everything else users say is fixed text in the case.
 
 ## Quickstart
 
 ```bash
 uv sync                                  # Python 3.12, dependencies pinned in uv.lock
-cp .env.example .env                     # then fill in OPENROUTER_API_KEY and HF_TOKEN
+cp .env.example .env                     # then set OPENAI_API_KEY and ANTHROPIC_API_KEY
 git config core.hooksPath .githooks      # run scripts/check before every commit and push
-uv run pytest                            # every test runs on synthetic fixtures
-uv run steward sources                   # list sources
-uv run steward download swe_chat && uv run steward ingest swe_chat
-uv run steward stage-a
+uv run pytest                            # every test runs on fixtures, without containers or models
+uv run steward case-check                # what every case provides at each level
+uv run steward bench-run                 # the full plan and its cost; makes no model calls
 ```
 
-## Running each stage
+Running a case needs Apptainer and the images under `data/apptainer/` (`workspace.sif`,
+`postgres.sif`, and for workplace cases `gym.sif`).
 
-docs/pipeline.md walks through every command in order, with inputs, outputs and checks.
-docs/stage_c2_cloud.md is the procedure for the C2 cloud sessions. In short:
+## Running the benchmark
 
 ```bash
-uv run steward ingest all
-uv run steward stage-a
-uv run steward stage-b                  # prints the cost estimate
-uv run steward stage-b --confirm --max-usd 3
-uv run steward stage-c1 --confirm --max-usd 8
-uv run steward c2-handoff               # then cloud sessions, see docs/stage_c2_cloud.md
-uv run steward c2-merge
-uv run steward rank
-uv run steward analyze
-uv run steward validate-all
+uv run steward session-build              # build every case and run its references
+uv run steward bench-run --pilot --confirm            # one setting per domain and level
+uv run steward bench-run --confirm --max-usd 140      # everything not yet stored
+uv run steward bench-status                           # planned, stored and complete sessions
+uv run steward bench-view --out view                  # the session viewer
 ```
 
-Each stage skips work that is already done, so an interrupted command can be re-run. Model
-batches are recorded before polling, so a re-run resumes polling instead of resubmitting.
+`bench-run` prints a plan priced from the stored sessions of each model before it makes any
+call, refuses a full run until a pilot has been stored, runs the three models at once under
+one limit in dollars, and appends each finished session to
+`data/cases/sessions/<model>.jsonl`, so a stopped run resumes where it was. docs/levels.md
+describes the levels, the users, the message bank, the recorded owners and the viewer.
+docs/run_plan.md lists exactly what a full run contains.
 
-## Configuration
+## Repository layout
 
-Settings live in steward/config.py as pydantic models. Change them there, not in the stage code.
+```
+cases/
+  _bases/                 one base script per environment: tally.sh, ops.sh, lab.sh, warehouse_db.sh
+  <domain>-<hash>/        one folder per case, named by its domain and a hash of its title
+steward/
+  cases/                  the benchmark: case model, session loop, levels, bank, recorder, runner, viewer
+  execution/              model policies for the OpenAI and Anthropic APIs, retries, usage and cost
+  environment/            containers, the workplace worlds and their tool servers, the gh stand-in
+  cli.py                  the single entry point, `steward <command>`
+  config.py               paths and settings
+tests/cases/              tests of the benchmark on fake environments
+docs/                     cases.md, levels.md, adding_a_case.md, run_plan.md
+data/                     built environments and stored sessions; not in git
+```
 
-| Setting | Default | Where |
-|---|---|---|
-| Data directory | `./data`, or the STEWARD_DATA environment variable | `load_paths` |
-| Stage A thresholds | 40 actions, 1 state change, 2 user messages, 30% agent share | `StageAThresholds` |
-| Stage B input | top 8,000 by prescore, floor of 600 per domain, all of terminal_devops and workplace, 2,500-token summaries | `StageBConfig` |
-| Stage C1 input | top 1,500 B passes, floor of 150 per domain, all of terminal_devops and workplace, 40,000-token renderings | `StageC1Config` |
-| Windows | 25 steps before and 15 after, results trimmed to 400 + 400 characters | `RenderConfig` |
-| Stage C2 | 180 distinct tasks per domain, 25 trajectories and 20 MB per shard, 6 sessions | `StageC2Config` |
-| Final list | 120 distinct tasks per domain | `RankConfig` |
-| Model | anthropic/claude-haiku-5.5 on the OpenRouter Batch API | `ModelConfig` |
-| Spend cap | $15 combined for B and C1 | `Caps` |
-
-Secrets are read from environment variables only, loaded from `.env`, which git ignores:
-OPENROUTER_API_KEY for Stages B and C1, and HF_TOKEN for gated Hugging Face datasets. Stage C2
-runs in `claude --cloud` sessions under the owner's claude.ai login and needs no key.
-
-## Outputs
-
-| Output | Content |
+| Module in steward/cases | Responsibility |
 |---|---|
-| data/normalized/<source>/ | meta.parquet, one row per trajectory; steps.jsonl.gz, one line per step |
-| data/stage_a/<source>.parquet | pass or fail, the failed check, counts, tags with step indices, prescore |
-| data/stage_b/results.jsonl | decision, reason, domain, best steps, moment kinds, offline rebuild |
-| data/stage_c1/results.jsonl | eight criterion scores with evidence, up to three jump-in candidates, flags |
-| data/handoff/c2/shard_NNN.jsonl | C2 inputs: rendering plus the C1 result, on branch handoff/c2 |
-| data/results/c2/shard_NNN.jsonl | C2 outputs, on branches results/c2-shard-NNN |
-| data/stage_c2/results.jsonl | merged and validated C2 results |
-| data/ranked/<domain>/top_120.csv | the final list, copied to reports/top_120/<domain>.csv |
-| data/costs.jsonl | actual spend per batch |
-| reports/PHASE1.md | what Phase 1 produced and how to read it |
-| reports/PHASE1_STATS.md | generated tables and figures for the corpus |
-| reports/DECISIONS.md | the choices that shape the repository |
+| `case.py` | The case model, its identifier and its version |
+| `sessions.py` | Settings, the session loop, per-loop measures |
+| `levels.py`, `level_settings.py` | Users as parameters, the handover plan, the message bank, the settings of each level |
+| `bank.py` | Writing and checking a case's message bank |
+| `recorder.py` | Recording a simulated owner for Level V |
+| `bench.py`, `session_commands.py` | Planning, pricing, running and checking sessions under a limit |
+| `bench_view.py` | The session viewer |
+| `authoring.py` | Starting a new case and reporting what a case provides |
+| `postgres.py`, `sandbox.py`, `run.py` | Building environments and running commands in them |
 
-data/ is ignored by git. Only data/handoff on handoff/* branches and data/results on results/*
-branches are committed, and every committed file stays under 20 MB.
+## Adding a case
 
-## Adding a source
+docs/adding_a_case.md is the guide: what makes a good case, which domain and base it
+belongs to, and the commands that take it from a copy of a working case to checked, with
+its message bank and recorded owners. In short:
 
-docs/sources.md lists the sources and describes the loader interface, the format rules, the
-reusable transcript parsers, and the steps to register, test and ingest a new source.
+```bash
+uv run steward case-new --domain mlops --title "Archiving runs that a paper still cites"
+uv run steward case-check --case <id> --build
+uv run steward bank-build --case <id> --confirm
+uv run steward owner-record --case <id> --confirm
+```
 
 ## Costs
 
-Stages B and C1 are the only stages that spend money from this machine. Each runs through the
-OpenRouter Batch API at half the sync price: $0.05 per million prompt tokens and $0.25 per
-million completion tokens for Claude Haiku 5.5. Every request stays under 99k prompt tokens,
-because the price is five times higher above 100k. Every model-calling command prints an
-estimate and stops unless `--confirm` is passed. Phase 1 spent $8.77; data/costs.jsonl records
-the spend per batch. Stage C2 runs on cloud-session credits and is bounded by the shard count.
+Every command that calls a model prints an estimate and stops unless `--confirm` is passed;
+`bench-run` also stops starting sessions at `--max-usd`. In the sessions stored so far a
+session of sixteen loops cost about $0.01 on `gpt-6-luna`, $0.013 on `gpt-5.6-luna`, and
+between $0.015 and $0.04 on `claude-haiku-5-5`. Writing a case's message bank costs under a
+cent, and a recorded owner about two cents. The full run of docs/run_plan.md is priced at
+about $137 against the $140 agreed for the benchmark.
 
 ## Limitations
 
-- Real-user material is dominated by sessions with Claude models. Results must be reported by
-  history author.
-- Workplace has no real-user sessions.
-- Pattern tags see action text only. Moment kinds such as user_report and effort_shortcut depend
-  on the model stages.
-- Token counts are character-based estimates.
-- Stage B and C1 are single passes by a small model. Only the trajectories C2 reread can reach a
-  final list.
-- The history before this cleanup, including seven more sources and three more domains, is at
-  the tag `phase1-full`.
+- Claude Haiku 5.5 is both a tested model and the model that writes and answers for the
+  users, so in its own sessions it partly talks to itself. Results for it should say so.
+- The routine and its drift are written for the benchmark; the environments are real but
+  small, and the histories are scripted and executed rather than recorded from users.
+- A user's follow-up answers are written by a model and can vary between runs of the same
+  setting; their first answers and everything they say unprompted are fixed text on disk.
+- The database backfill case has no recorded owner, because a recorded command cannot hold
+  a database session open.
+- A case's checks read state, so harm the checks were not written for goes uncounted.
+
+## Earlier work in this repository
+
+Before the cases, the project collected agent trajectories from public sources and built
+scenarios from them. That pipeline is still here: docs/pipeline.md and docs/sources.md for
+trajectory collection and filtering (reports/PHASE1.md), docs/phase2_design.md and
+docs/scenarios.md for the scenarios (reports/PHASE2.md). Its commands are listed by
+`steward --help`.
