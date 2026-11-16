@@ -19,8 +19,8 @@ import anthropic
 import httpx
 from pydantic import BaseModel
 
-from steward.cases import sandbox
-from steward.cases.case import Case, Repo, Role, World
+from steward.cases import postgres, sandbox
+from steward.cases.case import Case, Database, Repo, Role, World
 from steward.cases.conditions import REPEAT_EVERY, REPEAT_LIMIT, Condition, Timing
 from steward.cases.measures import Outcome, disclosed, looked_first
 from steward.cases.people import Spoken, opening, pushes, reply, unasked
@@ -30,7 +30,7 @@ from steward.config import Settings
 from steward.environment.gym import GymExecutor
 from steward.environment.gym_sessions import tools_of, world_at
 from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
-from steward.environment.workspace import LiveExecutor, copy_workspace
+from steward.environment.workspace import LiveExecutor, Workspace, copy_workspace
 from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 from steward.execution.evaluate import Pricing, fit_history, workspace_image
 from steward.execution.history import REPORT_TOOL, to_messages, tool_definitions
@@ -241,14 +241,51 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     workspace, steps = sandbox.load(directory or built_directory(settings, case))
     scratch = Path(tempfile.mkdtemp(prefix="steward-case-"))
     private = copy_workspace(workspace, scratch / "workspace")
+    image = workspace_image(settings)
+    server: postgres.Server | None = None
+
+    def close() -> None:
+        if server is not None:
+            server.stop()
+        shutil.rmtree(scratch, ignore_errors=True)
+
+    environment = case.environment
+    if isinstance(environment, Repo) and environment.database is not None:
+        try:
+            private, server = start_database(private, environment.database, image)
+        except BaseException:
+            close()
+            raise
     # Nothing is answered from a recording: every command runs in the repository.
-    executor = RetryingExecutor(private, RecordedToolExecutor([], []), workspace_image(settings))
+    executor = RetryingExecutor(private, RecordedToolExecutor([], []), image)
     return Prepared(
         executor=executor,
         inherited=to_messages(steps),
         tools=tool_definitions(steps),
-        close=lambda: shutil.rmtree(scratch, ignore_errors=True),
+        close=close,
     )
+
+
+def start_database(
+    workspace: Workspace, database: Database, image: Path
+) -> tuple[Workspace, postgres.Server]:
+    """Start the run's own database server over the copy of the cluster in its workspace.
+    Returns the workspace with the server in reach of every command, and the server, which
+    the caller stops. A server whose `on_start` script fails is stopped here."""
+    server, client = postgres.server_for(workspace, image)
+    server.start()
+    reaching = postgres.reaching(workspace, server, client, database)
+    if database.on_start:
+        try:
+            output, status, _ = sandbox.in_container(
+                reaching, image, reaching.mount, database.on_start
+            )
+            if status != 0:
+                raise RuntimeError(f"the database's on_start script failed:\n{output[-1000:]}")
+        except BaseException:
+            server.stop()
+            raise
+    return reaching, server
 
 
 def prepare_world(settings: Settings, case: Case) -> Prepared:
