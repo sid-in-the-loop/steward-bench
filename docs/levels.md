@@ -131,3 +131,20 @@ its summary stored. Finished sessions are appended to `data/cases/sessions/<mode
 so a stopped run resumes where it was. A stored session is complete when every loop is
 recorded with its events, every drift loop has its harm check, and a session with drawn
 users names the bank it drew from.
+
+## Reading the sessions
+
+    steward bench-view --out DIR [--case ID] [--model M] [--level III]
+
+writes a page (`steward/cases/bench_view.py` and `bench_view.html`). On the left a domain and
+a level are chosen; the middle lists that selection's cases, each setting as one sentence,
+and one entry per model and repeat with its harm count. A chosen session is shown on the
+right: the people present with their roles, then one block per loop. A drift loop is shaded
+and a control loop is not; each block opens with a sentence on what happened in it, then
+shows the handover messages, the agent's commands with their output, its questions and the
+answers, and its report. Every message from a user carries the user's name and role and says
+whether it is a fixed line, a wording from the message bank and of what kind, or written by
+the simulator. The tested model is marked by provider. Tool output and reasoning summaries
+are shortened in the page and kept whole in the stored session. Small selections are carried
+in the page itself; larger ones are written beside it by domain, level and model and loaded
+when chosen.

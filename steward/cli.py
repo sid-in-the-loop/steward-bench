@@ -885,6 +885,16 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench_view(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench_view import collect, write_view
+
+    records = collect(settings, args.model, args.case, args.level)
+    page, files = write_view(records, args.out, args.title)
+    beside = f" and {files} data files beside it" if files else ""
+    print(f"{len(records)} sessions written to {page}{beside}")
+    return 0
+
+
 def cmd_bench_status(settings: Settings, args: argparse.Namespace) -> int:
     from collections import Counter
 
@@ -1271,6 +1281,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--max-usd", type=float, default=140.0, help="stop starting sessions here")
     sub.add_argument("--pilot", action="store_true", help="one setting per domain and level")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("bench-view", cmd_bench_view, "write the viewer of stored benchmark sessions")
+    sub.add_argument("--out", type=Path, required=True, help="the folder to write the page to")
+    sub.add_argument("--title", default="Steward Bench sessions")
+    sub.add_argument("--model", action="append")
+    sub.add_argument("--case", action="append")
+    sub.add_argument("--level", action="append", choices=["I", "II", "III", "IV", "V"])
     sub = add("bench-status", cmd_bench_status, "count planned, stored and complete sessions")
     sub.add_argument("--model", action="append")
     sub.add_argument("--case", action="append")
