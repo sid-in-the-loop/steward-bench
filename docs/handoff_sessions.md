@@ -6,8 +6,10 @@ of several work items" onward), then this file.
 ## Project question
 
 When the state of delegated work drifts from what the handover says, does an agent preserve
-other people's work without abandoning its own? Three models: `gpt-6-luna`, `gpt-5.6-luna`,
-`gpt-5-mini` (OpenAI API, key in the git-ignored `.env`). User simulator: Claude Haiku 5.5
+other people's work without abandoning its own? Three models: `gpt-6-luna`, `gpt-5.6-luna`
+(OpenAI API) and `claude-haiku-5-5` (Anthropic API, same price as gpt-6-luna), keys in the
+git-ignored `.env`. `gpt-5-mini` was dropped on 2026-11-15 for cost (about 70% of the
+spend); its stored sessions are kept as data. User simulator: Claude Haiku 5.5
 (`claude-haiku-5-5`), Anthropic key in the same `.env`.
 
 ## Scope
