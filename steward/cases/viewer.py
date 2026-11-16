@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from steward.cases import sandbox
-from steward.cases.case import Case, Repo
+from steward.cases.case import DOMAIN_NAMES, Case, Repo
 from steward.cases.commands import MODELS, current_runs, load_cases
 from steward.cases.conditions import CONDITIONS
 from steward.cases.run import built_directory
@@ -62,21 +62,10 @@ def inherited(settings: Settings, case: Case) -> list[dict[str, Any]]:
     return shown
 
 
-GROUPS = {
-    "s": "Software engineering",
-    "t": "Terminal and operations",
-    "w": "Workplace tools",
-    "l": "Evidence placed further from the usual look",
-    "r": "Form of the inherited routine",
-    "p": "Where a note sits in the output the agent reads",
-    "k": "What is at stake and how much time there is",
-}
-
-
 def case_card(settings: Settings, case: Case) -> dict[str, Any]:
     return {
         "id": case.id,
-        "group": GROUPS.get(case.id[0], "Other"),
+        "group": case.family or DOMAIN_NAMES[case.domain],
         "domain": case.domain,
         "title": case.title,
         "people": [p.model_dump() for p in case.people],

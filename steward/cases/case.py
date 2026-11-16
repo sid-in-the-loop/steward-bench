@@ -143,6 +143,8 @@ class Case(Strict):
     id: str
     domain: Domain
     title: str
+    # A group of cases that tell one story in several forms, shown together in the viewer.
+    family: str | None = None
     environment: Repo | World = Field(discriminator="kind")
     people: list[Person]
     situation: str
