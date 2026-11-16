@@ -105,6 +105,10 @@ class Workspace(BaseModel):
     commands_matched: int = 0
     similarity_total: float = 0.0
     commands_outside: int = 0
+    # Extra directories and files shown to every command, as `source:target[:ro]`, and extra
+    # environment variables set for it. Set for one run and not saved with the workspace.
+    binds: list[str] = []
+    environment: dict[str, str] = {}
 
     @property
     def fidelity(self) -> float | None:
@@ -300,6 +304,7 @@ def container_command(
             binds.append(f"{workspace.tree}:{workspace.mount}")
         else:
             binds.append(f"{workspace.tree.parent}:{parent}")
+    binds += workspace.binds
     wrapped = f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
     wrapped += f'__status=$?; printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
     arguments = ["apptainer", "exec", "--containall", "--pid"]
@@ -309,6 +314,8 @@ def container_command(
     for bind in binds:
         arguments += ["--bind", bind]
     arguments += ["--env", "GIT_TERMINAL_PROMPT=0", "--env", "TERM=dumb"]
+    for name, value in workspace.environment.items():
+        arguments += ["--env", f"{name}={value}"]
     # The limit is enforced inside the container so that the runtime exits and unmounts
     # the image itself; killing it from outside leaves the mount behind.
     limit = ["timeout", "--signal=KILL", str(timeout_sec)]

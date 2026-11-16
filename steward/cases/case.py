@@ -19,6 +19,17 @@ class Strict(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
 
+class Database(Strict):
+    """A PostgreSQL database that stays up for the whole run. One server is started when the
+    run is prepared and stopped when it closes; every command, setup, item and check script
+    reaches the database `name` with `psql`. A connection does not outlive the server, so
+    one that has to be open at handover is opened by `on_start`: a script run in the
+    environment each time the server has been started for a run."""
+
+    name: str
+    on_start: str = ""
+
+
 class Repo(Strict):
     """A small repository built for the case. `base` names a script under cases/_bases that
     creates it; `history` is then carried out in it, so what the agent inherits is what
@@ -28,6 +39,7 @@ class Repo(Strict):
     base: str
     repository: str
     user: str
+    database: Database | None = None
 
 
 class World(Strict):
@@ -164,7 +176,11 @@ def load_case(directory: Path) -> Case:
     raw = yaml.safe_load((directory / "case.yaml").read_text())
     raw["setup"] = (directory / raw["setup"]).read_text()
     case = Case.model_validate(raw)
-    parts = [case.model_dump_json(include=RUN_FIELDS)]
+    # A case without a database is hashed as it was before cases could have one, so its
+    # stored runs stay current.
+    without = isinstance(case.environment, Repo) and case.environment.database is None
+    left_out: dict[str, set[str]] = {"environment": {"database"}} if without else {}
+    parts = [case.model_dump_json(include=RUN_FIELDS, exclude=left_out)]
     if isinstance(case.environment, Repo):
         parts.append((directory.parent / "_bases" / case.environment.base).read_text())
         # The GitHub stand-in counts only for a case that calls it.

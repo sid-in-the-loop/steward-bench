@@ -11,6 +11,7 @@ import subprocess
 import time
 from pathlib import Path
 
+from steward.cases import postgres
 from steward.cases.case import Case, Repo
 from steward.environment.repository import ReplayReport
 from steward.environment.workspace import (
@@ -112,6 +113,27 @@ def build(case: Case, base_script: str, directory: Path, image: Path) -> None:
     gh_state = workspace.home_directory / GH_STATE
     gh_state.parent.mkdir(parents=True)
     gh_state.write_text(json.dumps(state, indent=1))
+    if environment.database is None:
+        steps = _carry_out(case, base_script, workspace, image)
+    else:
+        # The database is up while the case is built and stopped cleanly afterwards, so the
+        # built directory holds the cluster as the inherited session left it.
+        server, client = postgres.server_for(workspace, image)
+        server.create(environment.database.name)
+        try:
+            reaching = postgres.reaching(workspace, server, client, environment.database)
+            steps = _carry_out(case, base_script, reaching, image)
+        finally:
+            server.stop()
+    (directory / "workspace.json").write_text(workspace.model_dump_json(indent=1))
+    (directory / HISTORY_FILE).write_text(json.dumps([s.model_dump(mode="json") for s in steps]))
+
+
+def _carry_out(case: Case, base_script: str, workspace: Workspace, image: Path) -> list[Step]:
+    """Run the base script, the inherited session and the setup in the workspace. Returns the
+    session as steps."""
+    environment = case.environment
+    assert isinstance(environment, Repo)
     _script(workspace, image, base_script, "base script")
 
     steps = [Step(index=0, kind="system", content=SYSTEM)]
@@ -141,8 +163,7 @@ def build(case: Case, base_script: str, directory: Path, image: Path) -> None:
             result = wrapped(SHELL_TOOL, item.run, output, status, 0.0)
             steps.append(Step(index=index + 1, kind="result", content=result))
     _script(workspace, image, case.setup, "setup script")
-    (directory / "workspace.json").write_text(workspace.model_dump_json(indent=1))
-    (directory / HISTORY_FILE).write_text(json.dumps([s.model_dump(mode="json") for s in steps]))
+    return steps
 
 
 def load(directory: Path) -> tuple[Workspace, list[Step]]:
