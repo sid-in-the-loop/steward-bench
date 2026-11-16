@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Session experiments</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&display=swap" rel="stylesheet">
+<style>
+:root { --ink:#121a24; --soft:#3f4c5a; --muted:#768392; --line:#e2e6eb; --wash:#f5f7f9;
+  --m0:#0072b2; --m1:#d55e00; --m2:#009e73; --harm:#b4361c; }
+* { box-sizing:border-box; }
+body { margin:0; background:#fff; color:var(--ink); font:17px/1.62 Newsreader, Georgia, serif; }
+.ui, .ui * , h1, h2, h3, nav, .kicker, figure, table, .stat, .legend, .meta { font-family:Inter, "Segoe UI", system-ui, sans-serif; }
+main { max-width:1040px; margin:0 auto; padding:56px 28px 120px; }
+h1 { font-size:36px; line-height:1.12; letter-spacing:-0.015em; margin:0 0 14px; font-weight:600; }
+.lede { font-size:20px; color:var(--soft); max-width:760px; margin:0 0 26px; }
+p { margin:0 0 14px; color:var(--soft); }
+.meta { font-size:13px; color:var(--muted); }
+
+.loopline { display:flex; align-items:center; gap:5px; flex-wrap:wrap; margin:6px 0 10px; font:12.5px/1 ui-monospace, "SF Mono", Menlo, monospace; }
+.loopline i { font-style:normal; padding:6px 8px; border-radius:5px; background:var(--wash); border:1px solid var(--line); color:var(--soft); }
+.loopline i.c { background:#fbe9e5; border-color:#efbcb1; color:var(--harm); }
+.loopline em { font-style:normal; color:var(--muted); }
+.how { display:grid; grid-template-columns:1.25fr 1fr; gap:28px; border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:22px 0; margin:0 0 34px; }
+.how h3 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 8px; font-weight:600; }
+.how p { font-size:15.5px; }
+.legend { display:flex; gap:18px; flex-wrap:wrap; font-size:14px; color:var(--soft); }
+.legend span { display:inline-flex; align-items:center; gap:7px; }
+
+nav.summary { margin:0 0 20px; }
+nav.summary h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 10px; font-weight:600; }
+nav.summary ol { margin:0; padding:0; list-style:none; counter-reset:f; }
+nav.summary li { counter-increment:f; display:grid; grid-template-columns:28px 1fr; padding:9px 0; border-bottom:1px solid var(--line); font-size:15.5px; }
+nav.summary li::before { content:counter(f); color:var(--muted); font-weight:600; }
+nav.summary a { color:var(--ink); text-decoration:none; }
+nav.summary a:hover { color:var(--m0); }
+nav.summary .k { color:var(--muted); font-size:13px; display:block; }
+
+section.finding { margin:72px 0 0; }
+.kicker { font-size:12.5px; text-transform:uppercase; letter-spacing:.07em; color:var(--muted); font-weight:600; margin:0 0 8px; }
+section.finding h2 { font-family:Newsreader, Georgia, serif; font-size:27px; line-height:1.25; font-weight:500; margin:0 0 14px; max-width:860px; }
+.analysis { max-width:760px; }
+.caveat { font-size:14.5px; color:var(--muted); max-width:760px; border-left:2px solid var(--line); padding-left:12px; margin-top:16px; }
+.figs > figure:only-child { max-width:620px; }
+.figs { display:grid; grid-template-columns:repeat(auto-fit, minmax(440px, 1fr)); gap:22px; margin:22px 0 4px; }
+figure { margin:0; border:1px solid var(--line); border-radius:10px; padding:18px 18px 12px; }
+figure h3 { font-size:15px; font-weight:600; margin:0 0 2px; }
+figure .axis { font-size:12.5px; color:var(--muted); margin:0 0 8px; }
+figure figcaption { font-size:13px; color:var(--soft); margin-top:8px; line-height:1.5; }
+svg { display:block; width:100%; height:auto; overflow:visible; }
+svg text { font:12px Inter, "Segoe UI", system-ui, sans-serif; fill:var(--soft); }
+svg .val { fill:var(--ink); font-size:11.5px; }
+svg .faint { fill:var(--muted); }
+
+details.appendix { margin-top:80px; border-top:1px solid var(--line); padding-top:20px; }
+details.appendix summary { cursor:pointer; font:600 16px Inter, system-ui, sans-serif; }
+.tabs { display:flex; gap:8px; margin:16px 0 12px; }
+.tabs button { font:14px Inter, system-ui, sans-serif; padding:6px 12px; border:1px solid var(--line); background:#fff; border-radius:999px; cursor:pointer; color:var(--soft); }
+.tabs button.on { border-color:var(--m0); color:var(--m0); font-weight:600; }
+.scroll { overflow-x:auto; border:1px solid var(--line); border-radius:10px; }
+table { border-collapse:collapse; font-size:12.5px; width:100%; }
+th, td { padding:7px 9px; text-align:center; border-bottom:1px solid var(--line); white-space:nowrap; }
+th { font-weight:600; color:var(--soft); background:var(--wash); }
+th small { display:block; font-weight:400; color:var(--muted); }
+td:first-child, th:first-child { text-align:left; position:sticky; left:0; background:#fff; font-weight:600; }
+td.none { color:#c7cdd4; }
+#tip { position:fixed; pointer-events:none; background:#fff; border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 22px rgba(20,30,45,.14); padding:9px 11px; font:13px Inter, system-ui, sans-serif; display:none; z-index:5; min-width:180px; }
+#tip b { display:block; margin-bottom:4px; }
+#tip div { display:flex; justify-content:space-between; gap:14px; color:var(--soft); }
+@media (max-width:760px) { .how { grid-template-columns:1fr; } .figs { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+<h1>What agents do when the state changes under them</h1>
+<p class="lede">An agent continues work another agent started. It is handed the same job again and again in one conversation, and now and then a colleague has changed something the job would overwrite. We measure whether it notices, whom it asks, and what it tells the requester.</p>
+
+<div class="how">
+  <div>
+    <h3>One session</h3>
+    <div class="loopline"><i>loop 1</i><i>loop 2</i><em>…</em><i>loop 8</i><i class="c">loop 9 · changed</i><i>loop 10</i><em>…</em><i>loop 16</i></div>
+    <p>Each loop is one request from the requester. In an unchanged loop the routine job is correct. In a changed loop a colleague has altered the state, so the routine job causes harm, such as wiping a teammate's commits or dropping rows that exist nowhere else. Harm is read from the environment after every loop.</p>
+  </div>
+  <div>
+    <h3>Users and models</h3>
+    <p>The requester believes nothing has changed. The owner made the change and says so if asked. A bystander approves without authority, and a manager pushes for speed. Each experiment changes one setting from a 16-loop session with the requester and the owner.</p>
+    <div class="legend ui" id="legend"></div>
+  </div>
+</div>
+
+<nav class="summary" id="summary"><h2>Findings</h2><ol></ol></nav>
+<p class="meta" id="meta"></p>
+
+<div id="findings"></div>
+
+<details class="appendix">
+  <summary>All figures and every case</summary>
+  <p style="margin-top:12px">Figures not discussed above, and harm on changed loops for each case and setting, as loops with harm out of changed loops run.</p>
+  <div class="figs" id="more"></div>
+  <div class="tabs" id="tabs"></div>
+  <div class="scroll"><table id="grid"></table></div>
+</details>
+</main>
+<div id="tip"></div>
+<script>
+const DATA = /*DATA*/;
+const COLORS = ["var(--m0)", "var(--m1)", "var(--m2)"];
+const NS = "http://www.w3.org/2000/svg";
+const svgEl = (name, attrs = {}, text) => {
+  const node = document.createElementNS(NS, name);
+  for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+const html = (name, cls, text) => {
+  const node = document.createElement(name);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
+const pct = v => Math.round(v * 100) + "%";
+const rate = s => s.count / s.of;
+const tip = document.getElementById("tip");
+
+function marker(kind, x, y, color, hollow) {
+  const fill = hollow ? "#fff" : color, stroke = hollow ? color : "#fff", sw = hollow ? 2 : 1.5;
+  if (kind === 0) return svgEl("circle", { cx: x, cy: y, r: 5.5, fill, stroke, "stroke-width": sw });
+  if (kind === 1) return svgEl("rect", { x: x - 5, y: y - 5, width: 10, height: 10, fill, stroke, "stroke-width": sw });
+  return svgEl("path", { d: `M${x} ${y - 6.5}L${x + 6.5} ${y + 5}H${x - 6.5}Z`, fill, stroke, "stroke-width": sw });
+}
+
+function hover(target, title, lines) {
+  target.addEventListener("mousemove", event => {
+    tip.replaceChildren(html("b", "", title));
+    for (const [left, right] of lines) {
+      const row = html("div");
+      row.append(html("span", "", left), html("span", "", right));
+      tip.appendChild(row);
+    }
+    tip.style.display = "block";
+    tip.style.left = Math.min(event.clientX + 14, innerWidth - 260) + "px";
+    tip.style.top = event.clientY + 14 + "px";
+  });
+  target.addEventListener("mouseleave", () => { tip.style.display = "none"; });
+}
+const detail = s => s ? `${pct(rate(s))} (${s.count} of ${s.of})` : "no sessions yet";
+
+function gridLines(svg, x0, x1, y, vertical) {
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    if (vertical) {
+      const x = x0 + t * (x1 - x0);
+      svg.appendChild(svgEl("line", { x1: x, x2: x, y1: y[0], y2: y[1], stroke: "#e9ecf0" }));
+      svg.appendChild(svgEl("text", { x, y: y[1] + 16, "text-anchor": "middle", class: "faint" }, pct(t)));
+    }
+  }
+}
+
+function lineChart(f) {
+  const W = 500, H = 250, L = 44, R = 14, T = 10, B = 44;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": f.title });
+  const n = f.categories.length;
+  const x = i => n === 1 ? (L + W - R) / 2 : L + 26 + i * (W - L - R - 52) / (n - 1);
+  const y = v => T + (1 - v) * (H - T - B);
+  for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+    svg.appendChild(svgEl("line", { x1: L, x2: W - R, y1: y(t), y2: y(t), stroke: "#e9ecf0" }));
+    svg.appendChild(svgEl("text", { x: L - 8, y: y(t) + 4, "text-anchor": "end", class: "faint" }, pct(t)));
+  }
+  f.categories.forEach((c, i) => svg.appendChild(svgEl("text", { x: x(i), y: H - B + 18, "text-anchor": "middle" }, c)));
+  svg.appendChild(svgEl("text", { x: (L + W - R) / 2, y: H - 4, "text-anchor": "middle", class: "faint" }, f.x_label));
+  DATA.models.forEach((model, m) => {
+    const pts = f.series[model].map((s, i) => s && { s, px: x(i) + (m - 1) * 6, py: y(rate(s)) }).filter(Boolean);
+    if (pts.length > 1) svg.appendChild(svgEl("path", { d: "M" + pts.map(p => `${p.px} ${p.py}`).join("L"), fill: "none", stroke: COLORS[m], "stroke-width": 2 }));
+    for (const p of pts) {
+      svg.appendChild(svgEl("line", { x1: p.px, x2: p.px, y1: y(p.s.high), y2: y(p.s.low), stroke: COLORS[m], "stroke-width": 1.5, opacity: 0.35 }));
+      svg.appendChild(marker(m, p.px, p.py, COLORS[m]));
+    }
+  });
+  f.categories.forEach((c, i) => {
+    const band = svgEl("rect", { x: x(i) - 30, y: T, width: 60, height: H - T - B, fill: "transparent" });
+    hover(band, `${f.x_label}: ${c}`, DATA.models.map(model => [model, detail(f.series[model][i])]));
+    svg.appendChild(band);
+  });
+  return svg;
+}
+
+function barChart(f) {
+  const rowH = 17, gap = 16, L = 170, R = 92, T = 4;
+  const n = f.categories.length, M = DATA.models.length;
+  const H = T + n * (M * rowH + gap) + 20, W = 500;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": f.title });
+  const x = v => L + v * (W - L - R);
+  for (const t of [0, 0.5, 1]) {
+    svg.appendChild(svgEl("line", { x1: x(t), x2: x(t), y1: T, y2: H - 20, stroke: "#e9ecf0" }));
+    svg.appendChild(svgEl("text", { x: x(t), y: H - 4, "text-anchor": "middle", class: "faint" }, pct(t)));
+  }
+  f.categories.forEach((c, i) => {
+    const top = T + i * (M * rowH + gap);
+    const label = svgEl("text", { x: L - 12, y: top + (M * rowH) / 2 + 4, "text-anchor": "end" });
+    label.textContent = c;
+    svg.appendChild(label);
+    DATA.models.forEach((model, m) => {
+      const s = f.series[model][i], yy = top + m * rowH;
+      if (s) {
+        const w = Math.max(rate(s) * (W - L - R), 1.5);
+        const bar = svgEl("rect", { x: L, y: yy + 2, width: w, height: rowH - 5, rx: 3, fill: COLORS[m] });
+        hover(bar, c, [[model, detail(s)]]);
+        svg.appendChild(bar);
+        svg.appendChild(svgEl("text", { x: L + w + 6, y: yy + rowH - 5, class: "val" }, `${pct(rate(s))}  ${s.count}/${s.of}`));
+      } else {
+        svg.appendChild(svgEl("text", { x: L + 4, y: yy + rowH - 5, class: "faint" }, "no sessions yet"));
+      }
+    });
+  });
+  return svg;
+}
+
+function compareChart(f) {
+  const M = DATA.models.length, rowH = 62, L = 110, R = 96, T = 14, W = 500;
+  const H = T + M * rowH + 24;
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": f.title });
+  const x = v => L + v * (W - L - R);
+  gridLines(svg, L, W - R, [T, H - 24], true);
+  DATA.models.forEach((model, m) => {
+    const cy = T + m * rowH + rowH / 2;
+    svg.appendChild(svgEl("text", { x: L - 14, y: cy + 4, "text-anchor": "end" }, model));
+    const pts = f.series[model].map((s, i) => s && { s, i, px: x(rate(s)) }).filter(Boolean);
+    if (!pts.length) { svg.appendChild(svgEl("text", { x: L + 4, y: cy + 4, class: "faint" }, "no sessions yet")); return; }
+    const xs = pts.map(p => p.px);
+    svg.appendChild(svgEl("line", { x1: Math.min(...xs), x2: Math.max(...xs), y1: cy, y2: cy, stroke: COLORS[m], "stroke-width": 2, opacity: 0.3 }));
+    const right = Math.max(...xs);
+    for (const p of pts.sort((a, b) => (a.i === f.reference) - (b.i === f.reference))) {
+      const ref = p.i === f.reference;
+      const node = marker(m, p.px, cy, COLORS[m], !ref);
+      hover(node, `${model}, ${f.categories[p.i]} notes`, [["harm on the changed loop", detail(p.s)]]);
+      svg.appendChild(node);
+      if (ref) {
+        svg.appendChild(svgEl("text", { x: right + 13, y: cy + 4, class: "val" }, `${f.categories[p.i]} ${pct(rate(p.s))}`));
+      } else {
+        const above = p.i < f.reference;
+        svg.appendChild(svgEl("text", { x: p.px, y: above ? cy - 11 : cy + 19, "text-anchor": "middle", class: "faint" }, `${f.categories[p.i]} ${pct(rate(p.s))}`));
+      }
+    }
+  });
+  return svg;
+}
+
+function figure(f) {
+  const box = html("figure");
+  box.append(html("h3", "", f.title), html("p", "axis", f.y_label));
+  box.appendChild(f.kind === "bars" ? barChart(f) : f.kind === "compare" ? compareChart(f) : lineChart(f));
+  box.appendChild(html("figcaption", "", f.reading));
+  return box;
+}
+
+function findings() {
+  const list = document.querySelector("#summary ol"), out = document.getElementById("findings");
+  for (const s of DATA.findings.sections) {
+    const li = html("li"), a = html("a");
+    a.href = "#" + s.id;
+    a.append(html("span", "k", s.kicker), document.createTextNode(s.claim));
+    li.appendChild(a);
+    list.appendChild(li);
+    const sec = html("section", "finding");
+    sec.id = s.id;
+    sec.append(html("p", "kicker", s.kicker), html("h2", "", s.claim), html("p", "analysis", s.analysis));
+    const figs = html("div", "figs");
+    for (const id of s.figures) figs.appendChild(figure(DATA.figures[id]));
+    sec.appendChild(figs);
+    if (s.caveat) sec.appendChild(html("p", "caveat", s.caveat));
+    out.appendChild(sec);
+  }
+  const used = new Set(DATA.findings.sections.flatMap(s => s.figures));
+  for (const [id, f] of Object.entries(DATA.figures)) if (!used.has(id) && !["notes", "caution_ask", "caution_done"].includes(id)) document.getElementById("more").appendChild(figure(f));
+}
+
+function meta() {
+  const c = DATA.coverage, names = Object.keys(c.cases);
+  const started = names.filter(k => c.cases[k] > 0);
+  document.getElementById("meta").textContent =
+    `Based on ${c.sessions} sessions over ${started.length} of ${names.length} cases (${started.join(", ")}). ${DATA.findings.scope}`;
+}
+
+function gridTable(model) {
+  const table = document.getElementById("grid");
+  table.replaceChildren();
+  const settings = DATA.settings.filter((s, i, all) => all.findIndex(o => o.id === s.id) === i);
+  const cells = {};
+  for (const cell of DATA.grid) if (cell.model === model) cells[cell.case + "|" + cell.setting] = cell;
+  const head = html("tr");
+  head.appendChild(html("th", "", "Case"));
+  for (const s of settings) {
+    const th = html("th", "", s.experiment);
+    th.appendChild(html("small", "", s.id.replace("-out_of_date", "").replace("-regular", "")));
+    head.appendChild(th);
+  }
+  table.appendChild(head);
+  for (const name of Object.keys(DATA.coverage.cases)) {
+    const row = html("tr");
+    row.appendChild(html("td", "", name));
+    for (const s of settings) {
+      const cell = cells[name + "|" + s.id];
+      const td = html("td", cell ? "" : "none", cell ? `${cell.harm}/${cell.of}` : "–");
+      if (cell && cell.of) td.style.background = `rgba(180,54,28,${(0.5 * cell.harm / cell.of).toFixed(2)})`;
+      row.appendChild(td);
+    }
+    table.appendChild(row);
+  }
+}
+
+DATA.models.forEach((model, m) => {
+  const item = html("span");
+  const sw = svgEl("svg", { viewBox: "0 0 16 16", style: "width:16px;height:16px" });
+  sw.appendChild(marker(m, 8, 8, COLORS[m]));
+  item.append(sw, document.createTextNode(model));
+  document.getElementById("legend").appendChild(item);
+  const tab = html("button", m === 0 ? "on" : "", model);
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("#tabs button").forEach(b => b.classList.toggle("on", b === tab));
+    gridTable(model);
+  });
+  document.getElementById("tabs").appendChild(tab);
+});
+meta();
+findings();
+gridTable(DATA.models[0]);
+</script>
+</body>
+</html>

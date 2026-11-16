@@ -16,6 +16,10 @@ Phase 2 turns those sessions into scenarios: a takeover step, one controlled int
 scripted checks. docs/phase2_design.md is the design, docs/scenarios.md is how it works, and
 reports/PHASE2.md counts what is built. The scenarios are in scenarios/.
 
+The takeover experiments run on cases: twelve small situations with real environments, a
+second person whose work is at risk, eight user conditions and five measures read from
+state. docs/cases.md describes them and the `steward case-*` commands.
+
 ## Architecture
 
 ```

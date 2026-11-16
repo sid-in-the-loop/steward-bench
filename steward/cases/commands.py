@@ -1,0 +1,254 @@
+"""Build cases, check them against their reference runs, and run models on them."""
+
+from __future__ import annotations
+
+import json
+import os
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+from typing import Any
+
+import httpx
+
+from steward.cases import sandbox
+from steward.cases.case import Case, Repo, case_directories, load_case
+from steward.cases.conditions import CONDITIONS, Condition, ConditionId, Timing
+from steward.cases.run import Model, Run, Variant, built_directory, model_policy, run_case
+from steward.cases.sandbox import MACHINE_FAULTS
+from steward.cases.simulator import ClaudeSimulator
+from steward.config import Settings
+from steward.execution.evaluate import Pricing, workspace_image
+from steward.execution.policy import Message, Policy, ScriptedPolicy
+
+# Dollars per million tokens: input, cached input, output.
+MODELS = {
+    name: Model(name=name, pricing=Pricing(prompt=prompt, cached=cached, completion=completion))
+    for name, prompt, cached, completion in [
+        ("gpt-6-luna", 0.10, 0.01, 0.50),
+        ("gpt-5.6-luna", 0.20, 0.02, 1.20),
+        ("gpt-5-mini", 0.25, 0.025, 2.00),
+    ]
+}
+# What one run is assumed to use when estimating cost: tokens of fresh input, cached input
+# and output.
+ASSUMED_TOKENS = (60_000, 400_000, 12_000)
+
+
+def cases_root(settings: Settings) -> Path:
+    return settings.paths.root / "cases"
+
+
+def simulator_cache(settings: Settings) -> Path:
+    return settings.paths.data / "cases" / "simulator_cache"
+
+
+def runs_path(settings: Settings, model: str) -> Path:
+    return settings.paths.data / "cases" / "runs" / f"{model}.jsonl"
+
+
+def load_cases(settings: Settings, only: list[str] | None = None) -> list[Case]:
+    cases = [load_case(d) for d in case_directories(cases_root(settings))]
+    return [c for c in cases if not only or c.id in only]
+
+
+def build_case(settings: Settings, case: Case) -> None:
+    if not isinstance(case.environment, Repo):
+        return
+    base = (cases_root(settings) / "_bases" / case.environment.base).read_text()
+    sandbox.build(case, base, built_directory(settings, case), workspace_image(settings))
+
+
+def check_case(settings: Settings, case: Case) -> list[str]:
+    """Run the two references. The safe one must leave no harm and disclose; the harmful one
+    must leave harm. Returns what is wrong, if anything."""
+    problems: list[str] = []
+    condition = CONDITIONS["A1"]
+    references = [("safe", case.safe_reference, False)]
+    if case.harmful_reference is not None:
+        references.append(("harmful", case.harmful_reference, True))
+    for name, reference, harm in references:
+        policy = ScriptedPolicy(list(reference.actions), reference.report)
+
+        def scripted(_tools: list[Message], policy: ScriptedPolicy = policy) -> Policy:
+            return policy
+
+        run = run_case(settings, case, condition, scripted, name)
+        outcome = run.outcome
+        if outcome.harm != harm:
+            problems.append(f"{name} reference: harm is {outcome.harm}, expected {harm}")
+        if outcome.beyond_authority != harm:
+            problems.append(f"{name} reference: beyond authority is {outcome.beyond_authority}")
+        # A harmless twin has nothing to disclose.
+        twin = case.harmful_reference is None
+        if name == "safe" and outcome.done is False:
+            problems.append("safe reference: it does not achieve what the requester asked for")
+        if name == "safe" and not twin and outcome.disclosed is not True:
+            problems.append("safe reference: its report does not match the disclose pattern")
+        for event in run.events:
+            if event.kind == "result" and event.text.strip() in ("", "No results."):
+                problems.append(f"{name} reference: an action got no answer at turn {event.turn}")
+    return problems
+
+
+# No run starts while this user's process count is above the ceiling: the machine allows
+# 1,000, and commands fail in confusing ways near that.
+PROCESS_COUNT = Path("/sys/fs/cgroup/user.slice") / f"user-{os.getuid()}.slice" / "pids.current"
+PROCESS_CEILING = 600
+
+
+def wait_for_room() -> None:
+    while PROCESS_COUNT.exists() and int(PROCESS_COUNT.read_text()) > PROCESS_CEILING:
+        time.sleep(10)
+
+
+def estimate_usd(model: Model, runs: int) -> float:
+    fresh, cached, output = ASSUMED_TOKENS
+    price = model.pricing
+    per_run = (
+        fresh * price.prompt + cached * (price.cached or price.prompt) + output * price.completion
+    )
+    return runs * per_run / 1_000_000
+
+
+def drop_faulty_runs(path: Path) -> int:
+    """Remove runs in which the environment answered with a machine fault, so they are run
+    again. Returns how many were removed."""
+    if not path.exists():
+        return 0
+    lines = [line for line in path.read_text().splitlines() if line.strip()]
+    kept = [line for line in lines if not any(fault in line for fault in MACHINE_FAULTS)]
+    if len(kept) != len(lines):
+        path.write_text("".join(line + "\n" for line in kept))
+    return len(lines) - len(kept)
+
+
+def unversioned(path: Path) -> dict[str, str]:
+    """Runs stored before cases had versions carry none. `unversioned.json`, beside the run
+    files, names the cases whose early runs are still good and the version they count as."""
+    listed = path.parent / "unversioned.json"
+    return json.loads(listed.read_text()) if listed.exists() else {}
+
+
+def stored_runs(path: Path) -> list[dict[str, Any]]:
+    """Every stored run, each with the version of the case it counts for."""
+    if not path.exists():
+        return []
+    early = unversioned(path)
+    rows = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    for row in rows:
+        row["case_version"] = row.get("case_version") or early.get(row["case"], "")
+    return rows
+
+
+def done_keys(path: Path) -> set[tuple[str, str, str, int, str, str | None, str]]:
+    return {
+        (
+            r["case"],
+            r["case_version"],
+            r["condition"],
+            r["trial"],
+            r.get("timing", "asked"),
+            r.get("simulator"),
+            r.get("variant", ""),
+        )
+        for r in stored_runs(path)
+    }
+
+
+def current_runs(settings: Settings, model: str, cases: list[Case]) -> list[dict[str, Any]]:
+    """The stored runs of a model made on the present version of each case, one per case,
+    condition, trial and setting."""
+    versions = {case.id: case.version for case in cases}
+    kept: dict[tuple[Any, ...], dict[str, Any]] = {}
+    for r in stored_runs(runs_path(settings, model)):
+        if versions.get(r["case"]) == r["case_version"]:
+            key = (
+                r["case"],
+                r["condition"],
+                r["trial"],
+                r.get("timing", "asked"),
+                r.get("simulator"),
+                r.get("variant", ""),
+            )
+            kept.setdefault(key, r)
+    return list(kept.values())
+
+
+def run_model(
+    settings: Settings,
+    model: Model,
+    cases: list[Case],
+    conditions: list[ConditionId],
+    trials: int,
+    workers: int,
+    timing: Timing = "asked",
+    simulator: ClaudeSimulator | None = None,
+    variant: Variant = "",
+) -> list[Run]:
+    """Every case, condition and trial not already in the model's run file. Each finished run
+    is appended at once, so an interrupted command resumes where it stopped."""
+    path = runs_path(settings, model.name)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    dropped = drop_faulty_runs(path)
+    if dropped:
+        print(f"{model.name}: {dropped} runs hit a machine fault and will be run again")
+    done = done_keys(path)
+    todo = [
+        (case, CONDITIONS[c], trial)
+        for case in cases
+        for c in conditions
+        for trial in range(trials)
+        if (
+            case.id,
+            case.version,
+            c,
+            trial,
+            timing,
+            simulator.model if simulator else None,
+            variant,
+        )
+        not in done
+        and (timing == "asked" or CONDITIONS[c].informs is not None)
+    ]
+    lock = threading.Lock()
+    key = os.environ.get(model.api_key_env, "")
+    client = httpx.Client(
+        base_url=model.base_url,
+        headers={"Authorization": f"Bearer {key}"},
+        timeout=httpx.Timeout(300.0, connect=30.0),
+    )
+
+    def work(item: tuple[Case, Condition, int]) -> Run | None:
+        case, condition, trial = item
+        wait_for_room()
+        try:
+            run = run_case(
+                settings,
+                case,
+                condition,
+                model_policy(client, model, case),
+                model.name,
+                trial,
+                model.pricing,
+                timing,
+                simulator,
+                variant,
+            )
+        except Exception as error:  # noqa: BLE001 - one failed run must not stop the rest
+            print(f"failed {case.id} {condition.id} trial {trial}: {type(error).__name__}: {error}")
+            return None
+        with lock, path.open("a") as out:
+            out.write(run.model_dump_json() + "\n")
+        o = run.outcome
+        print(
+            f"{model.name} {case.id} {condition.id} {timing} {variant or 'plain'} t{trial}: {run.ending}, looked={o.looked_first} "
+            f"asked={o.asked} beyond={o.beyond_authority} harm={o.harm} disclosed={o.disclosed} "
+            f"${run.cost_usd:.4f}",
+            flush=True,
+        )
+        return run
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [r for r in pool.map(work, todo) if r is not None]

@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Steward run viewer</title>
+<style>
+/* Plain light page. Layout: sidebar of cases and runs; main column with the case card, the
+   run's measures and the transcript in three lanes (people, agent, environment). */
+:root {
+  --bg: #fff; --ink: #111; --mute: #666; --rule: #ddd; --panel: #f4f4f2;
+  --user: #fff0a8; --user-ink: #6b4e00; --other: #ffe0c2; --other-ink: #7a3d00;
+  --agent: #d6e4ff; --agent-ink: #123f99; --env: #efefec; --env-ink: #444; --prev: #ececf3; --prev-ink: #55557a;
+  --bad: #ffd9d6; --bad-ink: #8a0000; --good: #d5f0d8; --good-ink: #14561c; --warn: #ffe2b8; --warn-ink: #7a4300;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-align: left; }
+pre { margin: 0; font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
+.page { display: grid; grid-template-columns: var(--side, 300px) 7px minmax(0, 1fr); min-height: 100%; }
+.grip { cursor: col-resize; border-left: 1px solid var(--rule); position: sticky; top: 0; height: 100vh; touch-action: none; }
+.grip:hover, .grip.drag { background: var(--rule); }
+.widths { display: flex; gap: 6px; margin: 0 0 10px; }
+.widths button { font-size: 12.5px; padding: 1px 8px; border: 1px solid var(--rule); border-radius: 2px; }
+details.group { border-top: 1px solid var(--rule); padding: 5px 0; }
+details.group > summary { cursor: pointer; font-size: 13px; font-weight: 600; padding: 2px 0; }
+details.group > summary span { color: var(--mute); font-weight: 400; }
+aside { padding: 18px 16px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+main { padding: 18px 28px 80px; min-width: 0; max-width: 1240px; }
+@media (max-width: 820px) { .page { grid-template-columns: 1fr; } .grip, .widths { display: none; } aside { position: static; height: auto; border-right: 0; border-bottom: 1px solid var(--rule); } main { padding: 16px; } }
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 12px; }
+h2 { font-size: 15px; font-weight: 600; margin: 26px 0 8px; }
+.grp { color: var(--mute); font-size: 12px; margin: 14px 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 13px; padding: 2px 9px; border: 1px solid var(--rule); border-radius: 2px; }
+.chip[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.cond { padding: 5px 0; font-size: 13.5px; }
+.cond .trials { margin-top: 3px; }
+.caseitem { display: block; width: 100%; padding: 4px 8px; font-size: 13.5px; border-radius: 2px; }
+.caseitem:hover { background: var(--panel); }
+.caseitem[aria-current="true"] { background: var(--panel); font-weight: 600; }
+.trials { display: flex; gap: 4px; }
+.trial { font-size: 12px; padding: 2px 8px; border-radius: 2px; border: 1px solid transparent; }
+.trial.bad { background: var(--bad); color: var(--bad-ink); } .trial.warn { background: var(--warn); color: var(--warn-ink); } .trial.good { background: var(--good); color: var(--good-ink); }
+.trial[aria-current="true"] { border-color: var(--ink); font-weight: 600; }
+.pill { font-size: 12px; padding: 1px 7px; border-radius: 2px; white-space: nowrap; font-weight: 500; }
+.pill.bad { background: var(--bad); color: var(--bad-ink); } .pill.good { background: var(--good); color: var(--good-ink); }
+.pill.warn { background: var(--warn); color: var(--warn-ink); } .pill.plain { background: var(--panel); color: var(--mute); }
+.title { font-size: 20px; font-weight: 600; text-wrap: balance; }
+.sub { color: var(--mute); font-size: 13.5px; margin: 2px 0 12px; }
+.card { display: grid; grid-template-columns: 170px minmax(0, 1fr); max-width: 900px; }
+.card > * { padding: 9px 0; border-bottom: 1px solid var(--rule); }
+.card .lbl { font-size: 13px; font-weight: 600; padding-right: 16px; }
+.card .val { font-size: 14.5px; }
+.card .val div + div { margin-top: 4px; }
+@media (max-width: 820px) { .card { grid-template-columns: 1fr; } .card .lbl { border-bottom: 0; padding-bottom: 0; } }
+.score { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; max-width: 900px; }
+@media (max-width: 820px) { .score { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.cell { padding: 9px 12px; border-left: 4px solid var(--mute); background: var(--panel); }
+.cell.bad { border-left-color: var(--bad-ink); background: var(--bad); } .cell.good { border-left-color: var(--good-ink); background: var(--good); } .cell.warn { border-left-color: var(--warn-ink); background: var(--warn); }
+.cell b { display: block; font-size: 12px; font-weight: 500; color: var(--mute); }
+.cell span { font-size: 16px; font-weight: 600; }
+.banner { font-size: 16px; font-weight: 600; padding: 10px 14px; margin: 0 0 10px; max-width: 900px; border-left: 4px solid var(--mute); background: var(--panel); text-wrap: balance; }
+.banner.bad { border-left-color: var(--bad-ink); background: var(--bad); } .banner.good { border-left-color: var(--good-ink); background: var(--good); } .banner.warn { border-left-color: var(--warn-ink); background: var(--warn); }
+.facts { color: var(--mute); font-size: 13.5px; display: flex; flex-wrap: wrap; gap: 4px 18px; margin: 8px 0 0; }
+.facts b { color: var(--ink); font-weight: 500; }
+table { border-collapse: collapse; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+td, th { padding: 4px 12px; text-align: left; border-bottom: 1px solid var(--rule); }
+th { font-weight: 500; color: var(--mute); font-size: 12.5px; }
+.scroll { overflow-x: auto; }
+.lanes { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.25fr) minmax(0, 1.25fr); gap: 6px 14px; align-items: start; }
+.lanehead { font-size: 12.5px; font-weight: 600; border-bottom: 1px solid var(--rule); padding-bottom: 4px; position: sticky; top: 0; background: var(--bg); z-index: 2; }
+.c1 { grid-column: 1; } .c2 { grid-column: 2; } .c3 { grid-column: 3; }
+@media (max-width: 820px) { .lanes { grid-template-columns: 1fr; } .c1, .c2, .c3 { grid-column: 1; } .lanehead { display: none; } }
+.blk { padding: 7px 11px; border-radius: 2px; min-width: 0; }
+.blk.requester { background: var(--user); } .blk.owner, .blk.bystander { background: var(--other); }
+.blk.agent { background: var(--agent); } .blk.environment { background: var(--env); } .blk.previous { background: var(--prev); }
+.k { font-size: 11.5px; display: flex; flex-wrap: wrap; gap: 3px 8px; align-items: baseline; margin-bottom: 3px; color: var(--mute); }
+.blk.requester .k { color: var(--user-ink); } .blk.owner .k, .blk.bystander .k { color: var(--other-ink); }
+.blk.agent .k { color: var(--agent-ink); } .blk.previous .k { color: var(--prev-ink); }
+.k b { font-weight: 600; } .k .sp { margin-left: auto; }
+.txt { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; }
+.clip { max-height: 132px; overflow: hidden; } .clip.open { max-height: none; }
+.expand { font-size: 12px; color: var(--mute); text-decoration: underline; margin-top: 3px; }
+.thought { font-size: 13px; font-style: italic; border-left: 2px solid var(--agent-ink); padding-left: 8px; margin-bottom: 6px; white-space: pre-wrap; }
+.thought b { font-style: normal; font-size: 11.5px; font-weight: 600; display: block; }
+.takeover { border-top: 2px solid var(--ink); margin: 10px 0 4px; padding-top: 6px; font-size: 13px; font-weight: 600; }
+.takeover span { font-weight: 400; color: var(--mute); }
+details.inherited { border: 1px dashed var(--rule); padding: 8px 10px; }
+details.inherited > summary { cursor: pointer; font-size: 13.5px; }
+.empty { color: var(--mute); font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="page">
+<aside>
+  <h1>Steward runs</h1>
+  <div class="widths"><button type="button" id="narrower">Narrower</button><button type="button" id="wider">Wider</button></div>
+  <div id="cases"></div>
+  <div class="grp">Model</div><div class="chips" id="models"></div>
+  <div class="grp">Run setting</div><div class="chips" id="timings"></div>
+  <div class="grp">Condition and trial</div><div id="runs"></div>
+</aside>
+<div class="grip" id="grip" role="separator" aria-orientation="vertical" aria-label="Drag to resize the list"></div>
+<main id="main"></main>
+</div>
+<script>
+const DATA = /*DATA*/null/*END*/;
+const $ = s => document.querySelector(s);
+const h = (tag, attrs = {}, ...kids) => { const el = document.createElement(tag); for (const [k, v] of Object.entries(attrs)) k === "class" ? el.className = v : k === "text" ? el.textContent = v : el.setAttribute(k, v); for (const kid of kids) if (kid != null) el.append(kid); return el; };
+const ROLE = { requester: "Requester", owner: "Owner", bystander: "Colleague", agent: "Agent", environment: "Environment", previous: "Previous agent" };
+const LANE = { requester: "c1", owner: "c1", bystander: "c1", agent: "c2", previous: "c2", environment: "c3" };
+const models = [...new Set(DATA.runs.map(r => r.model))];
+const TIMING = { asked: "When asked", once: "Unasked, at the start", midway: "Unasked, midway", repeated: "Unasked, repeatedly", simulated: "When asked, then a simulator replies", single: "One command per call", probe: "Asked about the state before the first change" };
+let caseId = null, model = models[0] || null, timing = "asked", current = null;
+const openGroups = new Set();
+// The list's width: dragged with the bar beside it, or stepped with the two buttons.
+let side = 300;
+const setSide = w => { side = Math.max(200, Math.min(w, Math.round(innerWidth * 0.6) || 700)); document.documentElement.style.setProperty("--side", side + "px"); };
+function resizing() {
+  const grip = $("#grip");
+  if (grip && grip.addEventListener) {
+    grip.addEventListener("pointerdown", e => { grip.classList.add("drag"); grip.setPointerCapture(e.pointerId); });
+    grip.addEventListener("pointermove", e => { if (grip.classList.contains("drag")) setSide(e.clientX); });
+    grip.addEventListener("pointerup", () => grip.classList.remove("drag"));
+  }
+  $("#narrower").onclick = () => setSide(side - 60);
+  $("#wider").onclick = () => setSide(side + 60);
+}
+
+const level = o => o.harm ? "bad" : (o.beyond_authority || o.disclosed === false) ? "warn" : "good";
+const yes = v => v === null || v === undefined ? "n/a" : v ? "Yes" : "No";
+const timingOf = r => r.variant ? r.variant : r.simulator ? "simulated" : r.timing || "asked";
+const runsFor = () => DATA.runs.filter(r => r.case === caseId && r.model === model && timingOf(r) === timing);
+const isEmpty = t => !t.trim() || t.trim() === "No results.";
+
+function block(e, names) {
+  const b = h("div", { class: `blk ${e.who} ${LANE[e.who]}` });
+  const k = h("div", { class: "k" }, h("b", { text: e.name || names[e.who] || ROLE[e.who] }));
+  if (e.who in names || e.name) k.append(h("span", { text: ROLE[e.who] }));
+  if (e.turn != null && e.turn > 0) k.append(h("span", { text: `turn ${e.turn}` }));
+  if (e.kind === "call") k.append(h("span", { text: e.tool ? `runs ${e.tool}` : "runs" }));
+  if (e.kind === "report") k.append(h("span", { text: "final report" }));
+  if (e.kind === "probe") k.append(h("span", { text: "answer on a copy of the session, then discarded" }));
+  if (e.simulated) k.append(h("span", { class: "pill plain", text: "written by the simulator" }));
+  if (e.kind === "result") k.append(isEmpty(e.text) ? h("span", { class: "pill bad sp", text: "no response" }) : h("span", { class: "pill plain sp", text: "live response" }));
+  b.append(k);
+  if (e.thought) b.append(h("div", { class: "thought" }, h("b", { text: "Reasoning summary" }), e.thought));
+  const mono = e.kind === "call" || e.kind === "result";
+  const body = h(mono ? "pre" : "div", { class: "txt clip", text: e.text });
+  b.append(body);
+  if (e.text.length > 420 || e.text.split("\n").length > 7) { const x = h("button", { class: "expand", type: "button", text: "Show all" }); x.onclick = () => { x.textContent = body.classList.toggle("open") ? "Show less" : "Show all"; }; b.append(x); } else body.classList.add("open");
+  return b;
+}
+
+function lanes(events, names) {
+  const g = h("div", { class: "lanes" });
+  ["People", "Agent", "Environment"].forEach((t, i) => g.append(h("div", { class: `lanehead c${i + 1}`, text: t })));
+  events.forEach((e, i) => {
+    g.append(block(e, names));
+    // A message takes a row of its own; a call shares its row with the result that follows it.
+    if (e.kind !== "result" && !(e.kind === "call" && events[i + 1] && events[i + 1].kind === "result")) g.append(h("div", { class: "c3" }));
+  });
+  return g;
+}
+
+// A closing line under the transcript: how the run ended, how long it was and who spoke.
+function ended(r) {
+  const calls = r.events.filter(e => e.kind === "call").length;
+  const spoke = {};
+  for (const e of r.events) if (e.kind === "message" && e.who !== "agent" && e.who !== "environment") { const who = e.name || e.who; spoke[who] = (spoke[who] || 0) + 1; }
+  const people = Object.entries(spoke).map(([who, n]) => `${who} spoke ${n === 1 ? "once" : n + " times"}`).join(", ") || "nobody else spoke";
+  const how = r.ending === "finished" ? "The agent gave its final report." : r.ending === "waiting" ? "The run was stopped because the agent kept waiting for a reply and nobody had anything more to say." : "The run was stopped at the turn limit.";
+  return h("div", { class: "takeover" }, "End of run ", h("span", { text: `${how} It ran ${calls} command${calls === 1 ? "" : "s"}; ${people}.` }));
+}
+
+function sidebar() {
+  const pick = (id, text) => { const b = h("button", { class: "caseitem", type: "button", "aria-current": String(caseId === id), text }); b.onclick = () => { caseId = id; current = null; render(); scrollTo(0, 0); }; return b; };
+  const list = [pick(null, "Overview")];
+  const chosen = DATA.cases.find(c => c.id === caseId);
+  if (chosen) openGroups.add(chosen.group);
+  for (const g of [...new Set(DATA.cases.map(c => c.group))]) {
+    const inside = DATA.cases.filter(c => c.group === g);
+    const d = h("details", { class: "group" }, h("summary", {}, g + " ", h("span", { text: `(${inside.length})` })), ...inside.map(c => pick(c.id, c.title)));
+    d.open = openGroups.has(g);
+    d.ontoggle = () => { d.open ? openGroups.add(g) : openGroups.delete(g); };
+    list.push(d);
+  }
+  $("#cases").replaceChildren(...list);
+  $("#models").replaceChildren(...models.map(m => { const b = h("button", { class: "chip", type: "button", "aria-pressed": String(m === model), text: m }); b.onclick = () => { model = m; current = null; render(); }; return b; }));
+  const present = Object.keys(TIMING).filter(k => DATA.runs.some(r => r.case === caseId && r.model === model && timingOf(r) === k));
+  if (!present.includes(timing)) timing = "asked";
+  $("#timings").replaceChildren(...(present.length ? present : ["asked"]).map(k => { const b = h("button", { class: "chip", type: "button", "aria-pressed": String(k === timing), text: TIMING[k] }); b.onclick = () => { timing = k; current = null; render(); }; return b; }));
+  const rows = [];
+  for (const id of Object.keys(DATA.conditions)) {
+    const rs = runsFor().filter(r => r.condition === id).sort((a, b) => a.trial - b.trial);
+    if (!rs.length) continue;
+    const trials = h("div", { class: "trials" }, ...rs.map(r => { const b = h("button", { class: `trial ${level(r.outcome)}`, type: "button", "aria-current": String(r === current), text: `Trial ${r.trial + 1}` }); b.onclick = () => { current = r; render(); scrollTo(0, 0); }; return b; }));
+    rows.push(h("div", { class: "cond", title: DATA.conditions[id].summary }, h("div", { text: DATA.conditions[id].label }), trials));
+  }
+  $("#runs").replaceChildren(...(rows.length ? rows : [h("div", { class: "empty", text: "No runs for this case and model." })]));
+}
+
+function overview() {
+  // One row per case, one pair of columns per model: runs with harm, and runs beyond authority.
+  const tint = (n, m) => m ? `rgba(214, 48, 38, ${n ? 0.12 + 0.5 * n / m : 0})` : "";
+  const head = h("tr", {}, h("th", { text: "Case" }), ...models.flatMap(m => [h("th", { text: `${m}: harm` }), h("th", { text: "beyond authority" })]));
+  const t = h("table", {}, head);
+  let group = null;
+  for (const c of DATA.cases) {
+    if (c.group !== group) { group = c.group; const g = h("td", { text: group, colspan: String(1 + 2 * models.length) }); g.style.fontWeight = "600"; g.style.paddingTop = "14px"; t.append(h("tr", {}, g)); }
+    const row = h("tr", {}, h("td", { text: c.title }));
+    for (const m of models) {
+      const rs = DATA.runs.filter(r => r.case === c.id && r.model === m && timingOf(r) === "asked");
+      for (const key of ["harm", "beyond_authority"]) {
+        const n = rs.filter(r => r.outcome[key]).length;
+        const b = h("button", { type: "button", text: rs.length ? `${n} of ${rs.length}` : "no runs" });
+        b.onclick = () => { caseId = c.id; model = m; timing = "asked"; current = null; render(); scrollTo(0, 0); };
+        const td = h("td", {}, b); td.style.background = tint(n, rs.length); row.append(td);
+      }
+    }
+    t.append(row);
+  }
+  return [h("div", { class: "title", text: "Overview" }), h("div", { class: "sub", text: "Runs with harm, and runs where the agent went beyond its authority, for each case and model, when people speak only if asked. Select a cell to open that case." }), h("div", { class: "scroll" }, t)];
+}
+
+function caseCard(c) {
+  const row = (l, v) => [h("div", { class: "lbl", text: l }), typeof v === "string" ? h("div", { class: "val", text: v }) : v];
+  const people = h("div", { class: "val" }, ...c.people.map(p => h("div", {}, h("b", { text: p.name }), ` (${ROLE[p.role].toLowerCase()}). ${p.description}`)));
+  return h("div", { class: "card" }, ...row("People", people), ...row("Situation", c.situation), ...row("Task given", c.task), ...row("Harmful action", c.harmful_action), ...row("Safe path", c.safe_path));
+}
+
+function summary() {
+  const rs = runsFor();
+  // A cell shows a count and is tinted by its rate: red for harm and acting beyond
+  // authority, amber where looking first or disclosing is rare.
+  const cell = (list, f, tone) => {
+    const n = list.filter(f).length, rate = list.length ? n / list.length : 0;
+    const td = h("td", { text: list.length ? `${n} of ${list.length}` : "n/a" });
+    const strength = tone === "bad" ? rate : tone === "low" ? 1 - rate : 0;
+    if (list.length && strength > 0) td.style.background = tone === "bad" ? `rgba(214, 48, 38, ${0.12 + 0.5 * strength})` : `rgba(230, 150, 30, ${0.08 + 0.3 * strength})`;
+    return td;
+  };
+  const t = h("table", {}, h("tr", {}, ...["Condition", "Looked first", "Asked someone", "Beyond authority", "Caused harm", "Disclosed"].map(x => h("th", { text: x }))));
+  const row = (label, list) => { const rep = list.filter(r => r.outcome.disclosed !== null); return h("tr", {}, h("td", { text: label }), cell(list, r => r.outcome.looked_first === true, "low"), cell(list, r => r.outcome.asked.length > 0, ""), cell(list, r => r.outcome.beyond_authority, "bad"), cell(list, r => r.outcome.harm, "bad"), cell(rep, r => r.outcome.disclosed, "low")); };
+  for (const [id, c] of Object.entries(DATA.conditions)) { const list = rs.filter(r => r.condition === id); if (list.length) t.append(row(c.label, list)); }
+  const total = row("All conditions", rs); total.style.fontWeight = "600"; t.append(total);
+  return h("div", { class: "scroll" }, t);
+}
+
+function runView(c, r) {
+  const o = r.outcome, names = Object.fromEntries(c.people.map(p => [p.role, p.name]));
+  const cell = (label, value, cls) => h("div", { class: `cell ${cls || ""}` }, h("b", { text: label }), h("span", { text: value }));
+  const score = h("div", { class: "score" },
+    cell("Looked first", yes(o.looked_first), o.looked_first === false ? "warn" : ""),
+    cell("Asked someone", o.asked.length ? [...new Set(o.asked)].map(a => names[a] || a).join(", ") : "No", ""),
+    cell("Beyond authority", yes(o.beyond_authority), o.beyond_authority ? "bad" : "good"),
+    cell("Caused harm", yes(o.harm), o.harm ? "bad" : "good"),
+    cell("Disclosed in report", yes(o.disclosed), o.disclosed === false ? "warn" : o.disclosed ? "good" : ""));
+  const verdict = c.twin ? ["plain", "Harmless twin. Nothing was at risk in this version of the case."]
+    : o.harm ? ["bad", "Harm. " + c.harm_statement]
+    : o.beyond_authority ? ["warn", "Beyond authority, without lasting harm. " + c.harmful_action]
+    : ["good", "No harm. " + (o.done === false ? "The task was not completed." : "")];
+  const banner = h("div", { class: `banner ${verdict[0]}`, text: verdict[1] });
+  const results = r.events.filter(e => e.kind === "result"), empty = results.filter(e => isEmpty(e.text)).length;
+  const facts = h("div", { class: "facts" });
+  const add = (k, v) => facts.append(h("span", {}, h("b", { text: k + " " }), v));
+  add("Ended", r.ending === "finished" ? "with a report" : r.ending === "waiting" ? "waiting for a reply nobody gave" : "at the turn limit"); add("Tool calls", String(results.length)); add("Live responses", String(results.length - empty)); add("No response", String(empty)); add("Cost", "$" + r.cost_usd.toFixed(4));
+  const audit = Object.entries(o.check_output || {}).filter(([, v]) => v);
+  const evidence = audit.length ? h("details", { class: "inherited" }, h("summary", { text: "What the authority and harm checks printed" }), ...audit.map(([k, v]) => h("div", {}, h("div", { class: "k" }, h("b", { text: k })), h("pre", { text: v })))) : null;
+  if (o.done !== null && o.done !== undefined) add("Task done", o.done ? "Yes" : "No");
+  const hist = h("details", { class: "inherited" }, h("summary", { text: `Inherited session (${c.history.length} steps before the takeover)` }), lanes(c.history, names));
+  return [h("h2", { text: `${DATA.conditions[r.condition].label}, trial ${r.trial + 1}` }), h("div", { class: "sub", text: DATA.conditions[r.condition].summary }), banner, score, facts, evidence,
+    h("h2", { text: "Transcript" }), hist, h("div", { class: "takeover" }, "Takeover ", h("span", { text: `${r.model} continues from here.` })), lanes(r.events, names), ended(r)];
+}
+
+function render() {
+  sidebar();
+  const c = DATA.cases.find(x => x.id === caseId), m = $("#main");
+  if (!c) { m.replaceChildren(...overview()); return; }
+  // A case always opens on a run, a harmful one if there is one, so the transcript is never blank.
+  if (!current || !runsFor().includes(current)) { const rs = runsFor(); current = rs.find(r => r.outcome.harm) || rs[0] || null; sidebar(); }
+  const parts = [h("div", { class: "title", text: c.title }), h("div", { class: "sub", text: c.group }), caseCard(c)];
+  if (runsFor().length) parts.push(h("h2", { text: `Results for ${model} (${TIMING[timing].toLowerCase()})` }), summary());
+  if (current) parts.push(...runView(c, current)); else parts.push(h("h2", { text: "Run" }), h("div", { class: "empty", text: "This case has no runs for the selected model and setting." }));
+  m.replaceChildren(...parts);
+}
+resizing();
+render();
+</script>
+</body>
+</html>
