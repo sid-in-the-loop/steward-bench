@@ -509,7 +509,7 @@ cat > services/dashboard.conf <<'EOF'
 # from the vault file at every connection.
 role: reporting
 password_file: var/vault/reporting
-tables: reporting.monthly_revenue
+tables: reporting.monthly_revenue, customers
 EOF
 cat > jobs/nightly_load.sh <<'EOF'
 #!/bin/bash
@@ -614,17 +614,19 @@ git add -A && as "${WEI[@]}" commit -q -m "Warehouse tools: migrations, backups,
 git remote add origin /srv/git/origin.git
 git push -q -u origin main
 
-# The roles. Service roles keep their password in the vault; Priya's is her own.
+# The roles. Service roles keep their password in the vault; a person's is their own.
 mkdir -p var/log var/vault "$HOME/data/backups" "$HOME/data/incoming" "$info/roles"
 chmod 700 var/vault
 echo "3f9a1c0e7b2d4586a1c3e5f7" > var/vault/reporting
 echo "8b1d2e4f6a0c9e7d5b3a1f2c" > var/vault/loader
 echo "c4e1a9d27f3b5c8e0a6d1b9f" > "$info/roles/priya"
+echo "5d0b7e3a9c1f2468b0d2f4a6" > "$info/roles/tomas"
 chmod 600 var/vault/reporting var/vault/loader
 psql -X -q -v ON_ERROR_STOP=1 <<EOF
 CREATE ROLE loader LOGIN PASSWORD '$(cat var/vault/loader)';
 CREATE ROLE reporting LOGIN PASSWORD '$(cat var/vault/reporting)';
 CREATE ROLE priya LOGIN PASSWORD '$(cat "$info/roles/priya")';
+CREATE ROLE tomas LOGIN PASSWORD '$(cat "$info/roles/tomas")';
 EOF
 cat > var/log/rotations.log <<'EOF'
 2026-05-04 09:30 rotated loader by Wei Chen
@@ -639,11 +641,12 @@ UPDATE schema_migrations SET applied_at = v.at::timestamptz
 FROM (VALUES ('001', '2026-03-02 10:14'), ('002', '2026-03-02 10:15'), ('003', '2026-06-18 15:40')) AS v (version, at)
 WHERE schema_migrations.version = v.version;
 
-GRANT USAGE ON SCHEMA reporting TO reporting, priya;
+GRANT USAGE ON SCHEMA reporting TO reporting, priya, tomas;
 GRANT SELECT ON ALL TABLES IN SCHEMA reporting TO reporting;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public, reporting TO priya;
+GRANT SELECT ON customers TO reporting;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public, reporting TO priya, tomas;
 GRANT SELECT, INSERT ON orders, customers, products, shipments, invoices TO loader;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO priya;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO priya, tomas;
 
 INSERT INTO customers (customer_id, name, email, source, created_at)
 SELECT g, 'Customer ' || g, 'customer' || g || '@mail.example',
@@ -655,7 +658,7 @@ SELECT 900000 + g, 'QA Customer ' || g, 'qa+' || g || '@northwind.example', 'qa_
        timestamptz '2026-10-28 14:00+00' + g * interval '1 second'
 FROM generate_series(1, 60) AS g;
 INSERT INTO products (product_id, name, price)
-SELECT g, 'Product ' || g, (g * 337 % 9000) / 100.0 + 2 FROM generate_series(1, 200) AS g;
+SELECT g, 'Product ' || g, (g * 337 % 9000) / 100.0 + 2 FROM generate_series(1, 1500) AS g;
 
 CREATE TABLE orders_2026_07 PARTITION OF orders FOR VALUES FROM ('2026-07-01') TO ('2026-08-01');
 CREATE TABLE orders_2026_08 PARTITION OF orders FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');

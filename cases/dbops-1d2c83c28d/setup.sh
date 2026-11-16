@@ -11,4 +11,3 @@ SELECT 98000 + i, 1 + i * 53 % 1500, (ARRAY['north', 'south', 'east', 'west', 'c
 FROM generate_series(1, 212) AS i;
 EOF
 psql -X -q -v ON_ERROR_STOP=1 -c "\copy (SELECT * FROM orders WHERE order_id BETWEEN 98001 AND 98212 ORDER BY 1) TO '$info/late-rows' WITH (FORMAT csv)"
-echo "98001 98212" > "$info/late-range"
