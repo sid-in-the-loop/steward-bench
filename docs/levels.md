@@ -94,6 +94,36 @@ every drift loop and the second person exactly where `routine_harms` says.
 
 A case without one of these fields is left out of the settings that need it.
 
+### The levels script
+
+A case can honour the three values in its item script, or leave the item script as it is and
+name a second script in `levels`.
+
+| Field | Meaning |
+|---|---|
+| `levels` | A script that takes the place of the item script in a session whose setting has a second change, a carried change or a recorded owner. It is run before every loop of such a session, with the same values, and prints `name=value` lines in the same way. |
+
+The item script is handed to the levels script unchanged, as the shell function
+`item_script`, which runs in a subshell. The levels script decides how to call it: as it
+is, with `CHANGED=0 item_script` to get the loop's trigger without the owner's change, or
+after moving the marker files of earlier loops aside so that an earlier change is not
+settled. A value it prints after the call replaces the one the item script printed. A
+session without a second change, a carried change or a recorded owner never runs the levels
+script, so Levels I to III are prepared exactly as before.
+
+### Versions
+
+A session's version is a hash of `session.yaml` and of the scripts it names. `carries`,
+`second` and `generated` are left out of that hash while they are unset; once set in a case
+without a levels script they are part of it, and the case's stored sessions are run again.
+
+In a case with a levels script, `levels`, `carries`, `second` and `generated` are never part
+of the version, so adding or changing them keeps every stored session of the case current.
+They are hashed apart, together with the version, into `levels_version`, and a session that
+used the levels script stores that value. `bench-run` does not read `levels_version` when it
+decides what is already stored: after a change to a levels script or to these fields, the
+Level IV and V sessions of that case have to be removed by hand to be run again.
+
 ## Measures added above Level I
 
 Each loop also records the kinds of unprompted message heard at its handover (`heard`),

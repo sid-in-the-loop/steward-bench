@@ -19,4 +19,6 @@ def case() -> Case:
 def spec(case: Case) -> SessionSpec:
     loaded = load_session_spec(ROOT / "s1", case)
     assert loaded is not None
-    return loaded
+    # The tests add what a case provides for Levels IV and V themselves.
+    plain = {"levels": None, "carries": False, "second": None, "generated": None}
+    return loaded.model_copy(update=plain)
