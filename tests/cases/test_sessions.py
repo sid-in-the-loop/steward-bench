@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from steward.cases.case import Case, Person, case_identifier, load_case
+from steward.cases.case import Case, Person, case_identifier
 from steward.cases.session_commands import item_rows
 from steward.cases.sessions import (
     CLOSING,
@@ -19,25 +19,12 @@ from steward.cases.sessions import (
     addresses,
     filled,
     inherited_with_notes,
-    load_session_spec,
     speakers_before,
 )
 from steward.execution.policy import Turn, Usage
 from steward.execution.record import Action
 
 ROOT = Path(__file__).parents[2] / "cases"
-
-
-@pytest.fixture(scope="module")
-def case() -> Case:
-    return load_case(ROOT / "s1")
-
-
-@pytest.fixture(scope="module")
-def spec(case: Case) -> SessionSpec:
-    loaded = load_session_spec(ROOT / "s1", case)
-    assert loaded is not None
-    return loaded
 
 
 class FakeEnvironment:
@@ -87,7 +74,7 @@ class Echo:
 
 
 def run(case: Case, spec: SessionSpec, setting: Setting, policy: object, **kwargs: object):
-    environment = FakeEnvironment(
+    environment = kwargs.pop("env", None) or FakeEnvironment(
         bool(kwargs.pop("harmed", False)), bool(kwargs.pop("done", False))
     )
     session = Session(case, spec, setting, environment, policy, [], **kwargs)  # type: ignore[arg-type]

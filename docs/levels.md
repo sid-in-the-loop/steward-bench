@@ -1,0 +1,96 @@
+# Levels
+
+A session runs one case as a sequence of loops in one conversation and one environment
+(docs/cases.md, "Sessions of several work items"). On a drift loop something has changed
+since the handover notes were written, so the routine the notes describe causes harm; on a
+control loop nothing has changed. A level says what varies between sessions.
+
+## Scope
+
+The world changes only between loops. Every change has been made before the requester hands
+over the loop's task, and users speak only at the handover, before the task, and when the
+agent asks them. Nothing happens while the agent works. Users who act or message at the same
+time as the agent belong to a separate benchmark.
+
+## The five levels
+
+| Level | Name | What varies | Settings per case |
+|---|---|---|---|
+| I | Single-factor sessions | One setting at a time from the baseline: length, users present, drift count, drift position, handover notes, speaking rate | 16, two repeats each |
+| II | Seeded drift schedules | Which loops drift: 1, 2 or 4 of 16, drawn from a seed | 20 |
+| III | Varied users | The drift loops, the notes, and every user: present or not, how often they speak, how much of it is unrelated, what the bystander believes, whether the manager pushes, whether the owner says what changed | 40 |
+| IV | Multiple drifts | A second person's change before a drift loop, on the same, a related or an unrelated object; or the owner's change left in place for three more loops | 16 |
+| V | User-made drifts | The owner's change is made by a simulated owner, recorded once and replayed for every model | 10 |
+
+`steward/cases/level_settings.py` draws the settings. A setting depends only on its level and
+seed, so every case and every model gets the same ones, and a rerun gets them again. The
+first loop is never a drift loop.
+
+## Who writes what users say
+
+| Level | Unprompted messages | First answer to a question | Later answers in the same loop |
+|---|---|---|---|
+| I, II | Fixed lines in `session.yaml`, between loops on a fixed schedule | Fixed line | Claude Haiku 5.5 |
+| III, IV, V | Drawn from the case's message bank by a seeded plan, at the handover | Fixed line | Claude Haiku 5.5 |
+
+The simulator is called only when the agent asks the same user a second time in one loop.
+Everything else a user says is text on disk before a run starts. In Level V the simulated
+owner is also Claude Haiku 5.5, but it acts once per recording, before any tested model runs.
+
+## Users at Level III and above
+
+A user other than the requester is a `Voice` (`steward/cases/levels.py`).
+
+| Field | Meaning |
+|---|---|
+| `rate` | The chance the user speaks at a handover |
+| `noise` | The share of those messages that are unrelated to the task |
+| `knowledge` | Bystander: `belief` (the out-of-date belief, stated as approval) or `none` |
+| `pushes` | Manager: whether they push for speed |
+| `warns` | Owner: whether they say what they changed without being asked, on a drift loop |
+
+`handover_plan` decides who speaks before each loop and with what kind of message: `signal`
+(the owner's change), `status`, `approval`, `pressure` or `noise`. Each user's draw depends
+only on the seed, the loop and the user, so adding a user changes nobody else's messages.
+When asked, a bystander who knows nothing and a manager who does not push give a fixed
+neutral answer; everyone else answers as at Level I.
+
+## The message bank
+
+`cases/<id>/bank.yaml` holds the wordings each user can say, by kind of message. A wording
+may use the `{name}` values the item script prints. `steward bank-build` writes the bank by
+having Claude Haiku 5.5 reword the case's fixed lines and write unrelated remarks for each
+person; a wording is kept only if it passes the plan check: a signal must match the case's
+`disclose` pattern and keep every `{name}` of the fixed line, and no other kind may match
+`disclose`. The fixed lines themselves are always in the bank. The bank is committed, so the
+words every model reads can be read by a person first, and a session stores the version of
+the bank it drew from.
+
+## What a case provides for Levels IV and V
+
+The item script is run before each loop with `ITEM`, `CHANGED` and `ITEMS` as before, and
+with three more values.
+
+| Value | Meaning for the item script |
+|---|---|
+| `SECOND` | Empty, or `same`, `related` or `unrelated`: also apply the second person's change of that kind |
+| `CARRIED` | `1` when the owner's change of an earlier loop stays in place: do not settle it and do not make a new one; the checks for this loop read the carried change |
+| `GENERATED` | `1` when a recorded owner makes the change: create the loop's trigger but not the owner's change |
+
+In `session.yaml`:
+
+| Field | Meaning |
+|---|---|
+| `carries` | The item script honours `CARRIED` |
+| `second` | `role` of the second person (the bystander unless stated), the `kinds` the item script supports, their fixed `answer` when asked, and a `harm` check that exits 0 when their work is intact |
+| `generated` | The simulated owner's `goal`, the `workdir` they work in, a `capture` script that records what must be kept where the case's own checks read it, and the owner's fixed `answer` |
+
+A case without one of these fields is left out of the settings that need it.
+
+## Measures added above Level I
+
+Each loop also records the kinds of unprompted message heard at its handover (`heard`),
+whether the second person's work was harmed (`second_harm`), whether the loop carries an
+earlier change (`carried`), and for a case with `done_deferred` whether a drift loop's task
+was done by the end of the next loop (`done_later`). Every message drawn from the bank is
+stored with its kind.
