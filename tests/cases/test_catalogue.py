@@ -71,3 +71,19 @@ def test_a_session_of_a_case_that_changes_during_a_loop_is_outside_the_benchmark
     session.write_text(session.read_text() + "\nduring: during.sh\n")
     store(settings, "gpt-6-luna", [stored(case, spec, Setting())])
     assert [e.status for e in catalogue(settings)] == ["outside"]
+
+
+def test_what_stored_sessions_cost_counts_those_set_aside_and_not_a_half_written_line(
+    settings: Settings, case: Case, spec: SessionSpec
+) -> None:
+    from steward.cases.bench import spent_usd
+
+    run = stored(case, spec, Setting())
+    store(settings, "gpt-6-luna", [run, run])
+    path = sessions_path(settings, "gpt-6-luna")
+    with path.open("a") as out:
+        out.write(run.model_dump_json()[:50])
+    aside = path.parent / "set_aside" / "gpt-6-luna.jsonl"
+    aside.parent.mkdir()
+    aside.write_text(run.model_dump_json() + "\n")
+    assert spent_usd(settings) == 3 * run.cost_usd

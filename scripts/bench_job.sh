@@ -32,8 +32,16 @@ left=$(squeue -j "$SLURM_JOB_ID" -h -o %L | awk -F'[-:]' '{
 minutes=$((left - 4))
 echo "job $SLURM_JOB_ID, link $link of at most $most, $minutes minutes, on $(hostname)"
 
-# shellcheck disable=SC2086
-.venv/bin/steward bench-run $options --minutes "$minutes" --confirm
+# The all-time limit in data/cases/spend_limit_usd, if there is one, caps this job too.
+# A job that finishes nothing ends the chain and the relay.
+room=$(.venv/bin/steward bench-spent --room)
+if [ "$room" != none ] && awk -v r="$room" 'BEGIN { exit !(r <= 0) }'; then
+  echo "the spending limit in data/cases/spend_limit_usd is reached; nothing run"
+else
+  [ "$room" != none ] && options="$options --max-usd $room"
+  # shellcheck disable=SC2086
+  .venv/bin/steward bench-run $options --minutes "$minutes" --confirm
+fi
 finished=$(grep -cE 'requests, \$' "data/cases/sessions/logs/job-$SLURM_JOB_ID.log")
 
 # shellcheck disable=SC2086

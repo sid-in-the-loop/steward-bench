@@ -214,6 +214,23 @@ class PilotSummary(BaseModel):
     by_domain: dict[str, int]
 
 
+def spend_limit_path(settings: Settings) -> Path:
+    """A file holding one number: the most every stored session together may have cost, set
+    aside ones included. Each job of a chain or relay reads it before it starts."""
+    return settings.paths.data / "cases" / "spend_limit_usd"
+
+
+def spent_usd(settings: Settings) -> float:
+    """What every stored session has cost, set aside ones included, from their records."""
+    folder = sessions_path(settings, "_").parent
+    total = 0.0
+    for path in [*folder.glob("*.jsonl"), *folder.glob("set_aside/*.jsonl")]:
+        for line in path.read_text().splitlines(keepends=True):
+            if line.strip() and line.endswith("\n"):
+                total += json.loads(line)["cost_usd"]
+    return total
+
+
 def pilot_path(settings: Settings) -> Path:
     return settings.paths.data / "cases" / "pilot.json"
 

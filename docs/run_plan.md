@@ -151,6 +151,11 @@ stored at once and the next command resumes from there.
    `--gpus=0` is accepted by an account for GPU work and holds no GPU. The relay cannot run
    while an interactive job of the same user holds the partition's one place.
 
+   `data/cases/spend_limit_usd`, if present, holds one number: the most all stored sessions
+   together, set aside ones included, may have cost. Each job reads it, passes what is left to
+   `bench-run` as `--max-usd`, and runs nothing once it is reached, which ends the chain or
+   the relay. `steward bench-spent` prints the total against it.
+
    A session that a fault in the runner made wrong is taken out of the session file with
    `steward bench-set-aside` while no job is running, and kept in
    `data/cases/sessions/set_aside/`; the next job makes it again.

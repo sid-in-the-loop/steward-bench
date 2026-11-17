@@ -1005,6 +1005,19 @@ def cmd_bench_set_aside(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench_spent(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import spend_limit_path, spent_usd
+
+    spent = spent_usd(settings)
+    path = spend_limit_path(settings)
+    limit = float(path.read_text()) if path.exists() else None
+    if args.room:
+        print(f"{limit - spent:.2f}" if limit is not None else "none")
+    else:
+        print(f"${spent:.2f} spent on stored sessions" + (f" of ${limit:.2f}" if limit else ""))
+    return 0
+
+
 def cmd_bench_status(settings: Settings, args: argparse.Namespace) -> int:
     from collections import Counter
 
@@ -1446,6 +1459,8 @@ def build_parser() -> argparse.ArgumentParser:
         "move stored sessions with a question sent to the wrong person beside the session file",
     )
     sub.add_argument("--model", action="append")
+    sub = add("bench-spent", cmd_bench_spent, "what the stored sessions cost, against the limit")
+    sub.add_argument("--room", action="store_true", help="print only what is left, or none")
     sub = add("bench-status", cmd_bench_status, "count planned, stored and complete sessions")
     sub.add_argument("--model", action="append")
     sub.add_argument("--case", action="append")
