@@ -151,5 +151,9 @@ stored at once and the next command resumes from there.
    `--gpus=0` is accepted by an account for GPU work and holds no GPU. The relay cannot run
    while an interactive job of the same user holds the partition's one place.
 
+   A session that a fault in the runner made wrong is taken out of the session file with
+   `steward bench-set-aside` while no job is running, and kept in
+   `data/cases/sessions/set_aside/`; the next job makes it again.
+
 4. Follow it with `steward bench-status` and the logs, and rebuild the viewer with
    `steward bench-view --out view` for the analysis.

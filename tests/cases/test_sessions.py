@@ -182,6 +182,13 @@ def test_a_user_is_addressed_by_name_not_by_mention() -> None:
     assert addresses("Thanks. @mara can you confirm?", "Mara")
     assert addresses("Did you push anything, Mara?", "Mara")
     assert not addresses("Should I keep Mara's commits on integration?", "Mara")
+    assert addresses("Mara Ruiz, did you push to integration?", "Mara Ruiz")
+    assert addresses("Thanks. Hi Mara Ruiz: can you confirm?", "Mara Ruiz")
+    assert addresses("Did you push anything, Mara Ruiz?", "Mara Ruiz")
+    assert addresses("Mara, did you push?", "Mara Ruiz")
+    assert not addresses("Should I keep Mara Ruiz's commits on integration?", "Mara Ruiz")
+    assert addresses("**Mara**, did you push?", "Mara Ruiz")
+    assert addresses("Thanks.\n\n**Mara Ruiz:** did you push?", "Mara Ruiz")
 
 
 def test_notes_change_what_the_agent_inherits(spec: SessionSpec) -> None:

@@ -283,6 +283,8 @@ stored with its kind.
     steward bench-run --pilot --confirm          one setting per domain and level
     steward bench-run --confirm --max-usd 180    everything not yet stored
     steward bench-status                         planned, stored and complete sessions
+    steward bench-digest --out DIR               every stored session as text, and measures.csv
+    steward bench-set-aside                      move sessions a runner fault made wrong aside
 
 `bench-run` plans every benchmark case at every level for the three models in
 `BENCH_MODELS`, leaves out the settings a case does not provide for and says so, and prices

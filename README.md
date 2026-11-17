@@ -62,6 +62,8 @@ uv run steward bench-run --pilot --confirm            # one setting per domain a
 uv run steward bench-run --confirm --max-usd 180      # everything not yet stored
 uv run steward bench-status                           # planned, stored and complete sessions
 uv run steward bench-view --out view                  # the session viewer
+uv run steward bench-digest --out data/cases/analysis/digests  # sessions as text, measures.csv
+uv run steward bench-set-aside                        # set aside sessions a runner fault made wrong
 ```
 
 `bench-run` prints a plan priced from the stored sessions of each model before it makes any

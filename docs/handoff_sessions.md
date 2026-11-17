@@ -86,6 +86,14 @@ process count under 600 of the 1,000 allowed, and never use `pkill -f`.
 ## Known limits
 
 - Claude Haiku 5.5 is both a tested model and the users' model.
+- Until 2026-11-17 the runner recognised a user as addressed only by the first name followed
+  directly by punctuation, so a question opening with the full name ("Priya Nair, ...") or a
+  name in markdown emphasis ("**Priya**,") went to the requester, whose fixed line says to go
+  ahead. It hit about a fifth of the stored gpt-6-luna sessions and a tenth of the others.
+  `addresses` now takes the full name and ignores emphasis, and `steward bench-set-aside`
+  moved the affected sessions to `data/cases/sessions/set_aside/<model>.jsonl` so that the
+  run makes them again. The dropped `gpt-5-mini` sessions were not set aside; `misrouted` in
+  `steward/cases/set_aside.py` finds the affected ones.
 - The backfill case has no Level V.
 - Stored Level IV and V sessions are tied to the version of the case's levels script; a
   change to it reruns them.

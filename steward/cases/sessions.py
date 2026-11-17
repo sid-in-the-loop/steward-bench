@@ -291,14 +291,18 @@ def session_case(case: Case, spec: SessionSpec) -> Case:
     return case.model_copy(update={"setup": spec.start, "history": history})
 
 
-def addresses(message: str, first_name: str) -> bool:
-    """Whether a message speaks to the person: their name opens the message or a sentence
-    and is followed by a comma, colon or dash, or it is written with @, or it closes a
-    sentence after a comma."""
-    name = re.escape(first_name)
-    opens = rf"(^|[.!?\n]\s*)(hi |hey |hello )?{name}\s*[,:\u2014-]"
-    closes = rf",\s*{name}\s*[.!?]"
-    return re.search(rf"{opens}|@{name}\b|{closes}", message, re.IGNORECASE) is not None
+def addresses(message: str, name: str) -> bool:
+    """Whether a message speaks to the person: their first or full name opens the message or
+    a sentence and is followed by a comma, colon or dash, or their first name is written with
+    @, or their first or full name closes a sentence after a comma. Markdown emphasis around
+    the name, as in `**Mara**,`, is ignored."""
+    message = re.sub(r"[*_]+", "", message)
+    parts = name.split()
+    first = re.escape(parts[0])
+    who = rf"(?:{r'\s+'.join(re.escape(part) for part in parts)}|{first})"
+    opens = rf"(^|[.!?\n]\s*)(hi |hey |hello )?{who}\s*[,:\u2014-]"
+    closes = rf",\s*{who}\s*[.!?]"
+    return re.search(rf"{opens}|@{first}\b|{closes}", message, re.IGNORECASE) is not None
 
 
 def filled(text: str, values: dict[str, str]) -> str:
@@ -492,7 +496,7 @@ class Session:
         """The user a question from the agent is for: someone present who is addressed by
         first name, otherwise the requester. A name that is only mentioned does not count."""
         for role in self.setting.present[1:]:
-            if addresses(message, self.person(role).name.split()[0]):
+            if addresses(message, self.person(role).name):
                 return role
         return "requester"
 

@@ -986,6 +986,25 @@ def cmd_bench_view(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench_digest(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.catalogue import catalogue
+    from steward.cases.digest import write_digests
+
+    sessions, loops = write_digests(catalogue(settings, args.model), args.out)
+    print(f"{sessions} sessions and {loops} loops written to {args.out}")
+    return 0
+
+
+def cmd_bench_set_aside(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.set_aside import set_aside_misrouted
+
+    moved = set_aside_misrouted(settings, args.model)
+    for model, count in moved.items():
+        print(f"{model}: {count} sessions set aside")
+    print(f"{sum(moved.values())} sessions set aside in all; the next bench-run makes them again")
+    return 0
+
+
 def cmd_bench_status(settings: Settings, args: argparse.Namespace) -> int:
     from collections import Counter
 
@@ -1418,6 +1437,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--model", action="append")
     sub.add_argument("--case", action="append")
     sub.add_argument("--level", action="append", choices=["I", "II", "III", "IV", "V"])
+    sub = add("bench-digest", cmd_bench_digest, "write every stored session as text for reading")
+    sub.add_argument("--out", type=Path, required=True, help="the folder to write the digests to")
+    sub.add_argument("--model", action="append")
+    sub = add(
+        "bench-set-aside",
+        cmd_bench_set_aside,
+        "move stored sessions with a question sent to the wrong person beside the session file",
+    )
+    sub.add_argument("--model", action="append")
     sub = add("bench-status", cmd_bench_status, "count planned, stored and complete sessions")
     sub.add_argument("--model", action="append")
     sub.add_argument("--case", action="append")
