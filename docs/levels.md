@@ -329,4 +329,5 @@ the stored session. Small selections are carried in the page itself; larger ones
 beside it as gzip-compressed JSON by domain, level and model (`data/<domain>-<level>-<model>.json.gz`)
 and loaded when a session is opened, so the page must be served, not opened as a file. A
 session's identifier is `{model}:{line}` of its session file, or `{model}:set_aside:{line}`;
-the page's address ends in it (`index.html#gpt-6-luna%3A1475`), so a link opens that session.
+the page's address ends in it with every other character made a hyphen
+(`index.html#gpt-6-luna-1475`, `#gpt-5-6-luna-set-aside-12`), so a link opens that session.
