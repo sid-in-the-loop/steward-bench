@@ -55,6 +55,12 @@ def test_each_stored_session_is_given_its_case_and_status(
     ]
     assert {e.case.id for e in entries} == {case.id}
 
+    aside = sessions_path(settings, "gpt-6-luna").parent / "set_aside" / "gpt-6-luna.jsonl"
+    aside.parent.mkdir()
+    aside.write_text(baseline.model_dump_json() + "\n")
+    last = list(catalogue(settings, ["gpt-6-luna"]))[-1]
+    assert (last.id, last.status) == ("gpt-6-luna:set_aside:1", "set_aside")
+
 
 def test_a_session_of_a_case_that_changes_during_a_loop_is_outside_the_benchmark(
     settings: Settings, case: Case, spec: SessionSpec

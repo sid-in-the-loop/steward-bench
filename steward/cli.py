@@ -980,9 +980,9 @@ def cmd_bench_view(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.bench_view import collect, write_view
 
     records = collect(settings, args.model, args.case, args.level)
-    page, files = write_view(records, args.out, args.title)
+    page, files, sessions = write_view(records, args.out, args.title)
     beside = f" and {files} data files beside it" if files else ""
-    print(f"{len(records)} sessions written to {page}{beside}")
+    print(f"{sessions} sessions written to {page}{beside}")
     return 0
 
 

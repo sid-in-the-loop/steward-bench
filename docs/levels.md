@@ -300,9 +300,17 @@ users names the bank it drew from.
 
     steward bench-view --out DIR [--case ID] [--model M] [--level III]
 
-writes a page (`steward/cases/bench_view.py` and `bench_view.html`). The left column is a
-collapsible tree of domains and their levels, and the models, each shown with its provider's
-mark and toggled on or off. The middle lists the chosen domain and level's cases; under each,
+writes a page (`steward/cases/bench_view.py` and `bench_view.html`) of every stored session
+of every model that has a session file, whatever plan it was run under
+(`steward/cases/catalogue.py`). Each session has a status: it counts in the benchmark, it
+was replaced by a later run of the same setting, it was run on an earlier version of its case
+(including the sessions stored under the cases' former short names), it is of a case that
+changes during a loop and is kept outside the benchmark, or it was set aside by
+`bench-set-aside`. The page shows only the sessions that count until the older ones are
+switched on, and older ones carry their status as a tag. The left column is a collapsible
+tree of domains and their levels; the models, each shown with its provider's mark and
+toggled on or off; an outcome filter (harm on a drift loop, no harm, no drift); and the
+older runs. The middle lists the chosen domain and level's cases; under each,
 one block per setting with a collapsed config (its loops, drift loops, notes, Level IV and V
 fields, seed, and a table of its users: how often each speaks, the share of unrelated talk,
 and their stance) and one entry per model and repeat with its harm count.
@@ -318,4 +326,7 @@ the user and role and says whether it is a fixed line, a wording from the messag
 what kind, or written by the simulator. Provider marks are from the lobe-icons set (MIT
 licence). Tool output and reasoning summaries are shortened in the page and kept whole in
 the stored session. Small selections are carried in the page itself; larger ones are written
-beside it by domain, level and model and loaded when chosen.
+beside it as gzip-compressed JSON by domain, level and model (`data/<domain>-<level>-<model>.json.gz`)
+and loaded when a session is opened, so the page must be served, not opened as a file. A
+session's identifier is `{model}:{line}` of its session file, or `{model}:set_aside:{line}`;
+the page's address ends in it (`index.html#gpt-6-luna%3A1475`), so a link opens that session.

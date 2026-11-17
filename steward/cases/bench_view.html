@@ -111,7 +111,9 @@ button.model[aria-pressed="true"] { border-color: #b9c9dc; background: var(--pan
 .run { display: inline-flex; align-items: center; gap: 7px; padding: 3px 4px 3px 3px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); font-size: 12.5px; }
 .run:hover { border-color: #9fb4cc; }
 .run[aria-pressed="true"] { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
-.run .mname { font-weight: 600; }
+.run .mname { font-weight: 600; white-space: nowrap; }
+.run .tag, .run .result { white-space: nowrap; }
+.tag.older { background: #f4f1fa; color: #5b4a86; border-color: #e2dcf0; }
 .result { font-size: 11.5px; font-weight: 600; padding: 1px 7px; border-radius: 5px; font-variant-numeric: tabular-nums; }
 .result.harm { background: var(--harm-soft); color: var(--harm); }
 .result.safe { background: var(--safe-soft); color: var(--safe); }
@@ -222,6 +224,14 @@ button.model[aria-pressed="true"] { border-color: #b9c9dc; background: var(--pan
       <button class="group-head" aria-expanded="true" data-body="models"><span class="chev">&#9656;</span>Models</button>
       <div class="group-body chips" id="models"></div>
     </section>
+    <section class="group">
+      <button class="group-head" aria-expanded="true" data-body="outcomes"><span class="chev">&#9656;</span>Outcome</button>
+      <div class="group-body chips" id="outcomes"></div>
+    </section>
+    <section class="group">
+      <button class="group-head" aria-expanded="false" data-body="statuses"><span class="chev">&#9656;</span>Older runs</button>
+      <div class="group-body chips" id="statuses" hidden></div>
+    </section>
   </nav>
   <section class="column" aria-label="Sessions">
     <div class="list-head"><div class="crumbs" id="crumbs"></div><h1 id="list-title"></h1></div>
@@ -248,7 +258,19 @@ const CONTENT_WORDS = {
 };
 const EXCHANGE_KINDS = new Set(["disagreement", "hearsay", "retraction", "side_talk", "pile_up", "shop_talk"]);
 const loaded = DATA.inline || {};
-const state = { domain: null, level: null, models: new Set(), session: null, open: new Set(), driftOnly: false };
+const state = { domain: null, level: null, models: new Set(), statuses: new Set(["current"]),
+  outcome: "all", session: null, open: new Set(), driftOnly: false };
+const STATUS_NOTE = {
+  replaced: "This session was replaced by a later run of the same setting and does not count in the benchmark.",
+  earlier: "This session was run on an earlier version of the case and does not count in the benchmark.",
+  outside: "This session is of a case that changes during a loop, which is kept outside the benchmark.",
+  set_aside: "This session was set aside: the runner sent a question in it to the wrong person, so it was run again.",
+};
+const STATUS_SHORT = { replaced: "replaced", earlier: "earlier version", outside: "outside the benchmark",
+  set_aside: "set aside" };
+const STATUS_TAG = { replaced: "replaced", earlier: "earlier", outside: "outside", set_aside: "set aside" };
+const OUTCOMES = [["all", "All"], ["harmed", "Harm on a drift loop"], ["intact", "No harm"], ["none", "No drift"]];
+const outcomeOf = s => s.drift_loops === 0 ? "none" : s.harmed ? "harmed" : "intact";
 
 const el = (tag, attrs = {}, ...children) => {
   const node = document.createElement(tag);
@@ -264,9 +286,10 @@ const el = (tag, attrs = {}, ...children) => {
   }
   return node;
 };
-const sessions = () => DATA.sessions;
-const shown = () => sessions().filter(s =>
-  s.domain === state.domain && s.level === state.level && state.models.has(s.model));
+const kept = () => DATA.sessions.filter(s => state.statuses.has(s.status));
+const sessions = () => kept().filter(s => state.models.has(s.model) &&
+  (state.outcome === "all" || outcomeOf(s) === state.outcome));
+const shown = () => sessions().filter(s => s.domain === state.domain && s.level === state.level);
 const initials = name => name.split(/\s+/).map(w => w[0]).join("").slice(0, 2).toUpperCase();
 
 function mark(provider) {
@@ -285,6 +308,10 @@ function modelChip(s, tag = "span", attrs = {}) {
 function choose(kind, value) {
   if (kind === "model") {
     state.models.has(value) ? state.models.delete(value) : state.models.add(value);
+  } else if (kind === "status") {
+    state.statuses.has(value) ? state.statuses.delete(value) : state.statuses.add(value);
+  } else if (kind === "outcome") {
+    state.outcome = value;
   } else if (kind === "place") {
     [state.domain, state.level] = value;
     state.open.add(state.domain);
@@ -315,11 +342,19 @@ function renderChoices() {
     })) : null;
     return el("div", {}, row, levels);
   }));
-  const models = [...new Map(sessions().map(s => [s.model, s])).values()];
+  const models = [...new Map(kept().map(s => [s.model, s])).values()];
   document.getElementById("models").replaceChildren(...models.map(s =>
     modelChip(s, "button", { "aria-pressed": String(state.models.has(s.model)),
       title: state.models.has(s.model) ? "Hide this model" : "Show this model",
       onclick: () => choose("model", s.model) })));
+  document.getElementById("outcomes").replaceChildren(...OUTCOMES.map(([value, label]) =>
+    el("button", { class: "model", "aria-pressed": String(state.outcome === value),
+      onclick: () => choose("outcome", value) }, label)));
+  const counts = {};
+  for (const s of DATA.sessions) counts[s.status] = (counts[s.status] || 0) + 1;
+  document.getElementById("statuses").replaceChildren(...Object.keys(STATUS_SHORT).filter(k => counts[k]).map(k =>
+    el("button", { class: "model", "aria-pressed": String(state.statuses.has(k)), title: DATA.statuses[k],
+      onclick: () => choose("status", k) }, `${STATUS_SHORT[k]} (${counts[k]})`)));
 }
 
 function tags(config) {
@@ -384,7 +419,9 @@ function renderList() {
             el("button", { class: "run", "aria-pressed": String(state.session === run.id),
               title: `${run.provider} / ${run.model}, repeat ${run.trial + 1}`, onclick: () => open(run) },
               mark(run.provider), el("span", { class: "mname" }, run.model),
-              repeats ? el("span", { class: "tag" }, `#${run.trial + 1}`) : null, result(run)))));
+              repeats ? el("span", { class: "tag" }, `#${run.trial + 1}`) : null,
+              run.status !== "current" ? el("span", { class: "tag older", title: DATA.statuses[run.status] }, STATUS_TAG[run.status]) : null,
+              result(run)))));
       }));
   }));
 }
@@ -396,7 +433,7 @@ async function open(run) {
   if (!loaded[run.file]) {
     main.replaceChildren(el("div", { class: "empty" }, "Loading the transcript."));
     try {
-      loaded[run.file] = await (await fetch(`data/${run.file}.json`)).json();
+      loaded[run.file] = await loadFile(run.file);
     } catch (error) {
       main.replaceChildren(el("div", { class: "empty" },
         "The transcript file could not be loaded. Open the page from a web server or from its published link."));
@@ -406,6 +443,18 @@ async function open(run) {
   const full = loaded[run.file].find(s => s.id === run.id);
   main.replaceChildren(renderSession(full));
   main.scrollTop = 0;
+  history.replaceState(null, "", `#${encodeURIComponent(run.id)}`);
+}
+
+// A data file is gzip-compressed JSON. A server may already have decompressed it in transit,
+// so the bytes are checked for the gzip header before decompressing.
+async function loadFile(file) {
+  const response = await fetch(`data/${file}.json.gz`);
+  if (!response.ok) throw new Error(`${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes[0] !== 0x1f || bytes[1] !== 0x8b) return JSON.parse(new TextDecoder().decode(bytes));
+  const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("gzip"));
+  return JSON.parse(await new Response(stream).text());
 }
 
 function stat(value, label, tone) {
@@ -437,7 +486,9 @@ function renderSession(run) {
         el("span", { class: "pill" }, `repeat ${run.trial + 1}`),
         el("span", { class: "pill" }, `${run.requests} requests`),
         el("span", { class: "pill" }, `$${run.cost_usd.toFixed(4)}`),
-        el("span", { class: "pill", style: "font-family: var(--mono)" }, run.case))),
+        el("span", { class: "pill", style: "font-family: var(--mono)" }, run.case),
+        el("span", { class: "pill", style: "font-family: var(--mono)", title: "This session's link" }, run.id)),
+      STATUS_NOTE[run.status] ? el("div", { class: "incomplete" }, STATUS_NOTE[run.status]) : null),
     el("div", { class: "stats" },
       stat(run.loops, "loops"),
       stat(run.drift_loops, "drift loops"),
@@ -581,7 +632,14 @@ function render() { renderChoices(); renderList(); }
       body.hidden = !expanded;
     });
   }
-  for (const s of sessions()) state.models.add(s.model);
+  for (const s of DATA.sessions) state.models.add(s.model);
+  const linked = DATA.sessions.find(s => `#${encodeURIComponent(s.id)}` === location.hash);
+  if (linked) {
+    state.statuses.add(linked.status);
+    choose("place", [linked.domain, linked.level]);
+    open(linked);
+    return;
+  }
   const domain = Object.keys(DATA.domains).find(d => sessions().some(s => s.domain === d));
   if (!domain) { render(); return; }
   const level = LEVEL_ORDER.find(l => sessions().some(s => s.domain === domain && s.level === l));

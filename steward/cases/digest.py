@@ -188,9 +188,11 @@ def measures(entry: Stored) -> list[LoopMeasures]:
 
 
 def digest_path(out: Path, entry: Stored) -> Path:
-    """`<out>/<case>/<model>/<level>/<setting>-t<trial>-<line>.txt`."""
-    model, line = entry.id.split(":")
+    """`<out>/<case>/<model>/<level>/<setting>-t<trial>-<line>.txt`, with `set_aside-` before
+    the line of a session set aside."""
     run = entry.run
+    model, _, line = entry.id.partition(":")
+    line = line.replace(":", "-")
     name = f"{run.setting.id}-t{run.trial}-{line}.txt"
     return out / entry.case.id / model / run.setting.level / name
 

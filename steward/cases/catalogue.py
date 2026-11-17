@@ -15,19 +15,20 @@ from steward.cases.session_commands import load_sessions, sessions_path, stored_
 from steward.cases.sessions import SessionRun, SessionSpec
 from steward.config import Settings
 
-Status = Literal["current", "replaced", "earlier", "outside"]
+Status = Literal["current", "replaced", "earlier", "outside", "set_aside"]
 STATUS_WORDS: dict[Status, str] = {
     "current": "counts in the benchmark",
     "replaced": "replaced by a later run of the same setting",
     "earlier": "run on an earlier version of the case",
     "outside": "a case that changes during a loop, kept outside the benchmark",
+    "set_aside": "set aside because the runner sent a question in it to the wrong person",
 }
 
 
 @dataclass(frozen=True)
 class Stored:
     """One stored session. `id` is `{model}:{line}`, the line of the model's session file it
-    is stored on, counted from 1."""
+    is stored on, counted from 1, or `{model}:set_aside:{line}` for one set aside."""
 
     id: str
     run: SessionRun
@@ -54,12 +55,14 @@ def stored_models(settings: Settings) -> list[str]:
 def _runs(path: Path) -> Iterator[tuple[int, SessionRun]]:
     with path.open() as lines:
         for number, line in enumerate(lines, start=1):
-            if line.strip():
+            # A line without its newline is still being written by a running job.
+            if line.strip() and line.endswith("\n"):
                 yield number, SessionRun.model_validate_json(line)
 
 
 def catalogue(settings: Settings, models: list[str] | None = None) -> Iterator[Stored]:
-    """Every stored session of the chosen models, in the order it was stored. A session whose
+    """Every stored session of the chosen models, in the order it was stored, then those set
+    aside from the model's session file. A session whose
     case has since been renamed is given the case's current identifier; one whose case no
     longer exists is left out."""
     cases = {case.id: (case, spec) for case, spec in load_sessions(settings)}
@@ -87,3 +90,10 @@ def catalogue(settings: Settings, models: list[str] | None = None) -> Iterator[S
             else:
                 status = "current"
             yield Stored(f"{model}:{number}", run, case, spec, status)
+        aside = path.parent / "set_aside" / path.name
+        if aside.exists():
+            for number, run in _runs(aside):
+                name = renamed.get(run.case, run.case)
+                if name in cases:
+                    case, spec = cases[name]
+                    yield Stored(f"{model}:set_aside:{number}", run, case, spec, "set_aside")

@@ -3,16 +3,20 @@ its transcript laid out loop by loop."""
 
 from __future__ import annotations
 
+import gzip
+import io
 import json
 from collections import defaultdict
+from collections.abc import Iterable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import IO, Any
 
-from steward.cases.bench import BENCH_MODELS, LEVELS, bench_cases, plan, problems
+from steward.cases.bench import LEVELS, problems
 from steward.cases.case import DOMAIN_NAMES, Case
+from steward.cases.catalogue import STATUS_WORDS, Status, catalogue
 from steward.cases.commands import MODELS
 from steward.cases.levels import EXCHANGE_CHANCE, LEVEL_NAMES
-from steward.cases.session_commands import sessions_path, stored_key, stored_sessions
+from steward.cases.session_commands import stored_key
 from steward.cases.sessions import SessionRun, SessionSpec, Setting
 from steward.config import Settings
 
@@ -21,9 +25,19 @@ TEMPLATE = Path(__file__).with_name("bench_view.html")
 # session keeps all of it.
 OUTPUT_LIMIT = 3000
 THOUGHT_LIMIT = 1500
-# Above this many bytes of transcripts the data is written beside the page and loaded when a
-# domain and level are chosen; below it the page carries everything.
+# Above this many bytes of transcripts the data is written beside the page, compressed, and
+# loaded when a session is opened; below it the page carries everything.
 INLINE_LIMIT = 6_000_000
+# What a session's entry in the page's index leaves to its data file.
+FULL_ONLY = (
+    "transcript",
+    "situation",
+    "harmful_action",
+    "safe_path",
+    "harm_statement",
+    "task",
+    "people",
+)
 PROVIDERS = {"anthropic": "Anthropic", "openai": "OpenAI", "openrouter": "OpenRouter"}
 NOTES = {
     "out_of_date": "out of date",
@@ -167,13 +181,20 @@ def people_of(case: Case, spec: SessionSpec) -> list[dict[str, str]]:
     return [{"role": p.role, "name": p.name, "description": p.description} for p in people]
 
 
-def session_record(run: SessionRun, case: Case, spec: SessionSpec) -> dict[str, Any]:
+def session_record(
+    run: SessionRun,
+    case: Case,
+    spec: SessionSpec,
+    session_id: str | None = None,
+    status: Status = "current",
+) -> dict[str, Any]:
     """Everything the viewer shows for one session, with its transcript by loop."""
     names = {person["role"]: person["name"] for person in people_of(case, spec)}
     drift = [item for item in run.items if item.changed]
     model = MODELS.get(run.model)
     return {
-        "id": "|".join(str(part) for part in stored_key(run)) + f"|{run.model}",
+        "id": session_id or "|".join(str(part) for part in stored_key(run)) + f"|{run.model}",
+        "status": status,
         "case": run.case,
         "title": case.title,
         "domain": case.domain,
@@ -207,54 +228,99 @@ def collect(
     models: list[str] | None = None,
     only: list[str] | None = None,
     levels: list[str] | None = None,
-) -> list[dict[str, Any]]:
-    """The newest stored session for every planned case, setting and repeat."""
-    cases = bench_cases(settings, only)
-    jobs, _ = plan(settings, cases, list(LEVELS))
-    wanted = {job.key: job for job in jobs}
-    records = []
-    for name in models or list(BENCH_MODELS):
-        newest: dict[Any, SessionRun] = {}
-        for run in stored_sessions(sessions_path(settings, name)):
-            if stored_key(run) in wanted and (not levels or run.setting.level in levels):
-                newest[stored_key(run)] = run
-        for key, run in newest.items():
-            job = wanted[key]
-            records.append(session_record(run, job.case, job.spec))
-    order = {level: index for index, level in enumerate(LEVELS)}
-    records.sort(
-        key=lambda r: (r["domain"], order[r["level"]], r["title"], r["setting"], r["model"])
-    )
-    return records
+) -> Iterator[dict[str, Any]]:
+    """Every stored session of the chosen models, cases and levels, whatever plan it was run
+    under; its status says whether it counts in the benchmark."""
+    for entry in catalogue(settings, models):
+        if only and entry.case.id not in only:
+            continue
+        if levels and entry.run.setting.level not in levels:
+            continue
+        yield session_record(entry.run, entry.case, entry.spec, entry.id, entry.status)
 
 
-def write_view(records: list[dict[str, Any]], out: Path, title: str) -> tuple[Path, int]:
+class _DataFiles:
+    """The transcripts by domain, level and model: held in memory while they are small, and
+    written beside the page as gzip-compressed JSON arrays once they are not."""
+
+    def __init__(self, folder: Path) -> None:
+        self.folder = folder
+        self.held: dict[str, list[str]] = {}
+        self.size = 0
+        self.open: dict[str, IO[str]] = {}
+
+    def add(self, key: str, record: dict[str, Any]) -> None:
+        text = json.dumps(record, separators=(",", ":"))
+        if self.open or self.size + len(text) > INLINE_LIMIT:
+            self._spill()
+            self._write(key, text)
+        else:
+            self.held.setdefault(key, []).append(text)
+            self.size += len(text)
+
+    def _write(self, key: str, text: str) -> None:
+        if key not in self.open:
+            self.folder.mkdir(parents=True, exist_ok=True)
+            # mtime=0 keeps the files the same from one build to the next.
+            raw = gzip.GzipFile(self.folder / f"{key}.json.gz", "wb", mtime=0)
+            self.open[key] = io.TextIOWrapper(raw, encoding="utf-8")
+            self.open[key].write("[" + text)
+        else:
+            self.open[key].write("," + text)
+
+    def _spill(self) -> None:
+        for key, texts in self.held.items():
+            for text in texts:
+                self._write(key, text)
+        self.held = {}
+
+    def inline(self) -> dict[str, Any] | None:
+        if self.open:
+            return None
+        return {key: [json.loads(t) for t in texts] for key, texts in self.held.items()}
+
+    def close(self) -> int:
+        for handle in self.open.values():
+            handle.write("]")
+            handle.close()
+        return len(self.open)
+
+
+def write_view(records: Iterable[dict[str, Any]], out: Path, title: str) -> tuple[Path, int, int]:
     """Write the page, and beside it the transcripts by domain, level and model when they are
-    too large for the page to carry. Returns the page and how many data files were written."""
+    too large for the page to carry. Returns the page, how many data files were written and
+    how many sessions the page holds."""
     out.mkdir(parents=True, exist_ok=True)
-    groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    files = _DataFiles(out / "data")
     index = []
     for record in records:
         key = f"{record['domain']}-{record['level']}-{record['model']}"
-        groups[key].append(record)
-        index.append({k: v for k, v in record.items() if k != "transcript"} | {"file": key})
-    files = {key: json.dumps(group, separators=(",", ":")) for key, group in groups.items()}
-    inline = sum(len(text) for text in files.values()) <= INLINE_LIMIT
+        files.add(key, record)
+        index.append({k: v for k, v in record.items() if k not in FULL_ONLY} | {"file": key})
+    inline = files.inline()
+    written = files.close()
+    order = {level: number for number, level in enumerate(LEVELS)}
+    index.sort(
+        key=lambda r: (
+            r["domain"],
+            order[r["level"]],
+            r["title"],
+            r["setting"],
+            r["model"],
+            r["trial"],
+            r["id"],
+        )
+    )
     data = {
         "title": title,
         "domains": DOMAIN_NAMES,
         "levels": LEVEL_NAMES,
+        "statuses": STATUS_WORDS,
         "sessions": index,
-        "inline": {key: json.loads(text) for key, text in files.items()} if inline else None,
+        "inline": inline,
     }
-    written = 0
-    if not inline:
-        (out / "data").mkdir(exist_ok=True)
-        for key, text in files.items():
-            (out / "data" / f"{key}.json").write_text(text)
-            written += 1
     embedded = json.dumps(data, separators=(",", ":")).replace("</", "<\\/")
     page = TEMPLATE.read_text().replace("__TITLE__", title).replace("__DATA__", embedded)
     path = out / "index.html"
     path.write_text(page)
-    return path, written
+    return path, written, len(index)
