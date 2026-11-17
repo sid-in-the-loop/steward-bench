@@ -158,6 +158,13 @@ an hour while it cleans up.
    `bench-run` as `--max-usd`, and runs nothing once it is reached, which ends the chain or
    the relay. `steward bench-spent` prints the total against it.
 
+   `--simulator-model` chooses the model that plays the users, `claude-haiku-5-5` by default.
+   An OpenAI model is asked through the Responses API with the same instructions, chat, token
+   limit and low effort, and its replies are cached apart from Claude's. Each session records
+   its simulator. On 2026-11-17 the Anthropic key reached its usage limit with 457 luna
+   sessions left, and the user chose to finish those with `gpt-6-luna` as the simulator, so
+   they carry `simulator: gpt-6-luna` and every earlier session `claude-haiku-5-5`.
+
    A session that a fault in the runner made wrong is taken out of the session file with
    `steward bench-set-aside` while no job is running, and kept in
    `data/cases/sessions/set_aside/`; the next job makes it again.

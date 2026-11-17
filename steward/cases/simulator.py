@@ -14,9 +14,11 @@ from pathlib import Path
 from typing import Protocol
 
 import anthropic
+import httpx
 
 from steward.cases.case import Case, Person
 from steward.cases.conditions import Condition
+from steward.execution.policy import RESPONSES, post_with_retry
 
 MODEL = "claude-haiku-5-5"
 MAX_TOKENS = 1000
@@ -43,30 +45,19 @@ class Simulator(Protocol):
     def reply(self, case: Case, person: Person, stance: str, chat: list[str]) -> str | None: ...
 
 
-class ClaudeSimulator:
-    """Plays a person with a Claude model. Replies are kept on disk by what was asked, so a
-    rerun of the same conversation gets the same reply."""
+class CachedSimulator:
+    """Plays a person with a model. Replies are kept on disk by model and what was asked, so a
+    rerun of the same conversation gets the same reply. Subclasses differ only in the API they
+    call; the instructions, the chat and the handling of the reply are the same for every model."""
 
-    def __init__(self, client: anthropic.Anthropic, cache: Path, model: str = MODEL) -> None:
-        self.client = client
+    def __init__(self, cache: Path, model: str) -> None:
         self.cache = cache
         self.model = model
         self.input_tokens = 0
         self.output_tokens = 0
 
     def _ask(self, system: str, chat: list[str]) -> str:
-        response = self.client.messages.create(
-            model=self.model,
-            max_tokens=MAX_TOKENS,
-            output_config={"effort": "low"},
-            system=system,
-            messages=[{"role": "user", "content": "\n".join(chat)}],
-        )
-        self.input_tokens += response.usage.input_tokens
-        self.output_tokens += response.usage.output_tokens
-        if response.stop_reason == "refusal":
-            return NO_REPLY
-        return "".join(block.text for block in response.content if block.type == "text").strip()
+        raise NotImplementedError
 
     def reply(self, case: Case, person: Person, stance: str, chat: list[str]) -> str | None:
         system = INSTRUCTIONS.format(
@@ -84,6 +75,60 @@ class ClaudeSimulator:
             return None
         # The model sometimes signs the message with the speaker's name.
         return text.removeprefix(f"{person.name}:").strip()
+
+
+class ClaudeSimulator(CachedSimulator):
+    """Plays a person with a Claude model through the Messages API."""
+
+    def __init__(self, client: anthropic.Anthropic, cache: Path, model: str = MODEL) -> None:
+        super().__init__(cache, model)
+        self.client = client
+
+    def _ask(self, system: str, chat: list[str]) -> str:
+        response = self.client.messages.create(
+            model=self.model,
+            max_tokens=MAX_TOKENS,
+            output_config={"effort": "low"},
+            system=system,
+            messages=[{"role": "user", "content": "\n".join(chat)}],
+        )
+        self.input_tokens += response.usage.input_tokens
+        self.output_tokens += response.usage.output_tokens
+        if response.stop_reason == "refusal":
+            return NO_REPLY
+        return "".join(block.text for block in response.content if block.type == "text").strip()
+
+
+class OpenAISimulator(CachedSimulator):
+    """Plays a person with an OpenAI model through the Responses API, sending the same
+    instructions, chat, token limit and low effort as ClaudeSimulator."""
+
+    def __init__(self, client: httpx.Client, cache: Path, model: str) -> None:
+        super().__init__(cache, model)
+        self.client = client
+
+    def _ask(self, system: str, chat: list[str]) -> str:
+        body = {
+            "model": self.model,
+            "instructions": system,
+            "input": [{"role": "user", "content": "\n".join(chat)}],
+            "max_output_tokens": MAX_TOKENS,
+            "reasoning": {"effort": "low"},
+            "store": False,
+        }
+        reply = post_with_retry(self.client, body, path=RESPONSES)
+        usage = reply.get("usage") or {}
+        self.input_tokens += int(usage.get("input_tokens", 0))
+        self.output_tokens += int(usage.get("output_tokens", 0))
+        parts = [
+            part
+            for item in reply["output"]
+            if item.get("type") == "message"
+            for part in item.get("content") or []
+        ]
+        if any(part.get("type") == "refusal" for part in parts):
+            return NO_REPLY
+        return "".join(p.get("text") or "" for p in parts if p.get("type") == "output_text").strip()
 
 
 def reveals(case: Case, condition: Condition, person: Person, text: str) -> bool:

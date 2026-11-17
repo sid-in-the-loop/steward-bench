@@ -7,11 +7,15 @@ import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from dotenv import load_dotenv
 
 from steward.config import Settings, load_settings
 from steward.filter.batch import CostGuardError
+
+if TYPE_CHECKING:
+    from steward.cases.simulator import CachedSimulator
 
 log = logging.getLogger("steward")
 
@@ -918,6 +922,29 @@ def cmd_owner_record(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def bench_simulator(settings: Settings, model: str) -> CachedSimulator:
+    """The user simulator for bench-run: Claude through the Anthropic API, or an OpenAI model
+    through the Responses API, with the same instructions and the same reply cache layout."""
+    import os
+
+    import httpx
+
+    from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.simulator import ClaudeSimulator, OpenAISimulator
+
+    if model.startswith("claude-"):
+        import anthropic
+
+        return ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), model)
+    endpoint = MODELS[model]
+    client = httpx.Client(
+        base_url=endpoint.base_url,
+        headers={"Authorization": f"Bearer {os.environ.get(endpoint.api_key_env, '')}"},
+        timeout=httpx.Timeout(300.0, connect=30.0),
+    )
+    return OpenAISimulator(client, simulator_cache(settings), model)
+
+
 def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.bench import (
         BENCH_MODELS,
@@ -932,7 +959,7 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
         summarise,
         summarise_pilot,
     )
-    from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.commands import MODELS
 
     models = [MODELS[name] for name in args.model or BENCH_MODELS]
     cases = bench_cases(settings, args.case)
@@ -959,11 +986,7 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     if not args.pilot and not pilot_path(settings).exists():
         print("Run the pilot first: steward bench-run --pilot --confirm")
         return 1
-    import anthropic
-
-    from steward.cases.simulator import ClaudeSimulator
-
-    simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings))
+    simulator = bench_simulator(settings, args.simulator_model)
     workers = parse_workers(args.workers, [m.name for m in models], 5)
     runs = run_bench(
         settings, models, jobs, workers, args.max_usd, simulator, args.start, args.minutes
@@ -1457,6 +1480,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("bench-run", cmd_bench_run, "run every case at every level under one limit")
     sub.add_argument("--model", action="append", help="default: the three benchmark models")
+    sub.add_argument(
+        "--simulator-model",
+        default="claude-haiku-5-5",
+        help="the model that plays the users; an OpenAI model is called through its API with "
+        "the same instructions (default claude-haiku-5-5)",
+    )
     sub.add_argument("--level", action="append", choices=["I", "II", "III", "IV", "V"])
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument(
