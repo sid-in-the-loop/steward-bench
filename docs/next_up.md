@@ -3,6 +3,23 @@
 The user's plan after the full run, as given on 2026-11-17, grouped but not added to or cut.
 The whole of it is expected to take about two more days.
 
+## Before any scaling
+
+Added by the user later on 2026-11-17. The sessions so far are not taken as the final
+performance; scaling will be based on what the models are bad at, and it is for later, not
+this week. It starts only once everything works, which means, from a rigorous analysis of all
+the runs stored:
+
+1. A pattern is established from the analysis. The analysis has to be done very well.
+2. An exploitable, really hard failure is found, such as in collaborating and working with
+   users.
+3. There is a way to make each level harder than the one before, even while invoking user
+   simulators.
+
+Focus heavily on the frontier situation, and try to establish a pattern in terms of scaling
+before starting to scale. The failure patterns should be deep-cutting things that more tasks
+can be built from.
+
 ## 1. Tonight: every run in the viewer
 
 - By 8 p.m. ET, once all runs are done, publish them in the viewer in the neatest way possible.
