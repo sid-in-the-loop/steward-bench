@@ -29,7 +29,9 @@ options=${STEWARD_RUN_OPTIONS:---workers 40 --workers claude-haiku-5-5=48 --star
 left=$(squeue -j "$SLURM_JOB_ID" -h -o %L | awk -F'[-:]' '{
   n = NF; s = $n; m = $(n-1); h = (n > 2) ? $(n-2) : 0; d = (n > 3) ? $(n-3) : 0
   print d * 1440 + h * 60 + m }')
-minutes=$((left - 4))
+# Ten minutes spare: sessions in flight at the deadline run on, and counting what is left
+# takes a minute or two after them.
+minutes=$((left - 10))
 echo "job $SLURM_JOB_ID, link $link of at most $most, $minutes minutes, on $(hostname)"
 
 # The all-time limit in data/cases/spend_limit_usd, if there is one, caps this job too.
