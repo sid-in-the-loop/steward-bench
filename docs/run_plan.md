@@ -133,7 +133,10 @@ stored at once and the next command resumes from there.
    the time it has left, then submits the next job while sessions are left and it finished
    some, up to 30 jobs. `scancel --name steward-bench` stops the chain; `STEWARD_RUN_OPTIONS`
    replaces the options given to `bench-run` (an account for GPU work takes no job without a GPU, hence `--gpus=1` there, although the run uses none), and `--time` on the command line the length of
-   each job. Do not start a second run by hand while a job of the chain is running: two runs
+   each job, which every later job of the chain keeps. `STEWARD_RUN_THEN` holds the options
+   the chain goes on with once nothing is left for the first ones, so that one chain runs the
+   sessions of 16 loops and then those of 64:
+   `STEWARD_RUN_THEN="--min-loops 64 --workers 4 --workers claude-haiku-5-5=16"`. Do not start a second run by hand while a job of the chain is running: two runs
    would write the same session files.
 
 4. Follow it with `steward bench-status` and the logs, and rebuild the viewer with
