@@ -326,7 +326,8 @@ the user and role and says whether it is a fixed line, a wording from the messag
 what kind, or written by the simulator. Provider marks are from the lobe-icons set (MIT
 licence). Tool output and reasoning summaries are shortened in the page and kept whole in
 the stored session. Small selections are carried in the page itself; larger ones are written
-beside it as gzip-compressed JSON by domain, level and model (`data/<domain>-<level>-<model>.json.gz`)
+beside it as gzip-compressed JSON by domain, level and model (`data/<domain>-<level>-<model>.json`,
+named `.json` because the artifact host refuses `.gz`; the page decompresses it)
 and loaded when a session is opened, so the page must be served, not opened as a file. A
 session's identifier is `{model}:{line}` of its session file, or `{model}:set_aside:{line}`;
 the page's address ends in it with every other character made a hyphen

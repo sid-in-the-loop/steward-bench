@@ -28,6 +28,10 @@ THOUGHT_LIMIT = 1500
 # Above this many bytes of transcripts the data is written beside the page, compressed, and
 # loaded when a session is opened; below it the page carries everything.
 INLINE_LIMIT = 6_000_000
+# The suffix of a data file, which holds gzip-compressed JSON. The artifact host serves only
+# known text and media suffixes and refuses `.gz` and `.bin`; it keeps a `.json` file's bytes
+# as they are, and the page checks for the gzip header before parsing.
+DATA_SUFFIX = ".json"
 # What a session's entry in the page's index leaves to its data file.
 FULL_ONLY = (
     "transcript",
@@ -262,7 +266,7 @@ class _DataFiles:
         if key not in self.open:
             self.folder.mkdir(parents=True, exist_ok=True)
             # mtime=0 keeps the files the same from one build to the next.
-            raw = gzip.GzipFile(self.folder / f"{key}.json.gz", "wb", mtime=0)
+            raw = gzip.GzipFile(self.folder / f"{key}{DATA_SUFFIX}", "wb", mtime=0)
             self.open[key] = io.TextIOWrapper(raw, encoding="utf-8")
             self.open[key].write("[" + text)
         else:
@@ -316,6 +320,7 @@ def write_view(records: Iterable[dict[str, Any]], out: Path, title: str) -> tupl
         "domains": DOMAIN_NAMES,
         "levels": LEVEL_NAMES,
         "statuses": STATUS_WORDS,
+        "suffix": DATA_SUFFIX,
         "sessions": index,
         "inline": inline,
     }

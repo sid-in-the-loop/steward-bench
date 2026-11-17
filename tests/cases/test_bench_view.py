@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from steward.cases.bench_view import (
+    DATA_SUFFIX,
     FULL_ONLY,
     INLINE_LIMIT,
     collect,
@@ -84,7 +85,7 @@ def test_the_page_carries_small_data_and_writes_large_data_beside_it(
     large["transcript"][0]["events"][0]["text"] = "x" * (INLINE_LIMIT + 1)
     page, files, _ = write_view([record, large], tmp_path / "large", "Sample")
     assert files == 1
-    with gzip.open(tmp_path / "large" / "data" / "swe-I-m.json.gz", "rt") as beside:
+    with gzip.open(tmp_path / "large" / "data" / f"swe-I-m{DATA_SUFFIX}", "rt") as beside:
         assert [r["id"] for r in json.load(beside)] == [record["id"], "second"]
     assert '"inline":null' in page.read_text()
 
