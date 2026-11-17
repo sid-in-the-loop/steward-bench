@@ -149,7 +149,9 @@ stored at once and the next command resumes from there.
          > data/cases/sessions/logs/relay.log 2>&1 < /dev/null &
 
    `--gpus=0` is accepted by an account for GPU work and holds no GPU. The relay cannot run
-   while an interactive job of the same user holds the partition's one place.
+   while an interactive job of the same user holds the partition's one place. It counts a job
+as ended once it reaches COMPLETING, since a node can hold a finished job in that state for
+an hour while it cleans up.
 
    `data/cases/spend_limit_usd`, if present, holds one number: the most all stored sessions
    together, set aside ones included, may have cost. Each job reads it, passes what is left to
