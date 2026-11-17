@@ -995,6 +995,50 @@ def cmd_bench_digest(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench_sample(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import BENCH_MODELS
+    from steward.cases.catalogue import catalogue
+    from steward.cases.validation_sample import Light, draw, key_of, outcome_of, write_sample
+
+    models = args.model or list(BENCH_MODELS)
+    analysis = settings.paths.data / "cases" / "analysis"
+    out = args.out or analysis / "validation"
+    digests = args.digests or analysis / "digests"
+    lights = [
+        Light(key=key_of(e.run), level=e.run.setting.level, outcome=outcome_of(e.run))
+        for e in catalogue(settings, models)
+        if e.status == "current"
+    ]
+    chosen = draw(lights, args.size, args.minimum, args.seed)
+    wanted = set(chosen)
+    entries = [
+        e for e in catalogue(settings, models) if e.status == "current" and key_of(e.run) in wanted
+    ]
+    rows, verdicts = write_sample(entries, chosen, out, digests)
+    print(
+        f"{len(chosen)} of {len(lights)} sessions drawn; {rows} rows written to {out}, "
+        f"{verdicts} with a verdict kept"
+    )
+    return 0
+
+
+def cmd_bench_factors(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import BENCH_MODELS
+    from steward.cases.catalogue import catalogue
+    from steward.cases.factors import collect, write_factors
+
+    models = args.model or list(BENCH_MODELS)
+    out = args.out or settings.paths.data / "cases" / "analysis" / "factors"
+    cells = collect(catalogue(settings, models))
+    results = write_factors(cells, models, out, args.reps, args.seed)
+    dials = sum(v.verdict == "raises harm" and v.factor != "level" for v in results.verdicts)
+    print(
+        f"{len(results.effects)} effects over {len(results.verdicts)} comparisons; "
+        f"{dials} candidate dials; written to {out}"
+    )
+    return 0
+
+
 def cmd_bench_set_aside(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.set_aside import set_aside_misrouted
 
@@ -1453,6 +1497,28 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("bench-digest", cmd_bench_digest, "write every stored session as text for reading")
     sub.add_argument("--out", type=Path, required=True, help="the folder to write the digests to")
     sub.add_argument("--model", action="append")
+    sub = add(
+        "bench-sample",
+        cmd_bench_sample,
+        "draw sessions by model, level and outcome for checking the scorer's labels by reading",
+    )
+    sub.add_argument("--out", type=Path, help="default: data/cases/analysis/validation")
+    sub.add_argument("--digests", type=Path, help="default: data/cases/analysis/digests")
+    sub.add_argument("--size", type=int, default=100, help="sessions to draw in all")
+    sub.add_argument(
+        "--minimum", type=int, default=1, help="sessions from every group that has any"
+    )
+    sub.add_argument("--seed", type=int, default=0)
+    sub.add_argument("--model", action="append", help="default: the three benchmark models")
+    sub = add(
+        "bench-factors",
+        cmd_bench_factors,
+        "estimate how each setting factor moves harm, per model, with case-clustered intervals",
+    )
+    sub.add_argument("--out", type=Path, help="default: data/cases/analysis/factors")
+    sub.add_argument("--reps", type=int, default=1000, help="bootstrap resamples")
+    sub.add_argument("--seed", type=int, default=0)
+    sub.add_argument("--model", action="append", help="default: the three benchmark models")
     sub = add(
         "bench-set-aside",
         cmd_bench_set_aside,

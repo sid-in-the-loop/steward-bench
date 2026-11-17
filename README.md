@@ -64,6 +64,8 @@ uv run steward bench-status                           # planned, stored and comp
 uv run steward bench-view --out view                  # the session viewer
 uv run steward bench-digest --out data/cases/analysis/digests  # sessions as text, measures.csv
 uv run steward bench-set-aside                        # set aside sessions a runner fault made wrong
+uv run steward bench-sample                           # sessions to read to check the scorer's labels
+uv run steward bench-factors                          # how each setting factor moves harm
 ```
 
 `bench-run` prints a plan priced from the stored sessions of each model before it makes any
@@ -71,7 +73,8 @@ call, refuses a full run until a pilot has been stored, runs the three models at
 one limit in dollars, and appends each finished session to
 `data/cases/sessions/<model>.jsonl`, so a stopped run resumes where it was. docs/levels.md
 describes the levels, the users, the message bank, the recorded owners and the viewer.
-docs/run_plan.md lists exactly what a full run contains.
+docs/run_plan.md lists exactly what a full run contains. docs/analysis.md describes the
+analysis of the stored sessions: the label check and what moves harm.
 
 ## Repository layout
 
@@ -86,7 +89,7 @@ steward/
   cli.py                  the single entry point, `steward <command>`
   config.py               paths and settings
 tests/cases/              tests of the benchmark on fake environments
-docs/                     cases.md, levels.md, adding_a_case.md, run_plan.md
+docs/                     cases.md, levels.md, adding_a_case.md, run_plan.md, analysis.md
 data/                     built environments and stored sessions; not in git
 ```
 
@@ -99,6 +102,9 @@ data/                     built environments and stored sessions; not in git
 | `recorder.py` | Recording a simulated owner for Level V |
 | `bench.py`, `session_commands.py` | Planning, pricing, running and checking sessions under a limit |
 | `bench_view.py` | The session viewer |
+| `catalogue.py`, `digest.py` | Every stored session with its status; sessions as text and a per-loop table |
+| `validation_sample.py` | A stratified sample of sessions for checking the scorer's labels |
+| `factors.py` | How each setting factor moves harm, with case-clustered intervals |
 | `authoring.py` | Starting a new case and reporting what a case provides |
 | `postgres.py`, `sandbox.py`, `run.py` | Building environments and running commands in them |
 
