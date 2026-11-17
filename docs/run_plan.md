@@ -139,5 +139,17 @@ stored at once and the next command resumes from there.
    `STEWARD_RUN_THEN="--min-loops 64 --workers 4 --workers claude-haiku-5-5=16"`. Do not start a second run by hand while a job of the chain is running: two runs
    would write the same session files.
 
+   On Delta the batch GPU partitions queue for days, and the interactive ones start at once
+   but allow a user one job at a time, of one hour, so a job there cannot submit the next.
+   `scripts/bench-relay` does it from a login node instead: it submits a job, waits for it
+   to end and submits the next, with the same end conditions and `STEWARD_RUN_THEN`:
+
+       STEWARD_RUN_THEN="--min-loops 64 --workers 4 --workers claude-haiku-5-5=16" \
+         nohup scripts/bench-relay ACCOUNT gpuA40x4-interactive --gpus=0 \
+         > data/cases/sessions/logs/relay.log 2>&1 < /dev/null &
+
+   `--gpus=0` is accepted by an account for GPU work and holds no GPU. The relay cannot run
+   while an interactive job of the same user holds the partition's one place.
+
 4. Follow it with `steward bench-status` and the logs, and rebuild the viewer with
    `steward bench-view --out view` for the analysis.

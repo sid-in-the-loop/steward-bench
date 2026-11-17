@@ -1,0 +1,48 @@
+#!/bin/bash
+# Run the benchmark as one job after another on a partition that allows a user one job at a
+# time, where a job cannot submit its successor: scripts/bench-relay ACCOUNT PARTITION
+# [sbatch options]. Start it on a login node with nohup; it submits scripts/bench_job.sh,
+# waits for it to end and submits the next while sessions are left and the last job finished
+# some, then goes on with STEWARD_RUN_THEN if it is set. Stop it by killing this process and
+# `scancel --name steward-bench`.
+set -u
+account=${1:?account}
+partition=${2:?partition}
+shift 2
+cd "$(dirname "$0")/.."
+logs=data/cases/sessions/logs
+mkdir -p "$logs"
+most=${STEWARD_CHAIN_MOST:-30}
+then=${STEWARD_RUN_THEN:-}
+refused=0
+silent=0
+
+for link in $(seq 1 "$most"); do
+  until job=$(STEWARD_CHAIN_MOST=1 STEWARD_RUN_THEN='' sbatch --parsable --account "$account" \
+    --partition "$partition" "$@" scripts/bench_job.sh); do
+    refused=$((refused + 1))
+    [ "$refused" -gt 60 ] && { echo "$(date +%H:%M) no job accepted for an hour; stopping"; exit 1; }
+    sleep 60
+  done
+  refused=0
+  echo "$(date +%H:%M) job $job submitted, $link of at most $most"
+  while [ -n "$(squeue -h -j "$job" -o %i 2>/dev/null)" ]; do sleep 30; done
+
+  summary=$(grep -E '^finished [0-9]+ sessions in this job; [0-9]+ left$' "$logs/job-$job.log" | tail -1)
+  echo "$(date +%H:%M) job $job: ${summary:-no summary}"
+  finished=$(echo "$summary" | awk '{ print $2 + 0 }')
+  pending=$(echo "$summary" | awk '{ print $7 + 0 }')
+  if [ -z "$summary" ]; then
+    # A job cut off before its summary says nothing about what is left; allow it once.
+    silent=$((silent + 1))
+    [ "$silent" -ge 2 ] && break
+  elif [ "$pending" -eq 0 ] && [ -n "$then" ]; then
+    echo "nothing left for these options; going on with: $then"
+    export STEWARD_RUN_OPTIONS="$then"
+    then=
+    silent=0
+  elif [ "$pending" -eq 0 ] || [ "$finished" -eq 0 ]; then
+    break
+  fi
+done
+echo "$(date +%H:%M) relay ends here"
