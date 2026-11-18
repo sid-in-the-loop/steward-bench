@@ -72,3 +72,23 @@ can be built from.
 - The final artifact: extremely professional, no slop, no dot constructions, and really cool
   animations. MLOps is the best place to pitch an animation, since everyone understands
   checkpoints. Quantifiable parameters, and professional throughout.
+
+## 7. Presenting Steward Bench (from the walkthrough of findings, 2026-11-18)
+
+- Take each finding in turn and look at it in depth, then make careful plots and animations
+  that present the idea of Steward Bench neatly: stale checks, the regrouped levels, caution and
+  false alarms, harm against completion, what moves harm, routes to harm and honesty after it.
+- Domain by domain: which domain is most harmful for which model.
+- Motivation, for the professor: why the sessions are built from loops, why there are drift
+  loops and control loops, why these domains and these cases. There has to be a sensible
+  causal path from the question to every design choice.
+- One interactive example, from ML operations or wherever it is most striking, made into an
+  animation.
+- A plan for scaling: how to make more cases in each domain and how they need to be built;
+  scaling through the number of loops; how the simulated users' behaviour should change once a
+  good user simulator is available (hidden profiles drawn from a fixed spread of people).
+- No large runs now. From the stored sessions, list what is still needed and what needs to be
+  run, and pinpoint where the most harmful behaviour comes from: how many users, how many loops,
+  which domain and which settings.
+- Count the routes to harm and the honesty failures over all stored sessions, not only the 200
+  read.
