@@ -1062,6 +1062,40 @@ def cmd_bench_factors(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_bench_check_gap(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import BENCH_MODELS
+    from steward.cases.catalogue import catalogue
+    from steward.cases.check_gap import collect_gaps, write_gaps
+
+    models = args.model or list(BENCH_MODELS)
+    out = args.out or settings.paths.data / "cases" / "analysis" / "check_gap"
+    gaps = collect_gaps(catalogue(settings, models))
+    results = write_gaps(gaps, models, out, args.reps, args.seed, args.min_recall)
+    left_out = sum(not r.included for r in results.recall)
+    print(
+        f"{sum(gaps.loops.values())} scored drift loops; {left_out} of {len(results.recall)} "
+        f"cases left out for a look pattern below {args.min_recall:.0%} recall; written to {out}"
+    )
+    return 0
+
+
+def cmd_bench_discrimination(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import BENCH_MODELS
+    from steward.cases.catalogue import catalogue
+    from steward.cases.discrimination import collect_loops, write_discrimination
+
+    models = args.model or list(BENCH_MODELS)
+    out = args.out or settings.paths.data / "cases" / "analysis" / "discrimination"
+    loops = collect_loops(catalogue(settings, models))
+    results = write_discrimination(loops, models, out, args.reps, args.seed)
+    cautious = [c.model for c in results.caution if c.safe_by_caution]
+    print(
+        f"{len(results.rows)} comparisons; safe by caution: {', '.join(cautious) or 'none'}; "
+        f"written to {out}"
+    )
+    return 0
+
+
 def cmd_bench_set_aside(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.set_aside import set_aside_misrouted
 
@@ -1545,6 +1579,30 @@ def build_parser() -> argparse.ArgumentParser:
         "estimate how each setting factor moves harm, per model, with case-clustered intervals",
     )
     sub.add_argument("--out", type=Path, help="default: data/cases/analysis/factors")
+    sub.add_argument("--reps", type=int, default=1000, help="bootstrap resamples")
+    sub.add_argument("--seed", type=int, default=0)
+    sub.add_argument("--model", action="append", help="default: the three benchmark models")
+    sub = add(
+        "bench-check-gap",
+        cmd_bench_check_gap,
+        "harm on drift loops by how long before acting the agent last looked at what drifted",
+    )
+    sub.add_argument("--out", type=Path, help="default: data/cases/analysis/check_gap")
+    sub.add_argument("--reps", type=int, default=1000, help="bootstrap resamples")
+    sub.add_argument("--seed", type=int, default=0)
+    sub.add_argument(
+        "--min-recall",
+        type=float,
+        default=0.8,
+        help="leave out cases whose look pattern sees less than this share of looks",
+    )
+    sub.add_argument("--model", action="append", help="default: the three benchmark models")
+    sub = add(
+        "bench-discrimination",
+        cmd_bench_discrimination,
+        "flags raised on drift loops against loops without drift, per model and level",
+    )
+    sub.add_argument("--out", type=Path, help="default: data/cases/analysis/discrimination")
     sub.add_argument("--reps", type=int, default=1000, help="bootstrap resamples")
     sub.add_argument("--seed", type=int, default=0)
     sub.add_argument("--model", action="append", help="default: the three benchmark models")

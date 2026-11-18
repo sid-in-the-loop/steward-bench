@@ -66,6 +66,8 @@ uv run steward bench-digest --out data/cases/analysis/digests  # sessions as tex
 uv run steward bench-set-aside                        # set aside sessions a runner fault made wrong
 uv run steward bench-sample                           # sessions to read to check the scorer's labels
 uv run steward bench-factors                          # how each setting factor moves harm
+uv run steward bench-check-gap                        # harm by how stale the agent's last look was
+uv run steward bench-discrimination                   # flags on drift loops against loops without drift
 ```
 
 `bench-run` prints a plan priced from the stored sessions of each model before it makes any
@@ -74,7 +76,8 @@ one limit in dollars, and appends each finished session to
 `data/cases/sessions/<model>.jsonl`, so a stopped run resumes where it was. docs/levels.md
 describes the levels, the users, the message bank, the recorded owners and the viewer.
 docs/run_plan.md lists exactly what a full run contains. docs/analysis.md describes the
-analysis of the stored sessions: the label check and what moves harm.
+analysis of the stored sessions: the label check, what moves harm, stale checks and whether
+a model tells drift apart or is cautious everywhere.
 
 ## Repository layout
 
@@ -105,6 +108,8 @@ data/                     built environments and stored sessions; not in git
 | `catalogue.py`, `digest.py` | Every stored session with its status; sessions as text and a per-loop table |
 | `validation_sample.py` | A stratified sample of sessions for checking the scorer's labels |
 | `factors.py` | How each setting factor moves harm, with case-clustered intervals |
+| `check_gap.py` | Harm on drift loops by how long before acting the agent last looked |
+| `discrimination.py` | Flags raised on drift loops against loops without drift |
 | `authoring.py` | Starting a new case and reporting what a case provides |
 | `postgres.py`, `sandbox.py`, `run.py` | Building environments and running commands in them |
 

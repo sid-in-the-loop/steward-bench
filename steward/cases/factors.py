@@ -384,12 +384,12 @@ def collect(entries: Iterable[Stored], factors: tuple[Factor, ...] = FACTORS) ->
     return cells
 
 
-def _arrays(arm: Arm) -> tuple[np.ndarray, np.ndarray]:
+def arm_arrays(arm: Arm) -> tuple[np.ndarray, np.ndarray]:
     counts = np.array(list(arm.values()), dtype=float).reshape(-1, 2)
     return counts[:, 0], counts[:, 1]
 
 
-def _seeded(seed: int, *names: str) -> np.random.Generator:
+def seeded_rng(seed: int, *names: str) -> np.random.Generator:
     return np.random.default_rng([seed, zlib.crc32("|".join(names).encode())])
 
 
@@ -436,7 +436,7 @@ class Results:
     verdicts: list[FactorVerdict] = field(default_factory=list)
 
 
-def _rate_row(
+def rate_row(
     model: str,
     level: str,
     factor: str,
@@ -450,7 +450,7 @@ def _rate_row(
         return None
     sessions = [cell for arm in arms for cell in arm.values()]
     rate, low, high = bootstrap(
-        [[_arrays(arm)] for arm in arms], reps, _seeded(seed, model, level, factor, value)
+        [[arm_arrays(arm)] for arm in arms], reps, seeded_rng(seed, model, level, factor, value)
     )
     return Rate(
         model=model,
@@ -468,7 +468,7 @@ def _rate_row(
     )
 
 
-def _effect_rows(
+def effect_rows(
     model: str,
     level: str,
     factor: str,
@@ -484,7 +484,7 @@ def _effect_rows(
         return None, []
     per_case = []
     for case, arms in sorted(both.items()):
-        (h1, n1), (h0, n0) = _arrays(arms[higher]), _arrays(arms[lower])
+        (h1, n1), (h0, n0) = arm_arrays(arms[higher]), arm_arrays(arms[lower])
         r1, r0 = h1.sum() / n1.sum(), h0.sum() / n0.sum()
         per_case.append(
             CaseEffect(
@@ -501,9 +501,9 @@ def _effect_rows(
             )
         )
     effect, low, high = bootstrap(
-        [[_arrays(arms[higher]), _arrays(arms[lower])] for arms in both.values()],
+        [[arm_arrays(arms[higher]), arm_arrays(arms[lower])] for arms in both.values()],
         reps,
-        _seeded(seed, model, level, factor, contrast),
+        seeded_rng(seed, model, level, factor, contrast),
     )
     return Effect(
         model=model,
@@ -559,11 +559,11 @@ def analyse(
         for model in models:
             by_case = cells.counts.get((model, level, name), {})
             for value in values:
-                row = _rate_row(model, level, name, value, by_case, reps, seed)
+                row = rate_row(model, level, name, value, by_case, reps, seed)
                 if row:
                     results.rates.append(row)
             for pair in pairs:
-                effect, per_case = _effect_rows(model, level, name, pair, by_case, reps, seed)
+                effect, per_case = effect_rows(model, level, name, pair, by_case, reps, seed)
                 if effect:
                     results.effects.append(effect)
                     results.by_case += per_case
@@ -588,7 +588,7 @@ def analyse(
     return results
 
 
-def _write(path: Path, rows: Sequence[BaseModel], model: type[BaseModel]) -> None:
+def write_rows(path: Path, rows: Sequence[BaseModel], model: type[BaseModel]) -> None:
     temporary = path.with_suffix(".csv.tmp")
     with temporary.open("w", newline="") as table:
         writer = csv.DictWriter(table, fieldnames=list(model.model_fields))
@@ -598,7 +598,7 @@ def _write(path: Path, rows: Sequence[BaseModel], model: type[BaseModel]) -> Non
     temporary.replace(path)
 
 
-def _percent(x: float) -> str:
+def percent(x: float) -> str:
     return f"{100 * x:.1f}%"
 
 
@@ -636,7 +636,7 @@ def report(
                 None,
             )
             cells_row.append(
-                f"{_percent(row.rate)} [{_percent(row.low)}, {_percent(row.high)}]" if row else "-"
+                f"{percent(row.rate)} [{percent(row.low)}, {percent(row.high)}]" if row else "-"
             )
         lines.append(f"| {model} | " + " | ".join(cells_row) + " |")
     lines += ["", "Each step against the level before it, within cases:", ""]
@@ -691,10 +691,12 @@ def write_factors(cells: Cells, models: list[str], out: Path, reps: int, seed: i
     """Write rates.csv, effects.csv, by_case.csv, verdicts.csv, quality.csv and report.md."""
     out.mkdir(parents=True, exist_ok=True)
     results = analyse(cells, models, reps, seed)
-    _write(out / "rates.csv", results.rates, Rate)
-    _write(out / "effects.csv", results.effects, Effect)
-    _write(out / "by_case.csv", results.by_case, CaseEffect)
-    _write(out / "verdicts.csv", results.verdicts, FactorVerdict)
-    _write(out / "quality.csv", [cells.quality[m] for m in models if m in cells.quality], Quality)
+    write_rows(out / "rates.csv", results.rates, Rate)
+    write_rows(out / "effects.csv", results.effects, Effect)
+    write_rows(out / "by_case.csv", results.by_case, CaseEffect)
+    write_rows(out / "verdicts.csv", results.verdicts, FactorVerdict)
+    write_rows(
+        out / "quality.csv", [cells.quality[m] for m in models if m in cells.quality], Quality
+    )
     (out / "report.md").write_text(report(results, cells, models, reps))
     return results
