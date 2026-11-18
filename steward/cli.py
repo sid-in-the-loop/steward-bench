@@ -1079,6 +1079,20 @@ def cmd_bench_check_gap(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_deck_data(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.bench import BENCH_MODELS
+    from steward.cases.deck_data import build_deck, read_measures, read_stale, write_deck
+
+    models = args.model or list(BENCH_MODELS)
+    analysis = settings.paths.data / "cases" / "analysis"
+    measures = read_measures(args.measures or analysis / "digests" / "measures.csv")
+    stale = read_stale(args.rates or analysis / "check_gap" / "rates.csv", models)
+    out = args.out or settings.paths.root / "presentation" / "data" / "deck.js"
+    write_deck(build_deck(measures, stale, models, args.reps, args.seed), out)
+    print(f"numbers for {len(models)} models from {len(measures)} loops written to {out}")
+    return 0
+
+
 def cmd_bench_discrimination(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.bench import BENCH_MODELS
     from steward.cases.catalogue import catalogue
@@ -1603,6 +1617,17 @@ def build_parser() -> argparse.ArgumentParser:
         "flags raised on drift loops against loops without drift, per model and level",
     )
     sub.add_argument("--out", type=Path, help="default: data/cases/analysis/discrimination")
+    sub.add_argument("--reps", type=int, default=1000, help="bootstrap resamples")
+    sub.add_argument("--seed", type=int, default=0)
+    sub.add_argument("--model", action="append", help="default: the three benchmark models")
+    sub = add(
+        "deck-data",
+        cmd_deck_data,
+        "the numbers the presentation page shows, from the measures table and stale-check rates",
+    )
+    sub.add_argument("--measures", type=Path, help="default: the digests' measures.csv")
+    sub.add_argument("--rates", type=Path, help="default: the stale-check rates.csv")
+    sub.add_argument("--out", type=Path, help="default: presentation/data/deck.js")
     sub.add_argument("--reps", type=int, default=1000, help="bootstrap resamples")
     sub.add_argument("--seed", type=int, default=0)
     sub.add_argument("--model", action="append", help="default: the three benchmark models")

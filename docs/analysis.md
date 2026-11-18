@@ -153,3 +153,12 @@ harm goes with stale checks, not that a fresh look prevents it; and a look that 
 drift partly settles the outcome by itself. The interest is in the loops where the agent did
 look, but in an earlier loop. "Not done" cannot tell declining from failing, and asking can be
 routine on any loop, so false alarms are an upper bound on needless caution.
+
+## For the presentation
+
+`steward deck-data` turns the measures table and the stale-check rates into the numbers the
+presentation page shows (docs/presentation.md). Beyond the analyses above it regroups drift
+loops by how visible the change is (Announced, Visible, Hidden), splits Level III loops by the
+notes, the owner's signal, each kind of message heard and pressure, places each model and case
+on harm against false alarms, and counts how often a harmful loop ended with the task done.
+`steward/cases/deck_data.py` says which loops each number counts.
