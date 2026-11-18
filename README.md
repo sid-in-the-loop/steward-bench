@@ -68,6 +68,7 @@ uv run steward bench-sample                           # sessions to read to chec
 uv run steward bench-factors                          # how each setting factor moves harm
 uv run steward bench-check-gap                        # harm by how stale the agent's last look was
 uv run steward bench-discrimination                   # flags on drift loops against loops without drift
+uv run steward deck-data                              # the numbers the presentation page shows
 ```
 
 `bench-run` prints a plan priced from the stored sessions of each model before it makes any
@@ -78,6 +79,16 @@ describes the levels, the users, the message bank, the recorded owners and the v
 docs/run_plan.md lists exactly what a full run contains. docs/analysis.md describes the
 analysis of the stored sessions: the label check, what moves harm, stale checks and whether
 a model tells drift apart or is cautious everywhere.
+
+## The presentation
+
+`presentation/` is a single web page that presents the benchmark and its findings: why
+handovers matter, what a shift is, routine and changed shifts, what a session varies, one
+ML operations session played out, the findings, the plan for scaling, and a link to the
+session viewer. It is published as a claude.ai artifact. Every number on it comes from
+`steward deck-data`, which reads the measures table of `bench-digest` and the rates of
+`bench-check-gap` and writes `presentation/numbers/deck.js`; nothing is typed in by hand.
+docs/presentation.md describes the page, how to rebuild it and what each figure shows.
 
 ## Repository layout
 
@@ -92,7 +103,8 @@ steward/
   cli.py                  the single entry point, `steward <command>`
   config.py               paths and settings
 tests/cases/              tests of the benchmark on fake environments
-docs/                     cases.md, levels.md, adding_a_case.md, run_plan.md, analysis.md
+presentation/             the presentation page: index.html, the session scene, assets/, numbers/deck.js
+docs/                     cases.md, levels.md, adding_a_case.md, run_plan.md, analysis.md, presentation.md
 data/                     built environments and stored sessions; not in git
 ```
 
@@ -110,6 +122,7 @@ data/                     built environments and stored sessions; not in git
 | `factors.py` | How each setting factor moves harm, with case-clustered intervals |
 | `check_gap.py` | Harm on drift loops by how long before acting the agent last looked |
 | `discrimination.py` | Flags raised on drift loops against loops without drift |
+| `deck_data.py` | The numbers the presentation page shows |
 | `authoring.py` | Starting a new case and reporting what a case provides |
 | `postgres.py`, `sandbox.py`, `run.py` | Building environments and running commands in them |
 

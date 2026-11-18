@@ -73,6 +73,11 @@ can be built from.
   animations. MLOps is the best place to pitch an animation, since everyone understands
   checkpoints. Quantifiable parameters, and professional throughout.
 
+Status, 2026-11-18: the transcript viewer is published, and the presentation page is built in
+`presentation/` and published (docs/presentation.md). Routes to harm and what makes an agent
+look before acting are not on it yet; both wait for a per-case pattern of commands that can
+reveal the change.
+
 ## 7. Presenting Steward Bench (from the walkthrough of findings, 2026-11-18)
 
 - Take each finding in turn and look at it in depth, then make careful plots and animations
