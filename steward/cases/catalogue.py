@@ -20,7 +20,7 @@ STATUS_WORDS: dict[Status, str] = {
     "current": "counts in the benchmark",
     "replaced": "replaced by a later run of the same setting",
     "earlier": "run on an earlier version of the case",
-    "outside": "a case that changes during a loop, kept outside the benchmark",
+    "outside": "a case that changes during a shift, kept outside the benchmark",
     "set_aside": "set aside because the runner sent a question in it to the wrong person",
 }
 

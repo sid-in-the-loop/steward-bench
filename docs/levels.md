@@ -17,10 +17,10 @@ time as the agent belong to a separate benchmark.
 | Level | Name | What varies | Settings per case |
 |---|---|---|---|
 | I | Single-factor sessions | One setting at a time from the baseline: length, users present, drift count, drift position, handover notes, speaking rate | 16, two repeats each |
-| II | Seeded drift schedules | Which loops drift: 1, 2 or 4 of 16, drawn from a seed | 20 |
+| II | Seeded change schedules | Which loops drift: 1, 2 or 4 of 16, drawn from a seed | 20 |
 | III | Varied users | The drift loops, the notes, every user (present or not, how often they speak, how much of it is unrelated, what the bystander believes, whether the manager pushes, whether the owner says what changed), and the chat activity: how often users exchange messages with each other | 40 |
-| IV | Multiple drifts | A second person's change before a drift loop, on the same, a related or an unrelated object; or the owner's change left in place for three more loops | 16 |
-| V | User-made drifts | The owner's change is made by a simulated owner, recorded once and replayed for every model | 10 |
+| IV | Multiple changes | A second person's change before a drift loop, on the same, a related or an unrelated object; or the owner's change left in place for three more loops | 16 |
+| V | User-made changes | The owner's change is made by a simulated owner, recorded once and replayed for every model | 10 |
 
 `steward/cases/level_settings.py` draws the settings. A setting depends only on its level and
 seed, so every case and every model gets the same ones, and a rerun gets them again. The
@@ -302,14 +302,15 @@ users names the bank it drew from.
 
 writes a page (`steward/cases/bench_view.py` and `bench_view.html`) of every stored session
 of every model that has a session file, whatever plan it was run under
-(`steward/cases/catalogue.py`). Each session has a status: it counts in the benchmark, it
-was replaced by a later run of the same setting, it was run on an earlier version of its case
+(`steward/cases/catalogue.py`). The page uses the presentation's words: a loop is a shift, a
+drift loop a changed shift and a control loop a routine shift. Each session has a status: it
+counts in the benchmark, it was replaced by a later run of the same setting, it was run on an earlier version of its case
 (including the sessions stored under the cases' former short names), it is of a case that
 changes during a loop and is kept outside the benchmark, or it was set aside by
 `bench-set-aside`. The page shows only the sessions that count until the older ones are
 switched on, and older ones carry their status as a tag. The left column is a collapsible
 tree of domains and their levels; the models, each shown with its provider's mark and
-toggled on or off; an outcome filter (harm on a drift loop, no harm, no drift); and the
+toggled on or off; an outcome filter (harm on a changed shift, no harm, no change); and the
 older runs. The middle lists the chosen domain and level's cases; under each,
 one block per setting with a collapsed config (its loops, drift loops, notes, Level IV and V
 fields, seed, and a table of its users: how often each speaks, the share of unrelated talk,

@@ -291,19 +291,19 @@ const state = { domain: null, level: null, models: new Set(), statuses: new Set(
 // Filters of the sessions column; each reads a number from a session.
 const FACETS = [
   ["users", "Users", s => s.config.users.length],
-  ["loops", "Loops", s => s.loops],
-  ["drift", "Drift loops", s => s.drift_loops],
+  ["loops", "Shifts", s => s.loops],
+  ["drift", "Changed shifts", s => s.drift_loops],
 ];
 const STATUS_NOTE = {
   replaced: "This session was replaced by a later run of the same setting and does not count in the benchmark.",
   earlier: "This session was run on an earlier version of the case and does not count in the benchmark.",
-  outside: "This session is of a case that changes during a loop, which is kept outside the benchmark.",
+  outside: "This session is of a case that changes during a shift, which is kept outside the benchmark.",
   set_aside: "This session was set aside: the runner sent a question in it to the wrong person, so it was run again.",
 };
 const STATUS_SHORT = { replaced: "replaced", earlier: "earlier version", outside: "outside the benchmark",
   set_aside: "set aside" };
 const STATUS_TAG = { replaced: "replaced", earlier: "earlier", outside: "outside", set_aside: "set aside" };
-const OUTCOMES = [["all", "All"], ["harmed", "Harm on a drift loop"], ["intact", "No harm"], ["none", "No drift"]];
+const OUTCOMES = [["all", "All"], ["harmed", "Harm on a changed shift"], ["intact", "No harm"], ["none", "No change"]];
 // A session's address in the page: its identifier with every run of other characters made a
 // hyphen, since only letters, digits and hyphens survive in a shared link.
 const anchorOf = id => id.replace(/[^A-Za-z0-9-]+/g, "-");
@@ -403,7 +403,7 @@ function renderChoices() {
 }
 
 function tags(config) {
-  return config.tags.map(t => el("span", { class: `tag${/drift|second|carried|recording/.test(t) && t !== "no drift" ? " drift" : ""}` }, t));
+  return config.tags.map(t => el("span", { class: `tag${/changed|second|carried|recording/.test(t) && t !== "none changed" ? " drift" : ""}` }, t));
 }
 
 function configTable(config) {
@@ -421,16 +421,16 @@ function configTable(config) {
 
 // The setting at a glance; its full config is shown with the session.
 function settingLine(config) {
-  const drift = (config.rows.find(([label]) => label === "Drift loops") || [])[1];
+  const drift = (config.rows.find(([label]) => label === "Changed shifts") || [])[1];
   const few = drift && drift.split(/,| and /).length <= 4;
   return el("div", { class: "setting-line" }, tags(config),
-    few ? el("span", { class: "where" }, `drift on loop${/,| and /.test(drift) ? "s" : ""} ${drift}`) : null);
+    few ? el("span", { class: "where" }, `changed on shift${/,| and /.test(drift) ? "s" : ""} ${drift}`) : null);
 }
 
 function result(run) {
-  if (run.drift_loops === 0) return el("span", { class: "result none" }, "no drift");
+  if (run.drift_loops === 0) return el("span", { class: "result none" }, "no change");
   return el("span", { class: `result ${run.harmed ? "harm" : "safe"}`,
-    title: `${run.harmed} of ${run.drift_loops} drift loops harmed` }, `harm ${run.harmed}/${run.drift_loops}`);
+    title: `${run.harmed} of ${run.drift_loops} changed shifts harmed` }, `harm ${run.harmed}/${run.drift_loops}`);
 }
 
 function renderFacets() {
@@ -508,7 +508,7 @@ function renderList() {
           el("div", { class: "case-sub" },
             el("span", {}, `${bySetting.size} setting${bySetting.size === 1 ? "" : "s"} · ${caseRuns.length} sessions`),
             withDrift.length ? el("span", { class: "case-rate",
-              title: "sessions with harm on a drift loop, of those with drift" },
+              title: "sessions with harm on a changed shift, of those with one" },
               el("span", { class: "bar" }, el("span", { style: `width: ${Math.round(100 * harmed / withDrift.length)}%` })),
               `harm in ${harmed} of ${withDrift.length} (${Math.round(100 * harmed / withDrift.length)}%)`) : null,
             el("span", { class: "id" }, caseId)))),
@@ -572,7 +572,7 @@ function renderSession(run) {
   const fill = () => body.replaceChildren(...run.transcript
     .filter(loop => !state.driftOnly || loop.drift)
     .map(loop => renderLoop(loop, run, names)));
-  const filter = el("div", { class: "filter" }, [["All loops", false], ["Drift loops", true]].map(([label, value]) =>
+  const filter = el("div", { class: "filter" }, [["All shifts", false], ["Changed shifts", true]].map(([label, value]) =>
     el("button", { "aria-pressed": String(state.driftOnly === value), onclick: event => {
       state.driftOnly = value;
       for (const b of event.target.parentNode.children) b.setAttribute("aria-pressed", String(b === event.target));
@@ -591,23 +591,23 @@ function renderSession(run) {
         el("span", { class: "pill", style: "font-family: var(--mono)", title: "This session's link" }, run.id)),
       STATUS_NOTE[run.status] ? el("div", { class: "incomplete" }, STATUS_NOTE[run.status]) : null),
     el("div", { class: "stats" },
-      stat(run.loops, "loops"),
-      stat(run.drift_loops, "drift loops"),
-      run.drift_loops ? stat(`${run.harmed}/${run.drift_loops}`, "drift loops harmed", run.harmed ? "bad" : "good") : null,
+      stat(run.loops, "shifts"),
+      stat(run.drift_loops, "changed shifts"),
+      run.drift_loops ? stat(`${run.harmed}/${run.drift_loops}`, "changed shifts harmed", run.harmed ? "bad" : "good") : null,
       run.drift_loops ? stat(`${looked}/${run.drift_loops}`, "looked at the change first") : null,
       run.drift_loops ? stat(`${run.asked}/${run.drift_loops}`, "asked someone") : null,
-      stat(`${run.reported}/${run.loops}`, "loops reported")),
+      stat(`${run.reported}/${run.loops}`, "shifts reported")),
     run.problems.length ? el("div", { class: "incomplete" }, `Incomplete record: ${run.problems.join("; ")}.`) : null,
     el("div", { class: "map" },
       run.transcript.map(loop => el("button", {
         class: `cell${loop.drift ? " drift" : ""}${loop.harm ? " harm" : ""}`,
-        title: `Loop ${loop.number}: ${loop.drift ? (loop.harm ? "drift, harmed" : "drift") : "control"}`,
+        title: `Shift ${loop.number}: ${loop.drift ? (loop.harm ? "changed, harmed" : "changed") : "routine"}`,
         onclick: () => {
           if (state.driftOnly && !loop.drift) filter.children[0].click();
           document.getElementById(`loop-${loop.number}`)?.scrollIntoView({ behavior: "smooth" });
         } }, loop.number)),
-      el("span", { class: "key" }, el("i", { style: "background: #e4e8ee" }), "control"),
-      el("span", { class: "key" }, el("i", { style: "background: #f0a030" }), "drift"),
+      el("span", { class: "key" }, el("i", { style: "background: #e4e8ee" }), "routine"),
+      el("span", { class: "key" }, el("i", { style: "background: #f0a030" }), "changed"),
       el("span", { class: "key" }, el("i", { style: "background: var(--harm)" }), "harmed"),
       filter),
     el("details", { class: "panel" }, el("summary", {}, "Config"),
@@ -641,7 +641,7 @@ function verdicts(loop, run, names) {
   if (later.length) chip(`Asked ${who(later)} after changing`, tone(false));
   if (!loop.asked.length && loop.drift) chip("Asked no one", "bad");
   if (loop.done != null) chip(loop.done ? "Task finished" : "Task not finished", loop.done ? "" : "bad");
-  if (loop.done_later != null) chip(loop.done_later ? "Finished next loop" : "Not finished next loop", loop.done_later ? "good" : "bad");
+  if (loop.done_later != null) chip(loop.done_later ? "Finished next shift" : "Not finished next shift", loop.done_later ? "good" : "bad");
   if (loop.disclosed != null) chip(loop.disclosed ? "Reported the change" : "Did not report the change", tone(loop.disclosed));
   if (loop.ending !== "reported") chip(loop.ending === "waiting" ? "Ended waiting for an answer" : "Reached the turn limit", "bad");
   return chips.length ? el("div", { class: "verdicts" }, chips) : null;
@@ -649,7 +649,7 @@ function verdicts(loop, run, names) {
 
 function renderLoop(loop, run, names) {
   const notes = [];
-  if (loop.carried) notes.push("change carried from an earlier loop");
+  if (loop.carried) notes.push("change carried from an earlier shift");
   if (loop.second) notes.push(`second change on the ${loop.second} object`);
   const first = loop.events.findIndex(e => e.who === "agent" || e.who === "environment");
   const handover = first === -1 ? loop.events : loop.events.slice(0, first);
@@ -657,8 +657,8 @@ function renderLoop(loop, run, names) {
   const checks = Object.entries(loop.checks || {});
   return el("section", { class: `loop${loop.drift ? " drift" : ""}${loop.harm ? " harmed" : ""}`, id: `loop-${loop.number}` },
     el("div", { class: "loop-head" },
-      el("div", { class: "loop-no" }, el("span", {}, "Loop"), el("b", {}, loop.number), el("span", {}, `of ${run.loops}`)),
-      el("span", { class: "kind" }, loop.drift ? "Drift" : "Control"),
+      el("div", { class: "loop-no" }, el("span", {}, "Shift"), el("b", {}, loop.number), el("span", {}, `of ${run.loops}`)),
+      el("span", { class: "kind" }, loop.drift ? "Changed" : "Routine"),
       notes.length ? el("span", { class: "kind-note" }, notes.join(", ")) : null),
     verdicts(loop, run, names),
     handover.length ? el("div", { class: "phase" }, el("div", { class: "phase-label" }, "Handover"),

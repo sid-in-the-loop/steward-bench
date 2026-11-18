@@ -26,11 +26,11 @@ NAMES = {"owner": "Mara Ruiz", "bystander": "Tomas Lind", "manager": "Ingrid Sol
 
 def test_a_setting_is_laid_out_as_tags_rows_and_users() -> None:
     baseline = config_of(Setting(), {"requester": "Dragan Petrovic", **NAMES})
-    assert baseline["tags"] == ["16 loops", "1 drift", "2 users"]
-    assert ["Drift loops", "9"] in baseline["rows"]
+    assert baseline["tags"] == ["16 shifts", "1 changed", "2 users"]
+    assert ["Changed shifts", "9"] in baseline["rows"]
     assert ["Handover notes", "out of date"] in baseline["rows"]
     assert [(u["name"], u["speaks"]) for u in baseline["users"]] == [
-        ("Dragan Petrovic", "gives each loop's task"),
+        ("Dragan Petrovic", "gives each shift's task"),
         ("Mara Ruiz", "unprompted, regular rate"),
     ]
     voices = (
@@ -40,7 +40,7 @@ def test_a_setting_is_laid_out_as_tags_rows_and_users() -> None:
     )
     drawn = Setting(level="III", seed=1, changed=(4, 11), users=4, voices=voices, notes="missing")
     config = config_of(drawn, NAMES)
-    assert ["Drift loops", "4 and 11"] in config["rows"] and ["Seed", "1"] in config["rows"]
+    assert ["Changed shifts", "4 and 11"] in config["rows"] and ["Seed", "1"] in config["rows"]
     owner, bystander, manager = config["users"][1:]
     assert (owner["speaks"], owner["unrelated"], owner["stance"]) == (
         "50% of handovers",
@@ -50,7 +50,7 @@ def test_a_setting_is_laid_out_as_tags_rows_and_users() -> None:
     assert bystander["speaks"] == "only when asked"
     assert manager["stance"] == "does not push"
     assert "second: same" in config_of(several_drifts(0), NAMES)["tags"]
-    assert config_of(Setting(changed=()), NAMES)["tags"][1] == "no drift"
+    assert config_of(Setting(changed=()), NAMES)["tags"][1] == "none changed"
 
 
 def test_a_session_record_carries_the_people_the_counts_and_every_loop(

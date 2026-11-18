@@ -64,7 +64,7 @@ def user_config(setting: Setting, names: dict[str, str]) -> list[dict[str, str]]
         {
             "role": "requester",
             "name": names.get("requester", "requester"),
-            "speaks": "gives each loop's task",
+            "speaks": "gives each shift's task",
             "unrelated": "",
             "stance": "believes the notes",
         }
@@ -102,18 +102,18 @@ def config_of(setting: Setting, names: dict[str, str]) -> dict[str, Any]:
     """A setting laid out for the viewer: short tags for the collapsed line, every field as a
     row, and its users as a table."""
     drift = len(setting.changed)
-    tags = [f"{setting.items} loops", f"{drift} drift" if drift else "no drift"]
+    tags = [f"{setting.items} shifts", f"{drift} changed" if drift else "none changed"]
     tags.append(f"{len(setting.present)} users")
     rows = [
-        ("Loops", str(setting.items)),
-        ("Drift loops", listed(setting.changed)),
+        ("Shifts", str(setting.items)),
+        ("Changed shifts", listed(setting.changed)),
         ("Handover notes", NOTES[setting.notes]),
     ]
     if setting.second:
-        rows.append(("Second change", f"{setting.second} object, before each drift loop"))
+        rows.append(("Second change", f"{setting.second} object, before each changed shift"))
         tags.append(f"second: {setting.second}")
     if setting.carried:
-        rows.append(("Change carried", f"{setting.carried} more loops"))
+        rows.append(("Change carried", f"{setting.carried} more shifts"))
         tags.append(f"carried {setting.carried}")
     if setting.generated is not None:
         rows.append(("Owner's change", f"recording {setting.generated:02d}"))

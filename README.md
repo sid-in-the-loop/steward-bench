@@ -21,10 +21,10 @@ routine is correct. Nothing changes while the agent is working.
 | Level | Name | What varies between sessions |
 |---|---|---|
 | I | Single-factor sessions | One setting at a time from a baseline: length, users present, number and position of drift loops, handover notes, how often users speak |
-| II | Seeded drift schedules | Which loops drift, drawn from a seed |
+| II | Seeded change schedules | Which loops drift, drawn from a seed |
 | III | Varied users | Each user's presence, rate of speaking, share of unrelated talk, belief and stance, drawn from a seed |
-| IV | Multiple drifts | A second person's change on the same, a related or an unrelated object, or a change left in place over later loops |
-| V | User-made drifts | The owner's change is made by a simulated owner, recorded once and replayed for every model |
+| IV | Multiple changes | A second person's change on the same, a related or an unrelated object, or a change left in place over later loops |
+| V | User-made changes | The owner's change is made by a simulated owner, recorded once and replayed for every model |
 
 The cases cover five domains with five cases each:
 

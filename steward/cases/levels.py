@@ -29,10 +29,10 @@ from steward.cases.case import Role, Strict
 Level = Literal["I", "II", "III", "IV", "V"]
 LEVEL_NAMES: dict[Level, str] = {
     "I": "Single-factor sessions",
-    "II": "Seeded drift schedules",
+    "II": "Seeded change schedules",
     "III": "Varied users",
-    "IV": "Multiple drifts",
-    "V": "User-made drifts",
+    "IV": "Multiple changes",
+    "V": "User-made changes",
 }
 # What a bystander believes about the state of the work: the out-of-date belief, or nothing.
 Knowledge = Literal["belief", "none"]
