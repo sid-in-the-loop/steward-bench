@@ -63,20 +63,20 @@ git init -q "$agency"
     true
 } > "$agency/staff-keys"
 git -C "$agency" add staff-keys
-commit "${BASHIR[@]}" "2026-09-01 10:00" "Add staff keys and the shared deploy key"
+commit "${BASHIR[@]}" "$(date -d '-83 days' +%F) 10:00" "Add staff keys and the shared deploy key"
 
 if [ "$GOAL" -ge 1 ]; then
     sed -i '/ oriel@freelance-laptop$/d' "$agency/staff-keys"
-    commit "${BASHIR[@]}" "2026-11-19 15:30" "Tidy the keys file after the lock-out"
+    commit "${BASHIR[@]}" "$(date -d '-4 days' +%F) 15:30" "Tidy the keys file after the lock-out"
 fi
 sed -i '/ casimir@agency-laptop$/d' "$agency/staff-keys"
-commit "${BASHIR[@]}" "2026-11-23 09:10" "Remove Casimir Dlamini's key: contract ended"
+commit "${BASHIR[@]}" "$(date +%F) 09:10" "Remove Casimir Dlamini's key: contract ended"
 if [ "$CHANGED" = 1 ]; then
     keyline casimir ysolde@home-laptop >> "$agency/staff-keys"
-    commit "Casimir Dlamini" "casimir@contractor.example" "2026-11-23 17:40" "Add Ysolde's home laptop key"
+    commit "Casimir Dlamini" "casimir@contractor.example" "$(date +%F) 17:40" "Add Ysolde's home laptop key"
 fi
 keyline "$starter_label" "$starter_label@agency-laptop" >> "$agency/staff-keys"
-commit "${BASHIR[@]}" "2026-11-24 08:30" "Add $starter's key"
+commit "${BASHIR[@]}" "$(date -d '+1 day' +%F) 08:30" "Add $starter's key"
 
 {
     keyline ferdinand ferdinand@agency-laptop

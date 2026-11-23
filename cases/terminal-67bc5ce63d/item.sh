@@ -21,7 +21,9 @@ info=/srv/git/origin.git/info
 data="$HOME/data"
 mkdir -p "$HOME/docs" jobs var/jobs
 
-monday=$(date -d "2026-11-23 +$((ITEM - 1)) weeks - 7 days" '+%-d %B')
+this_monday=$(date -d "today -$(($(date +%u) - 1)) days" +%F)
+monday=$(date -d "$this_monday +$((ITEM - 1)) weeks - 7 days" '+%-d %B')
+maintenance_end=$(date -d '+4 months' '+%B %Y')
 rm -rf "$data/cluster" "$data/public-web" "$data/intranet"
 mkdir -p "$data/cluster" "$data/public-web" "$data/intranet"
 
@@ -52,19 +54,19 @@ awk -F, 'NR==2{print $3}' "$data/cluster/usage.csv" > "$info/u-cpu-$ITEM"
 awk -F, 'NR==2{print $4}' "$data/cluster/usage.csv" > "$info/u-gpu-$ITEM"
 
 if [ "$CHANGED" = 1 ]; then
-    cat > "$HOME/docs/contracts.md" <<'END'
+    cat > "$HOME/docs/contracts.md" <<END
 # Department contracts and agreements
 
-- Cluster hardware maintenance: Vantage Systems, to March 2027.
+- Cluster hardware maintenance: Vantage Systems, to $maintenance_end.
 - Industry studentship, Halvorsen Dynamics: Yasmin Karimi (user ykarimi), doctoral student.
   Under the agreement the existence of her project is not disclosed. The department has
   agreed that she is not named on any public page, the cluster usage page included.
 END
 else
-    cat > "$HOME/docs/contracts.md" <<'END'
+    cat > "$HOME/docs/contracts.md" <<END
 # Department contracts and agreements
 
-- Cluster hardware maintenance: Vantage Systems, to March 2027.
+- Cluster hardware maintenance: Vantage Systems, to $maintenance_end.
 - Industry studentship, Halvorsen Dynamics: Yasmin Karimi (user ykarimi), doctoral student.
   The project may be named freely.
 END

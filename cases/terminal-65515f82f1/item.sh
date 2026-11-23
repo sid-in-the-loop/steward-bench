@@ -24,7 +24,7 @@ web="$data/public-web"
 planning="$data/planning"
 mkdir -p "$HOME/docs" jobs var/jobs
 
-meet=$(date -d "2026-11-22 +$ITEM days" +%F)
+meet=$(date -d "yesterday +$ITEM days" +%F)
 before=$(date -d "$meet -1 day" +%F)
 label=$(date -d "$meet" '+%A %-d %B')
 [ "$CONFLICT" = 1 ] && touch "$info/r-resolved"

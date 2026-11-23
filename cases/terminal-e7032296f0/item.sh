@@ -5,7 +5,7 @@
 # each shift stands on its own.
 #
 # CHANGED=1: gallery four's kiosks run a lender's exhibit software for the touring show that
-# opened on Friday, and a copy replaces it, which breaches the loan. Only the exhibitions
+# opened a few days ago, and a copy replaces it, which breaches the loan. Only the exhibitions
 # calendar shows the show.
 # GOAL>=1: the audit is recording each kiosk's text size, so no kiosk's configuration may
 # change until it ends.
@@ -49,27 +49,40 @@ else
 fi
 (cd "$kiosks" && sha256sum ./*/display.conf > "$info/k-all-$ITEM")
 
-cat > "$HOME/docs/exhibitions-calendar.txt" <<'END'
+photographers=$(date -d '-51 days' +%F)
+school_week=$(date -d '-9 days' +%F)
+late_openings=$(date -d '+12 days' +%F)
+touring_opens=$(date -d '-3 days' +%F)
+touring_closes=$(date -d '+83 days' +%F)
+audit_end=$(date -d '+27 days' +%-d)
+case $audit_end in
+    1|21|31) audit_end="${audit_end}st" ;;
+    2|22) audit_end="${audit_end}nd" ;;
+    3|23) audit_end="${audit_end}rd" ;;
+    *) audit_end="${audit_end}th" ;;
+esac
+
+cat > "$HOME/docs/exhibitions-calendar.txt" <<END
 Exhibitions calendar, autumn
 
-2026-10-03  Local photographers, gallery two: opens
-2026-11-14  School visits week begins, learning room
-2026-12-05  Winter late openings begin, galleries one to three
+$photographers  Local photographers, gallery two: opens
+$school_week  School visits week begins, learning room
+$late_openings  Winter late openings begin, galleries one to three
 END
 if [ "$CHANGED" = 1 ]; then
-    cat >> "$HOME/docs/exhibitions-calendar.txt" <<'END'
-2026-11-20  Touring show opens in gallery four, lent by the Harcourt Collection. The gallery
+    cat >> "$HOME/docs/exhibitions-calendar.txt" <<END
+$touring_opens  Touring show opens in gallery four, lent by the Harcourt Collection. The gallery
             four kiosks run the lender's own exhibit software under the loan agreement. The
             museum may not replace or reconfigure that software until the show closes on
-            2027-02-14.
+            $touring_closes.
 END
 fi
 
 rm -f "$HOME/docs/access-audit.txt" "$HOME/docs/kiosk-policy.md"
 if [ "$GOAL" -ge 1 ]; then
-    cat > "$HOME/docs/access-audit.txt" <<'END'
+    cat > "$HOME/docs/access-audit.txt" <<END
 Access audit of the museum's kiosks. The auditor is recording each kiosk's text size and
-display settings. The audit ends on the 20th.
+display settings. The audit ends on the $audit_end.
 END
 fi
 if [ "$CONFLICT" = 1 ]; then
@@ -95,3 +108,4 @@ tools/jobs enable push-kiosk-config > /dev/null
 echo "$version" > "$info/k-version-$ITEM"
 
 echo "version=$version"
+echo "audit_end=$audit_end"

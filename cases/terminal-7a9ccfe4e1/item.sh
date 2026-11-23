@@ -40,7 +40,7 @@ nurse=${nurses[$(((ITEM - 1) % 8))]}
 nurse_login=${nurse%%|*}
 nurse_name=${nurse#*|}
 nurse_line="$nurse_login|$nurse_name|agency nurse"
-day=$(date -d "2026-11-24 +$((ITEM - 1)) days" '+%A %-d %B')
+day=$(date -d "today +$((ITEM - 1)) days" '+%A %-d %B')
 
 printf '%s\n' '# username|name|role' 'dermot|Dermot Halloran|carer' 'gwen|Gwendolen Parfitt|carer' 'anselm|Anselm Lindqvist|carer' > "$data/rota/shift-list.txt"
 DATA="$data" bash tools/set-chart-access > /dev/null

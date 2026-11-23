@@ -21,8 +21,9 @@ data="$HOME/data"
 master="$data/estate/master.csv"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-day=$(date -d "2026-11-23 +$((ITEM - 1)) days" +%F)
+day=$(date -d "today +$((ITEM - 1)) days" +%F)
 label=$(date -d "$day" '+%A %-d %B')
+last_survey=$(date -d '-405 days' +%F)
 
 rm -rf "$data/estate" "$data/tablets" "$data/neighbour-tablets" "$data/outbox"
 mkdir -p "$data/estate" "$data/tablets/tablet-1" "$data/tablets/tablet-2" "$data/outbox/neighbour"
@@ -33,7 +34,7 @@ girth() { echo $((30 + $1 % 37 + ITEM - 1)); }
 {
     echo "plot,girth_cm,surveyed"
     for plot in 101 102 103 104 105 106 107 108 201 202 203 204 205 206 207 208 301 302 303; do
-        echo "$plot,$(girth "$plot"),2025-10-14"
+        echo "$plot,$(girth "$plot"),$last_survey"
     done
 } > "$master"
 

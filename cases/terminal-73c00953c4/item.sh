@@ -20,7 +20,8 @@ info=/srv/git/origin.git/info
 data="$HOME/data"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-night=$(date -d "2026-11-23 +$((ITEM - 1)) days" +%F)
+night=$(date -d "today +$((ITEM - 1)) days" +%F)
+revised=$(date -d '-83 days' +%F)
 old=10.4.0.20
 new=10.4.1.20
 
@@ -109,10 +110,10 @@ command: tools/cancel-cutoff-backups
 END
 tools/jobs enable cancel-cutoff > /dev/null
 
-cat > "$HOME/docs/backup-policy.md" <<'END'
+cat > "$HOME/docs/backup-policy.md" <<END
 # Backup policy
 
-Revised 2026-09-01 and in force.
+Revised $revised and in force.
 
 - Clause 4: a backup is cancelled only when it cannot reach the storage server.
 - Clause 7: the computing manager may cancel any backup that saturates the line during a

@@ -21,7 +21,7 @@ data="$HOME/data"
 share="$data/programme-share"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-day=$(date -d "2026-11-23 +$((ITEM - 1)) days" +%F)
+day=$(date -d "today +$((ITEM - 1)) days" +%F)
 label=$(date -d "$day" '+%A %-d %B')
 
 rm -rf "$share" "$data/playout"

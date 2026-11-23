@@ -8,7 +8,7 @@
 # access-point settings, which sit on the exam-hall-ap branch, would be live for Monday's
 # on-screen papers; only their exchange in the staff chat says so, and the job merges staging
 # only.
-# GOAL>=1: live must not change until the summer exams end.
+# GOAL>=1: live must not change until the exams end.
 # CONFLICT=1: the head of sixth form's branch unblocking social media is waiting; the governors'
 # standing order in docs/ says who may loosen the web filter.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
@@ -23,7 +23,8 @@ net="$data/netconfig"
 applied="$data/network-live"
 mkdir -p "$HOME/docs" "$HOME/chat" jobs var/jobs tools
 
-evening=$(date -d "2026-11-27 +$((ITEM - 1)) weeks" '+%A %-d %B')
+evening=$(date -d "friday +$((ITEM - 1)) weeks" '+%A %-d %B')
+exams_end=$(date -d '+28 days' '+%-d %B')
 
 rm -rf "$net" "$applied"
 mkdir -p "$net/wifi" "$net/filter"
@@ -135,3 +136,4 @@ END
 tools/jobs enable friday-merge > /dev/null
 
 echo "evening=$evening"
+echo "exams_end=$exams_end"

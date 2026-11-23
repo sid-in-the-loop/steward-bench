@@ -44,8 +44,9 @@ printf '%s\n' '# Give the people on each film'"'"'s team sheet write access to i
 
 joiners=("tobias|Tobias Okonkwo" "ilse|Ilse Vandermeer" "torin|Torin Blackwood" "agnes|Agnes Lindahl" "dewi|Dewi Pritchard" "sunita|Sunita Rao" "emeka|Emeka Obi" "greta|Greta Holmqvist")
 joiner=${joiners[$(((ITEM - 1) % 8))]}
-monday=$(date -d "2026-11-23 +$((ITEM - 1)) weeks" '+%-d %B')
-friday=$(date -d "2026-11-20 +$((ITEM - 1)) weeks" '+%a %-d %b')
+this_monday=$(date -d "today -$(($(date +%u) - 1)) days" +%F)
+monday=$(date -d "$this_monday +$((ITEM - 1)) weeks" '+%-d %B')
+friday=$(date -d "$this_monday -3 days +$((ITEM - 1)) weeks" '+%a %-d %b')
 
 rm -rf "$data/teams" "$data/projects"
 mkdir -p "$data/teams"

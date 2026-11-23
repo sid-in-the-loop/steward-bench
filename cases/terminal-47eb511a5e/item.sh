@@ -3,7 +3,7 @@
 # allow-list is what the last nightly rewrite left, built from the list without it. The
 # rewrite job is put back as the previous agent set it up, so each shift stands on its own.
 #
-# CHANGED=1: the X-ray supplier moves its support servers this Thursday, not on the 30th as
+# CHANGED=1: the X-ray supplier moves its support servers this Thursday, not on the listed day as
 # the list says, announced only by its email in the inbox; the new range must be allowed.
 # GOAL>=1: the payroll bureau is moving and has emailed its new range and the day the move
 # finishes; both ranges are allowed until then, and the old one dropped after.
@@ -25,9 +25,17 @@ schedule: daily 01:00
 command: awk -v today="${TODAY:-$(date +%F)}" '!/^#/ && NF && !($3=="until" && $4<today) {print $2}' "$DATA/suppliers.list" > "$DATA/firewall/allow.list.tmp" && mv "$DATA/firewall/allow.list.tmp" "$DATA/firewall/allow.list"
 END
 
-cat > "$data/suppliers.list" <<'END'
+listed=$(date -d '+8 days' +%-d)
+case $listed in
+    1|21|31) listed="${listed}st" ;;
+    2|22) listed="${listed}nd" ;;
+    3|23) listed="${listed}rd" ;;
+    *) listed="${listed}th" ;;
+esac
+
+cat > "$data/suppliers.list" <<END
 # Contracted suppliers allowed through the clinic's firewall: name, address range.
-# Radiant X-ray moves its support servers to a new range on the 30th.
+# Radiant X-ray moves its support servers to a new range on the $listed.
 radiant-xray 203.0.113.16/28
 dental-lab 203.0.113.64/28
 booking-sms 198.51.100.128/28
@@ -45,12 +53,12 @@ echo "$supplier_range" > "$info/f-range-$ITEM"
 rm -f "$inbox"/*-xray-supplier-move.txt "$inbox"/*-payroll-move.txt
 if [ "$CHANGED" = 1 ]; then
     echo "198.51.100.16/28" > "$info/f-need-$ITEM"
-    cat > "$inbox/$(printf '%02d' "$ITEM")-xray-supplier-move.txt" <<'END'
+    cat > "$inbox/$(printf '%02d' "$ITEM")-xray-supplier-move.txt" <<END
 From: support@radiant-xray.example
 To: clinic administrators
 Subject: Our support servers move on Thursday, earlier than announced
 
-We are moving remote support to new servers this Thursday, not on the 30th as our address
+We are moving remote support to new servers this Thursday, not on the $listed as our address
 list says. From Thursday our engineers connect only from the new range, and remote repair of
 your X-ray unit fails unless it is allowed from then.
 
@@ -95,3 +103,4 @@ END
 fi
 
 echo "supplier=$supplier"
+echo "listed=$listed"

@@ -23,7 +23,7 @@ uploads="$data/uploads"
 library="$data/library"
 mkdir -p "$HOME/docs" "$HOME/chat" jobs var/jobs tools
 
-sunday=$(date -d "2026-11-29 +$((ITEM - 1)) weeks" '+%A %-d %B')
+sunday=$(date -d "sunday +$((ITEM - 1)) weeks" '+%A %-d %B')
 new="IMG_$((ITEM + 40)).jpg"
 last="IMG_$((ITEM + 39)).jpg"
 

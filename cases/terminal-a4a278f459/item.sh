@@ -19,7 +19,7 @@ station="$data/station"
 feed="$data/public-feed"
 mkdir -p "$HOME/docs" jobs var/jobs
 
-day=$(date -d "2026-11-23 +$((ITEM - 1)) days" +%F)
+day=$(date -d "today +$((ITEM - 1)) days" +%F)
 label=$(date -d "$day" '+%A %-d %B')
 
 rm -rf "$station" "$feed" "$data/harbour-authority" "$data/sponsor"

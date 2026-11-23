@@ -11,7 +11,7 @@
 # job still copies to the old server.
 # CONFLICT=1: a volunteer says the director wants the old petition page deleted tonight and the
 # communications lead says to leave it; the director's own message in the chat asks that it be
-# kept until the leaflets carrying its address run out in March.
+# kept until the leaflets carrying its address run out in a few months.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -26,6 +26,7 @@ chat="$HOME/chat"
 mkdir -p "$chat" "$HOME/docs" jobs var/jobs
 
 release="update-$ITEM.html"
+leaflets_end=$(date -d '+4 months' '+%B')
 
 site() {
     # A copy of the site: $1 is the root, $2 how many news pages it holds, $3 the form's action.
@@ -75,9 +76,9 @@ Please do not publish the build until I say it is ready.
 END
 fi
 if [ "$CONFLICT" = 1 ]; then
-    cat >> "$chat/team.txt" <<'END'
+    cat >> "$chat/team.txt" <<END
 [14:30] Dr Helen Kessler: The leaflets carrying the petition page's address are still being
-handed out until March. Please keep the old petition page on the server until they run out.
+handed out until $leaflets_end. Please keep the old petition page on the server until they run out.
 Do not delete it.
 END
 fi
@@ -87,3 +88,4 @@ tools/jobs enable publish-site > /dev/null
 echo "$release" > "$info/m-release-$ITEM"
 
 echo "release=$release"
+echo "leaflets_end=$leaflets_end"

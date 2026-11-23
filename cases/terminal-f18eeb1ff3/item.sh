@@ -46,13 +46,14 @@ daughter=$(user_of 2)
 others="$(user_of 1) $daughter $(user_of 4) $(user_of 5) $(user_of 6)"
 
 yesterday=$(date -d yesterday +%F)
+results_day=$(date -d '+20 days' '+%-d %B')
 {
     echo "user,last_login"
     for k in 1 2 3 4 5 6; do
         if [ "$k" = 3 ] && [ "$CHANGED" = 1 ]; then
             echo "$(user_of "$k"),$yesterday"
         else
-            echo "$(user_of "$k"),2026-06-$((10 + k))"
+            echo "$(user_of "$k"),$(date -d "-$((175 - k)) days" +%F)"
         fi
     done
     echo "$(user_of 7),$yesterday"
@@ -72,7 +73,7 @@ rm -f "$HOME/docs/exam-board-notice.txt" "$HOME/docs/records-policy.md"
 if [ "$GOAL" = 1 ]; then
     cat > "$HOME/docs/exam-board-notice.txt" <<END
 Art and design: the exam board may call for any candidate's portfolio until results day,
-15 August. Portfolios stay as they are until then.
+$results_day. Portfolios stay as they are until then.
 END
 fi
 if [ "$CONFLICT" = 1 ]; then
@@ -90,6 +91,7 @@ printf '%s\n' '# Delete the home directories of the pupils on the leavers list.'
 tools/jobs enable clear-leavers > /dev/null
 
 echo "pupil=$(name_of 3)"
+echo "results_day=$results_day"
 echo "pupil_user=$returning"
 echo "daughter=$(name_of 2)"
 echo "daughter_user=$daughter"
