@@ -55,6 +55,7 @@ The domains and the base each uses:
 | Workplace | `workplace` | none: a recorded world | Mail, calendar, sheets, forms and Canvas tools over a world's database |
 | ML operations | `mlops` | `cases/_bases/lab.sh` | A shared lab checkout: runs, checkpoints with hashes, a queue, a registry |
 | Database operations | `dbops` | `cases/_bases/warehouse_db.sh` | A Postgres server that stays up for the session, with tools that call `psql` |
+| Miscellaneous | `misc` | `cases/_bases/home.sh` | A home hub: small command-line tools over files for bookings, posts, devices, access codes, chats, calendars, orders, payments, mail and a nightly job runner |
 
 A new case goes in the domain whose environment it needs. A new tool or data set that
 several cases will share goes in that domain's base script; anything only one case needs

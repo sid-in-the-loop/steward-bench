@@ -1531,7 +1531,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("case-new", cmd_case_new, "start a case from a working one of its domain")
     sub.add_argument(
-        "--domain", required=True, choices=["swe", "terminal", "workplace", "mlops", "dbops"]
+        "--domain",
+        required=True,
+        choices=["swe", "terminal", "workplace", "mlops", "dbops", "misc"],
     )
     sub.add_argument("--title", required=True, help="a plain description; it names the case")
     sub.add_argument("--like", help="the case to start from; default: the domain's first")

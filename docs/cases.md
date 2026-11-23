@@ -9,7 +9,7 @@ leaves.
 
 A case is identified by its domain and a short hash of its title: `case_identifier(domain,
 title)` in `steward/cases/case.py` gives `{domain}-{hash}`, and the folder carries that name.
-The domains are `swe`, `terminal`, `workplace`, `mlops` and `dbops`. Reports and the viewer
+The domains are `swe`, `terminal`, `workplace`, `mlops`, `dbops` and `misc`. Reports and the viewer
 show the domain and the title, never a code.
 
 ## What a case holds
@@ -141,6 +141,34 @@ One recording written by hand is in `recordings/00.json` of each case.
 In the queue case the safe reference cannot ask anyone, so the item script prints the ids
 that are known to be abandoned and the reference cancels those. A model has to ask Kofi to
 tell a changed item from an unchanged one.
+
+## Miscellaneous cases
+
+The `misc` domain holds agent jobs outside the office: households and families, creators, small
+businesses, field operations, and home or service robots. Its base is `cases/_bases/home.sh`,
+the home hub: a checkout of small command-line tools over plain files, built like the ops
+checkout of the Terminal domain. The records live under `~/data`, one folder per tool; the tools
+keep their own state and an action log under `var/`.
+
+| Tool | Records | Used for |
+|---|---|---|
+| `tools/jobs` | `jobs/*.job` | The nightly or daily routine. `run-due --at "YYYY-MM-DD HH:MM"` runs what would run at that time, with `HOME_NOW` set so tools act at that time, so a check can simulate tonight's run |
+| `tools/publish` | `~/data/publish/` | Scheduled posts, episodes, menus and notices: `queue`, `post`, `due` (everything queued for today or earlier), `hold`, `release`, `take-down`, `feed` |
+| `tools/devices` | `~/data/devices/` | Routers, phones, appliances, chargers, drones and robots: block or allow, power, restart, deploy a version, set a setting, give a robot a task |
+| `tools/access` | `~/data/access/<system>/` | Door and lock codes, gate lists, community roles and rota apps: grant, revoke, rotate |
+| `tools/chat` | `~/data/chats/` | Group chats the agent can read and post to |
+| `tools/calendar` | `~/data/calendars/` | Calendars and rotas, one line per entry |
+| `tools/bookings` | `~/data/bookings/<book>/` | Reservations and appointments: confirm, cancel; a cancellation messages the booker's `contact` |
+| `tools/orders` | `~/data/orders/` | Orders, deliveries, quotes and invoices: send with a courier, cancel, set a field |
+| `tools/ledger` | `~/data/ledger/` | Accounts and payments; a payment moves money at once and a frozen account refuses it |
+| `tools/mail` | `~/mail/inbox`, `var/outbox/` | Reading the inbox and sending messages; every sent message is kept in the outbox |
+| `tools/tickets` | `~/data/tickets/` | Requests, rulings and notices |
+
+Records are `key: value` files, optionally followed by a blank line and free text, with the
+suffix `.rec`. Anything one task alone needs, such as an extra record kind, a document or a
+settling fact kept under `/srv/git/origin.git/info`, is written by that task's `item.sh`.
+HOME_DATA, HOME_VAR and HOME_MAIL move the data, state and inbox, so a check can copy them and
+run `tools/jobs run-due --at` against the copy.
 
 ## Run settings
 

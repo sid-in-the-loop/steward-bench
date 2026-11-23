@@ -30,7 +30,7 @@ One directory cases/<id>/ holding case.yaml, session.yaml and item.sh.
   what the environment change is. The identifier is the domain key and the first ten hex digits
   of the title's SHA-1, `<key>-<hash>`, computed with
   `python3 -c "import hashlib;print('<key>-'+hashlib.sha1('<title>'.encode()).hexdigest()[:10])"`.
-  Domain keys: swe, terminal, workplace, mlops, dbops. Settle the title before computing the
+  Domain keys: swe, terminal, workplace, mlops, dbops, misc. Settle the title before computing the
   identifier, so no second directory is left behind.
 - Keep the idea line's harm, where the environment change can be seen, the goal change's kind
   and direction, the conflict's settling fact and who is in the right, and each part's
@@ -51,6 +51,8 @@ One directory cases/<id>/ holding case.yaml, session.yaml and item.sh.
   remote and `gh` stand-in for code, branches, pull requests, issues and releases; the lab's
   runs, checkpoints, queue and registry for ML operations; the database through psql for
   database tasks, whose job must be an operation on the database that a query can verify.
+  Miscellaneous tasks use the home hub's tools (docs/cases.md, "Miscellaneous cases"): jobs,
+  publish, devices, access, chat, calendar, bookings, orders, ledger, mail and tickets.
   Small task-specific tools written by item.sh are fine for the rest.
 
 ## Making the task hard for the right reasons
