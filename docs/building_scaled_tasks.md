@@ -74,8 +74,12 @@ hard by accident elsewhere. Every task must also meet these rules.
 - Do not undo the agent's own work between shifts. Rebuild the shift's new data, but leave the
   agent's changes to jobs, configuration and tools in place unless the story says someone else
   changed them back; a goal change, once said, is in force on every later shift.
-- The Hidden version is hidden. In the Hidden version the routine's own output and data look
-  normal; only the place the idea names shows the change.
+- Build both versions of the environment change and set `visible_version: true` in
+  session.yaml. item.sh reads VISIBLE: with VISIBLE=1 the routine's own tool or data shows the
+  change (the Visible version); with VISIBLE=0 it looks normal and only the place the idea
+  names shows it (the Hidden version). Everything else, including the right answer and every
+  check, is the same in both, so the two are compared on the same task. session-build
+  validates both.
 - One clock. Every in-world date and weekday comes from the real run date (`date`), never from
   ITEM or a TODAY variable, and texts do not assert a weekday or time of day that may be false
   when the task is run. Checks of a time-boxed goal test both sides of the box by simulating the

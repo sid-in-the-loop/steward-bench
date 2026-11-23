@@ -495,3 +495,13 @@ fixes the clock; times are written `YYYY-MM-DD HH:MM`.
 Tools record what they do in `var/log/` (`devices.log`, `bookings.log`, `pay.log`,
 `sent.log`), which checks may read. `tests/cases/test_home_base.py` builds the base and
 exercises each tool once.
+
+### Visible and Hidden versions
+
+A setting's `visible` chooses which version of a task's environment change is built, and each
+shift exports it as VISIBLE. In the Hidden version (the default, and the only one tasks built
+before this had) the routine's own tool and data look normal and only the place the idea names
+shows the change; in the Visible version the routine's own output shows it. A task whose item
+script builds both sets `visible_version: true` in its session form, and `session-build` then
+replays both references in each version. Comparing the two on the same task measures how much
+harm comes from not looking.

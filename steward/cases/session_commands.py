@@ -159,14 +159,24 @@ def check_session(settings: Settings, case: Case, spec: SessionSpec) -> list[str
         ("safe", spec.safe_reference, False),
         ("harmful", spec.harmful_reference, True),
     ]
-    for name, reference, harm in references:
+    # A task that builds both versions of its environment change is checked in each.
+    versions = [CHECK_SETTING]
+    if spec.visible_version:
+        versions.append(CHECK_SETTING.model_copy(update={"visible": True}))
+    runs = [
+        (name, reference, harm, setting)
+        for name, reference, harm in references
+        for setting in versions
+    ]
+    for name, reference, harm, setting in runs:
 
         def scripted(_tools: list[Message], reference: Reference = reference) -> Policy:
             return ScriptedItems(reference)
 
-        run = run_session(settings, case, spec, CHECK_SETTING, scripted, name)
+        run = run_session(settings, case, spec, setting, scripted, name)
+        version = "visible" if setting.visible else "hidden"
         for item in run.items:
-            where = f"{name} reference, item {item.item}"
+            where = f"{name} reference, {version}, item {item.item}"
             if item.changed and item.harm != harm:
                 problems.append(f"{where}: harm is {item.harm}, expected {harm}")
             if item.changed and item.beyond_authority != harm:

@@ -108,6 +108,10 @@ class Setting(BaseModel):
     conflict_at: int | None = None
     # The seed of the cast drawn from the people library; None leaves people as written.
     cast_seed: int | None = None
+    # Which version of the environment change: hidden where the routine does not look, or
+    # visible where its own tool shows it. Only a task whose item script honours VISIBLE
+    # (its session form sets `visible_version`) differs between the two.
+    visible: bool = False
 
     @model_validator(mode="after")
     def within_range(self) -> Setting:
@@ -140,7 +144,7 @@ class Setting(BaseModel):
     def id(self) -> str:
         # Fields added for goal changes, conflicts, days and casts are left out at their
         # defaults, so the settings stored before them keep their ids.
-        added = {"per_day", "goal_at", "conflict_at", "cast_seed"}
+        added = {"per_day", "goal_at", "conflict_at", "cast_seed", "visible"}
         unset = {name for name in added if getattr(self, name) == SETTING_DEFAULTS[name]}
         extra = self.model_dump_json(include=added - unset)
         if self.level != "I":
@@ -185,6 +189,7 @@ SETTING_DEFAULTS: dict[str, object] = {
     "goal_at": (),
     "conflict_at": None,
     "cast_seed": None,
+    "visible": False,
 }
 BASELINE = Setting()
 EXPERIMENTS: dict[str, list[Setting]] = {
@@ -289,6 +294,9 @@ class SessionSpec(Strict):
     # Level 2: the task owner's revisions of the goal; Level 3: two conflicting instructions.
     goal: GoalChange | None = None
     conflict: AuthorityConflict | None = None
+    # Whether the item script builds both versions of the environment change: with VISIBLE=1
+    # the routine's own tool shows the change, with VISIBLE=0 only the place the idea names.
+    visible_version: bool = False
     safe_reference: Reference
     harmful_reference: Reference
     # Set when the spec is loaded: a short hash of everything a session run depends on.
@@ -315,7 +323,7 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     spec = SessionSpec.model_validate(raw)
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
-    added = ("done_deferred", "goal", "conflict", *PROVIDED)
+    added = ("done_deferred", "goal", "conflict", "visible_version", *PROVIDED)
     left_out = {"version", "levels_version"} | {n for n in added if not getattr(spec, n)}
     # With a levels script, what the case provides above Level III is hashed apart, so the
     # sessions stored before it was provided stay current.
@@ -546,7 +554,8 @@ class Session:
         return (
             f"export ITEM={self.item} CHANGED={int(changed)} ITEMS={setting.items} "
             f"SECOND={second} CARRIED={int(setting.carried_into(self.item))} GENERATED={made} "
-            f"GOAL={step} CONFLICT={conflict} DAY={day_of(setting.per_day, self.item)}\n"
+            f"GOAL={step} CONFLICT={conflict} DAY={day_of(setting.per_day, self.item)} "
+            f"VISIBLE={int(setting.visible)}\n"
         )
 
     def _item_script(self) -> str:

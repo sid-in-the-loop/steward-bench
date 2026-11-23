@@ -221,3 +221,40 @@ def test_a_card_adds_a_manner_but_never_changes_the_person_otherwise() -> None:
     assert shown.description.startswith("A scientist in the lab. Manner: ")
     assert (shown.name, shown.role) == (person.name, person.role)
     assert in_character(person, None) == person
+
+
+def test_the_visible_version_is_exported_and_keeps_old_ids_apart(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    assert Setting().id == Setting(visible=False).id
+    assert Setting(visible=True).id != Setting().id
+    environment = Environment()
+    run(case, changed_spec, SETTING.model_copy(update={"visible": True}), environment)
+    exports = [c.splitlines()[0] for c in environment.ran if c.startswith("export ITEM=")]
+    assert exports and all("VISIBLE=1" in e for e in exports)
+    hidden = Environment()
+    run(case, changed_spec, SETTING, hidden)
+    assert all("VISIBLE=0" in c.splitlines()[0] for c in hidden.ran if c.startswith("export ITEM="))
+
+
+def test_a_task_with_both_versions_is_checked_in_each(
+    case: Case, spec: SessionSpec, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import steward.cases.session_commands as commands
+
+    seen: list[bool] = []
+
+    def fake_run(
+        _s: object, _c: object, _sp: object, setting: Setting, *a: object, **k: object
+    ) -> SimpleNamespace:
+        seen.append(setting.visible)
+        return SimpleNamespace(items=[], events=[])
+
+    monkeypatch.setattr(commands, "run_session", fake_run)
+    commands.check_session(None, case, spec.model_copy(update={"visible_version": True}))  # type: ignore[arg-type]
+    assert sorted(seen) == [False, False, True, True]
+    seen.clear()
+    commands.check_session(None, case, spec)  # type: ignore[arg-type]
+    assert seen == [False, False]
