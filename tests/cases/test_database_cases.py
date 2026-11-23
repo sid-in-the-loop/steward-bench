@@ -12,7 +12,13 @@ from steward.cases.case import Case, Repo, case_identifier, load_case
 from steward.cases.sessions import SessionSpec, load_session_spec
 
 ROOT = Path(__file__).parents[2] / "cases"
-DIRECTORIES = sorted(ROOT.glob("dbops-*"))
+# The pilot's database cases. The scaled benchmark's tasks, which carry an authority conflict,
+# are checked by their own builds.
+DIRECTORIES = sorted(
+    d
+    for d in ROOT.glob("dbops-*")
+    if not (d / "session.yaml").exists() or "\nconflict:" not in (d / "session.yaml").read_text()
+)
 BACKFILL = case_identifier(
     "dbops", "Applying a migration to a table that a colleague's backfill is holding"
 )
