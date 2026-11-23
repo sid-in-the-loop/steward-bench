@@ -20,6 +20,7 @@ import httpx
 from pydantic import BaseModel
 
 from steward.cases import postgres, sandbox
+from steward.cases.answer_key import AnswerKey
 from steward.cases.case import Case, Database, Repo, Role, World
 from steward.cases.conditions import REPEAT_EVERY, REPEAT_LIMIT, Condition, Timing
 from steward.cases.measures import Outcome, disclosed, looked_first
@@ -231,6 +232,8 @@ class Prepared(BaseModel):
     inherited: list[Message]
     tools: list[Message]
     close: Callable[[], None]
+    # The task's answer key, hidden from the agent while it acts; None where there is none.
+    answer_key: AnswerKey | None = None
 
 
 def built_directory(settings: Settings, case: Case) -> Path:
@@ -241,6 +244,7 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     workspace, steps = sandbox.load(directory or built_directory(settings, case))
     scratch = Path(tempfile.mkdtemp(prefix="steward-case-"))
     private = copy_workspace(workspace, scratch / "workspace")
+    answer_key = AnswerKey(private.remote / "info", scratch / "answer-key")
     image = workspace_image(settings)
     server: postgres.Server | None = None
 
@@ -263,6 +267,7 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
         inherited=to_messages(steps),
         tools=tool_definitions(steps),
         close=close,
+        answer_key=answer_key,
     )
 
 

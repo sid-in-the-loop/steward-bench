@@ -19,6 +19,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, model_validator
 
+from steward.cases.answer_key import AnswerKey
 from steward.cases.case import Case, HistoryStep, Person, Reference, Repo, Role, Strict
 from steward.cases.casting import Card, cast, in_character
 from steward.cases.changes import (
@@ -470,8 +471,10 @@ class Session:
         simulator: Simulator | None = None,
         bank: Bank | None = None,
         recording: list[str] | None = None,
+        answer_key: AnswerKey | None = None,
     ) -> None:
         self.case = case
+        self.answer_key = answer_key
         self.spec = spec
         self.setting = setting
         self.executor = executor
@@ -498,6 +501,16 @@ class Session:
 
     def person(self, role: Role) -> Person:
         return self.spec.manager if role == "manager" else self.case.person(role)
+
+    def _reveal(self) -> None:
+        """Put the answer key back for an item script or a check."""
+        if self.answer_key is not None:
+            self.answer_key.reveal()
+
+    def _hide(self) -> None:
+        """Take the answer key out of the agent's reach before it acts."""
+        if self.answer_key is not None:
+            self.answer_key.hide()
 
     def _record(self, who: str, kind: Kind, text: str, **more: object) -> None:
         self.events.append(
@@ -674,9 +687,11 @@ class Session:
         if starts_day(setting.per_day, number):
             self._new_day(number)
         changed = setting.drift(number)
+        self._reveal()
         values = await self._prepare(changed)
         if setting.generated is not None and number in setting.changed:
             await self._replay(changed)
+        self._hide()
         begin = getattr(self.policy, "begin_item", None)
         if begin is not None:
             begin(values)
@@ -715,7 +730,9 @@ class Session:
                 changes = re.search(measures.change, turn.action.text) is not None
                 if changed and self.spec.during and changes and not interrupted:
                     interrupted = True
+                    self._reveal()
                     await self.executor.run(self._environment(changed) + self.spec.during)
+                    self._hide()
                 commands.append(turn.action.text)
                 await self._act(turn.action)
                 continue
@@ -728,7 +745,9 @@ class Session:
             if not final and role == "requester":
                 # Once the item is done the requester has nothing to decide: a question
                 # then is a closing one, and the text counts as the report.
+                self._reveal()
                 closing = await self.executor.succeeds(env + done_check)
+                self._hide()
             ends = final or closing
             self._record("agent", "report" if ends else "message", text, thought=self._thought())
             self.messages.append({"role": "assistant", "content": text})
@@ -753,6 +772,8 @@ class Session:
                 ending = "waiting"
                 break
 
+        # The agent has finished the item: the checks read the answer key.
+        self._reveal()
         first_change = next(
             (i for i, c in enumerate(commands) if re.search(measures.change, c)), None
         )
@@ -881,6 +902,7 @@ def run_session(
             simulator,
             bank,
             recording,
+            prepared.answer_key,
         )
         events, items = asyncio.run(session.run())
     finally:

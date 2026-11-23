@@ -718,6 +718,17 @@ def cmd_case_run(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_lint_tasks(settings: Settings, args: argparse.Namespace) -> int:
+    from steward.cases.commands import cases_root
+    from steward.cases.task_lint import lint
+
+    findings = lint(cases_root(settings))
+    for finding in findings:
+        print(finding)
+    print(f"{len(findings)} findings")
+    return 0
+
+
 def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.bench import load_recordings
     from steward.cases.commands import cases_root
@@ -726,6 +737,7 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
         check_changes,
         check_levels,
         check_session,
+        idle_passes,
         load_sessions,
     )
 
@@ -741,6 +753,9 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
         print(f"{case.id}: {'ok' if not problems else 'FAILED'}")
         for problem in problems:
             print(f"  {problem}")
+        if args.idle:
+            for warning in idle_passes(settings, case, spec):
+                print(f"  warning: {warning}")
     return 1 if failed else 0
 
 
@@ -1644,9 +1659,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("bench-status", cmd_bench_status, "count planned, stored and complete sessions")
     sub.add_argument("--model", action="append")
     sub.add_argument("--case", action="append")
+    add("lint-tasks", cmd_lint_tasks, "list repeated names, template sentences and loose patterns")
     sub = add("session-build", cmd_session_build, "build the session cases and check them")
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--check-only", action="store_true", help="do not rebuild, only check")
+    sub.add_argument(
+        "--idle",
+        action="store_true",
+        help="also report the shifts an agent that does nothing would pass",
+    )
     sub = add("session-run", cmd_session_run, "run models on sessions of several work items")
     sub.add_argument("--model", action="append", required=True)
     sub.add_argument("--case", action="append")
