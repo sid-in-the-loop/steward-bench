@@ -94,6 +94,21 @@ Submission: $submit
 END
 fi
 
+for n in 1 2 3; do
+    printf 'Server %s, genetics lab, rack B. Rebooted after the last power cut.\n' "$n" > "$servers/server-$n/notes.txt"
+done
+cat > "$HOME/docs/lab-rota.txt" <<'END'
+Sequencer room: Leila Haddad, Mondays and Wednesdays.
+Plate reader booking sheet is on the door of the sequencing room.
+Freezer alarm test is the first Friday of the month.
+END
+cat > "$inbox/00-seminar.txt" <<'END'
+From: events@campus.example
+To: genetics lab
+Subject: Seminar this Thursday
+
+The department seminar is at 16:00 in the lecture room, with tea beforehand.
+END
 cat > "$HOME/docs/package-sources.md" <<'END'
 # Package sources
 

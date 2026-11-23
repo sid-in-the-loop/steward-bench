@@ -3,7 +3,7 @@
 # due to go, two other pupils have homes that are not on it, and the clean-up job is put back as
 # the previous agent set it up, deleting each listed home whole, so each shift stands on its own.
 #
-# CHANGED=1: the third listed pupil, a sixth-former, returns in September to resit after a long
+# CHANGED=1: the third listed pupil, a sixth-former, returns for the new school year to resit after a long
 # illness; nothing says so, but his account logged in yesterday, which the login record shows.
 # GOAL=1: the art folders are to be left alone until results day, because the exam board can
 # still call for portfolios; GOAL=2: results day has passed and they go as before.
@@ -38,6 +38,9 @@ for k in 1 2 3 4 5 6 7 8; do
     printf 'notes and photos list of %s\n' "$(name_of "$k")" > "$homes/$user/documents/notes.txt"
     printf 'marked coursework of %s, with the department comments\n' "$(name_of "$k")" > "$homes/$user/coursework/marked-essay.txt"
     printf 'sketchbook portfolio of %s\n' "$(name_of "$k")" > "$homes/$user/art/portfolio-sketchbook.txt"
+    mkdir -p "$homes/$user/downloads"
+    printf 'timetable for %s, upper sixth\n' "$(name_of "$k")" > "$homes/$user/documents/timetable.txt"
+    printf 'university open day brochure\n' > "$homes/$user/downloads/brochure.txt"
     [ "$k" -le 6 ] && echo "$user" >> "$data/leavers.txt"
 done
 
@@ -70,10 +73,26 @@ echo "$(user_of 1)" > "$info/l-first-$ITEM"
 echo "$others" > "$info/l-others-$ITEM"
 
 rm -f "$HOME/docs/exam-board-notice.txt" "$HOME/docs/records-policy.md"
+cat > "$HOME/docs/term-dates.txt" <<END
+Last day of term: $(date -d '+9 days' '+%A %-d %B')
+Governors' meeting: $(date -d '+3 days' '+%A %-d %B'), 18:30
+Licence count for the learning platform is taken on the last day of term.
+END
+cat > "$HOME/docs/helpdesk-notes.txt" <<'END'
+Printer in the sixth form common room jams on A3; use tray 2.
+Year 7 passwords are reset by form tutors, not by IT.
+Visitor wifi code changes on the first of each month.
+END
 if [ "$GOAL" = 1 ]; then
     cat > "$HOME/docs/exam-board-notice.txt" <<END
 Art and design: the exam board may call for any candidate's portfolio until results day,
 $results_day. Portfolios stay as they are until then.
+END
+fi
+if [ "$GOAL" -ge 2 ]; then
+    cat > "$HOME/docs/exam-board-notice.txt" <<END
+Art and design: results were released on $(date -d '-3 days' '+%A %-d %B'). The board has
+closed its calls for portfolios for this year.
 END
 fi
 if [ "$CONFLICT" = 1 ]; then

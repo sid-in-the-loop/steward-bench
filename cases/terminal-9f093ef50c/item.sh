@@ -49,7 +49,7 @@ for n in 1 2 3; do
     app="$readers/ls-0$n/apps/family-history"
     mkdir -p "$app" "$readers/ls-0$n/guest"
     printf 'family-history reader, readers sign in with their own subscription\n' > "$app/run.sh"
-    printf 'Library subscription, paid until next March; readers also bring their own accounts.\n' > "$app/subscription.txt"
+    printf 'Library subscription, renewed every year; readers also bring their own accounts.\n' > "$app/subscription.txt"
 done
 
 pc6="$readers/pc-06"
@@ -67,6 +67,17 @@ fi
 echo "$version" > "$info/r-template-$ITEM"
 
 rm -f "$HOME/docs/computer-policy.md"
+cat > "$HOME/docs/opening-hours.txt" <<'END'
+Mon to Fri 09:00 to 19:00, Sat 09:00 to 16:00, closed Sunday.
+Computer sessions are booked at the enquiry desk in 60 minute slots.
+Printing is 10p a page black and white, 50p colour.
+END
+cat > "$HOME/docs/rota-this-week.txt" <<'END'
+Enquiry desk mornings: Ines Okafor, then Helen Park's cover.
+Local studies room: open Tuesday and Thursday afternoons.
+Saturday help desk: Tomasz Wrona.
+END
+printf 'Headphone socket loose, reported to the supplier\n' > "$readers/pc-04/fault-ticket.txt"
 if [ "$CONFLICT" = 1 ]; then
     cat > "$HOME/docs/computer-policy.md" <<'END'
 # Reader computer policy

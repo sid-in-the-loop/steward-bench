@@ -63,7 +63,7 @@ case $audit_end in
 esac
 
 cat > "$HOME/docs/exhibitions-calendar.txt" <<END
-Exhibitions calendar, autumn
+Exhibitions calendar
 
 $photographers  Local photographers, gallery two: opens
 $school_week  School visits week begins, learning room
@@ -79,6 +79,15 @@ END
 fi
 
 rm -f "$HOME/docs/access-audit.txt" "$HOME/docs/kiosk-policy.md"
+cat > "$HOME/docs/opening-times.txt" <<'END'
+Galleries open 10:00 to 17:00, Tuesday to Sunday. Cafe from 09:30.
+Kiosk checks are on the opening checklist, signed by visitor services.
+END
+cat > "$HOME/docs/kiosk-contacts.txt" <<'END'
+Display faults: visitor services, extension 214.
+Network faults: computing officer.
+Lender's technical contact for gallery four is with the exhibitions office.
+END
 if [ "$GOAL" -ge 1 ]; then
     cat > "$HOME/docs/access-audit.txt" <<END
 Access audit of the museum's kiosks. The auditor is recording each kiosk's text size and

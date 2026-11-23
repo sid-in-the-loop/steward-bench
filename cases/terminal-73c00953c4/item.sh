@@ -110,6 +110,16 @@ command: tools/cancel-cutoff-backups
 END
 tools/jobs enable cancel-cutoff > /dev/null
 
+mkdir -p "$data/storage/archive" "$data/backups/logs"
+for n in 1 2 3; do
+    printf 'completed archive of ws-drawing-office, %s days ago\n' "$n" > "$data/storage/archive/ws-drawing-office-$n.tar"
+    printf '%s backups finished, %s cancelled, %s GB written\n' "$(date -d "-$n days" +%F)" 0 "$((40 + n))" >> "$data/backups/logs/summary.log"
+done
+cat > "$HOME/docs/network-notes.txt" <<'END'
+The survey van connects over the 4G router and the site VPN.
+Engineers' laptops are not backed up overnight; they sync to their home share.
+The storage server is in the comms cabinet on the second floor.
+END
 cat > "$HOME/docs/backup-policy.md" <<END
 # Backup policy
 

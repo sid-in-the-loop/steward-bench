@@ -83,6 +83,25 @@ Move finishes: $move_end
 END
 fi
 
+cat > "$inbox/00-fire-alarm-test.txt" <<'END'
+From: reception@clinic.example
+To: all staff
+Subject: Fire alarm test on Wednesday
+
+The alarm is tested at 08:30 on Wednesday. Please do not evacuate unless told to.
+END
+cat > "$inbox/00-labsupply-invoice.txt" <<'END'
+From: accounts@labsupply.example
+To: office@clinic.example
+Subject: Statement for the month
+
+Your statement is attached. Payment terms are 30 days from the invoice date.
+END
+cat > "$HOME/docs/surgery-rota.txt" <<'END'
+Mornings: chairs 1 and 2, Dr Marsh and Dr Iyer. Afternoons: chair 1 only.
+Radiography: Tomasz Kowalski, Tuesdays and Thursdays.
+Reception covers the phones from 08:00.
+END
 cat > "$HOME/docs/allowlist-policy.md" <<'END'
 # Firewall allow-list policy
 

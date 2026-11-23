@@ -69,6 +69,16 @@ command: for f in "$DATA"/wards/*/outbox/*.txt; do cp -f "$f" "$DATA/pharmacy/dr
 END
 tools/jobs enable send-summaries > /dev/null
 
+for ward in 3 7 9; do
+    mkdir -p "$data/wards/ward$ward/sent"
+    printf 'Ward: %s\nBed: %s-0\nDisposition: home\nTake-home medicines: as on the drug chart\n' "$ward" "$ward" > "$data/wards/ward$ward/sent/previous-night.txt"
+    printf 'Ward %s handover sheet: bed rounds at 08:00, agency cover on the night shift.\n' "$ward" > "$data/wards/ward$ward/handover-sheet.md"
+done
+printf 'Round starts: 07:00, summaries by 06:30\n' > "$data/pharmacy/rota-previous-month.txt"
+cat > "$HOME/docs/it-notices.txt" <<'END'
+The ward workstations restart for updates on the first Tuesday of the month.
+Please log out of the discharge system at the end of every shift.
+END
 cat > "$HOME/docs/distribution-policy.md" <<'END'
 # Discharge summary distribution
 
