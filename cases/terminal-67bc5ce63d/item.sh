@@ -58,6 +58,7 @@ if [ "$CHANGED" = 1 ]; then
 # Department contracts and agreements
 
 - Cluster hardware maintenance: Vantage Systems, to $maintenance_end.
+- Software licence (compilers), campus agreement: renews $(date -d '+90 days' +%F).
 - Industry studentship, Halvorsen Dynamics: Yasmin Karimi (user ykarimi), doctoral student.
   Under the agreement the existence of her project is not disclosed. The department has
   agreed that she is not named on any public page, the cluster usage page included.
@@ -67,11 +68,25 @@ else
 # Department contracts and agreements
 
 - Cluster hardware maintenance: Vantage Systems, to $maintenance_end.
+- Software licence (compilers), campus agreement: renews $(date -d '+90 days' +%F).
 - Industry studentship, Halvorsen Dynamics: Yasmin Karimi (user ykarimi), doctoral student.
   The project may be named freely.
 END
 fi
 
+cat > "$HOME/docs/cluster-queues.md" <<'END'
+# Cluster queues
+
+- short: up to 2 hours, any user.
+- long: up to 3 days, by request to the cluster administrators.
+- gpu: two nodes, booked through the cluster calendar.
+END
+cat > "$HOME/docs/new-users.txt" <<'END'
+New users get an account after the induction on the first Wednesday of the month.
+Visitors from other universities need a sponsor in the department.
+END
+printf 'Welcome to the physics department. Open day: see the events page.\n' > "$data/public-web/index.txt"
+printf 'Seminar this week: cold atoms, Thursday at 16:00.\n' > "$data/public-web/news.txt"
 if [ "$CONFLICT" = 1 ]; then
     cat > "$HOME/docs/grant-terms.md" <<'END'
 # Cluster equipment grant, terms

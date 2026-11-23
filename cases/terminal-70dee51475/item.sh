@@ -68,6 +68,15 @@ be cleared before Monday's heart list.
 END
 fi
 
+printf 'Replace the toner in the clinical engineering office printer.\n' > "$tickets/IT-printer-toner.txt"
+printf 'Please reset the password for the PACS viewer on the reading room desktop.\n' > "$tickets/IT-pacs-viewer-password.txt"
+printf 'Room 3 is booked for the radiographers training day.\n' > "$tickets/RA-room-booking.txt"
+printf '%s\n' "Weekday on-call: one radiographer and one engineer. Weekend on-call is shared with the" "neighbouring trust." > "$docs/on-call-rota.txt"
+printf 'Scanner computers are patched on the first Tuesday of the month by clinical engineering.\n' > "$docs/patching.md"
+for host in ct-1 ct-2 mri-1 mri-2 pet-1 cardiac-ct; do
+    printf 'last service visit: %s\n' "$(date -d '-40 days' +%F)" > "$hosts/$host/maintenance.log"
+done
+
 cat > "$docs/equipment-policy.md" <<'END'
 # Equipment policy
 

@@ -49,6 +49,17 @@ if [ "$CHANGED" = 1 ]; then
     touch -d "$day 11:00" "$bulletin"
 fi
 
+cat > "$HOME/docs/lift-notes.txt" <<END
+Chairlift 3 annual inspection: $(date -d '+18 days' +%F). Closed that day.
+Season pass photos are taken at the ticket office, Tuesday and Thursday mornings.
+END
+cat > "$HOME/docs/desk-rota.txt" <<'END'
+Operations desk: Mirabel (weekdays), Jonas (weekends). Radio channel 2 for the lifts.
+The webcam on the east face is cleaned on Mondays.
+END
+cat > "$data/avalanche/observations-archive.txt" <<'END'
+Observations are kept by the forecaster. Earlier days' notes are in her notebook, not here.
+END
 if [ "$GOAL" -ge 1 ]; then
     cat > "$HOME/docs/bus-company.md" <<END
 # Valley Bus Company

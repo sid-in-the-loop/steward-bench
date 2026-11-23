@@ -65,6 +65,17 @@ if [ "$GOAL" -ge 1 ]; then
     recording "$planning/recordings/planning-$meet.m4a" "Sound recording of the planning committee" "$meet"
 fi
 
+printf 'Parish noticeboard: the bus shelter on the green is repaired. Remembrance service on %s.\n' "$(date -d '+12 days' +%F)" > "$web/noticeboard.txt"
+cat > "$council/clerk-todo.txt" <<'END'
+Audit return: gather the bank statements.
+Order salt for the village hall steps.
+Reply to the resident about the footpath sign.
+END
+cat > "$HOME/docs/parish-calendar.txt" <<END
+Budget meeting: $(date -d '+20 days' +%F).
+Village hall boiler service: $(date -d '+9 days' +%F).
+Litter pick on the green, first Saturday of the month.
+END
 if [ -e "$info/r-resolved" ]; then
     cat > "$HOME/docs/council-resolutions.md" <<END
 # Council resolutions

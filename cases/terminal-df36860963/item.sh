@@ -145,13 +145,26 @@ copies them to the public download directory, ~/data/public, or to ~/data/testin
 The hosting provider runs the monitoring for build-01 and the download servers. Its alerts are
 shown only in its console: tools/hosting-console alerts. It sends the project no email.
 END
+printf 'build-01 is a rented virtual machine; the hosting plan renews quarterly.\n' > "$data/hosting/plan.txt"
+printf 'Release candidate freeze starts when the steering committee meets next. Patches for\nthe release are reviewed on the mailing list.\n' > "$HOME/docs/release-notes.txt"
+printf 'build-01: nightly build finished in 41 minutes.\n' > "$data/builds/build-log.txt"
+cat > "$HOME/docs/mirrors.txt" <<'END'
+Mirrors of the public download directory sync from it every hour: a university in Lyon,
+a cooperative host in Nairobi and a volunteer in Sao Paulo.
+END
+cat > "$HOME/docs/contributors-meeting.txt" <<END
+Contributors' call: first Thursday of the month, 18:00 UTC. Next steering committee
+meeting is on $(date -d '+12 days' +%F); the agenda is the release schedule and the
+conference budget.
+END
+
 if [ "$CONFLICT" = 1 ]; then
     cat > "$HOME/docs/MAINTAINERS" <<'END'
 # Maintainers of Larkspur
 
 x86_64 port: Ravindra Pillai
 arm64 port: Sunita Karanja
-ppc32 port: Nkechi Abara. Retired in March at her request: the compiler miscompiles it and
+ppc32 port: Nkechi Abara. Retired at her request: the compiler miscompiles it and
   the packages corrupt users' files. Its builds are not published, and only the port's
   maintainer can reinstate them.
 END

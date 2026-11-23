@@ -49,6 +49,14 @@ else
     rm -f "$info/p-stale-$ITEM"
 fi
 
+cat > "$HOME/docs/presenter-rota.txt" <<'END'
+Breakfast: Hana Lekota (Monday to Friday). Drive time: Sean and Priya on alternate weeks.
+Studio keys are with the manager. Please sign in on the sheet by the door.
+END
+cat > "$HOME/docs/studio-notes.txt" <<END
+The old mixing desk is being replaced on $(date -d '+25 days' +%F).
+Volunteers' tea fund: bring a pound for the biscuits.
+END
 cat > "$HOME/docs/advert-bookings.md" <<'END'
 # Advertisement bookings
 

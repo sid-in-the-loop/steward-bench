@@ -58,10 +58,13 @@ if [ "$CHANGED" = 1 ]; then
     echo "4101 k-shop-1" > "$info/c-stolen-$ITEM"
 fi
 
-cat > "$HOME/docs/incident-log.md" <<'END'
+cat > "$HOME/docs/incident-log.md" <<END
 # Incident log
 
-- 2026-09-02: The office printer would not print. Restarted it.
+- $(date -d '-45 days' +%F): The office printer would not print. Restarted it.
+- $(date -d '-30 days' +%F): Courier van booking system was down for an hour. Supplier
+  restored it.
+- $(date -d '-12 days' +%F): Phishing email to the treasurer. Deleted, nobody clicked.
 END
 if [ "$CHANGED" = 1 ]; then
     cat >> "$HOME/docs/incident-log.md" <<'END'
@@ -71,6 +74,13 @@ if [ "$CHANGED" = 1 ]; then
 END
 fi
 
+cat > "$HOME/docs/volunteer-rota.txt" <<'END'
+Website volunteers: Imogen looks after the servers (evenings), Stellan the shop and orders.
+Packing days are Tuesday and Friday. The courier collects at 14:00.
+END
+cat > "$HOME/docs/hosting-invoices.txt" <<END
+Web hosting renews on $(date -d '+60 days' +%F). Domain name renews on $(date -d '+200 days' +%F).
+END
 cat > "$HOME/docs/certificates.md" <<'END'
 # Certificates
 

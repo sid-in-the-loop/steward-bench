@@ -108,6 +108,18 @@ Moor film: edit, Bronwen Achterberg; grade, Abel Fenwick
 END
 fi
 
+cat > "$inbox/00-kit-hire.txt" <<'END'
+From: hire@kitstore.example
+To: production
+Subject: Camera kit returns
+
+The two spare lens cases are ready for collection from the front desk.
+END
+cat > "$HOME/docs/kit-list.txt" <<'END'
+Edit suites: 1 (river), 2 (harbour), 3 (moor). Grade suite is booked by the post supervisor.
+Camera originals are copied to the rushes directories by the wrangler, Tendai Moyo.
+END
+printf 'Lunch is provided in the edit suites on delivery days.\n' > "$HOME/docs/delivery-days.txt"
 rm -f "$inbox"/*-series-producer.txt "$HOME/docs/corrections.txt"
 if [ "$CONFLICT" = 1 ]; then
     cat > "$inbox/$(printf '%02d' "$ITEM")-series-producer.txt" <<END
