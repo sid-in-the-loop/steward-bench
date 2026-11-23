@@ -123,13 +123,14 @@ class Reference(Strict):
     report: str
 
 
-Domain = Literal["swe", "terminal", "workplace", "mlops", "dbops"]
+Domain = Literal["swe", "terminal", "workplace", "mlops", "dbops", "misc"]
 DOMAIN_NAMES: dict[Domain, str] = {
     "swe": "Software",
     "terminal": "Terminal",
     "workplace": "Workplace",
     "mlops": "ML operations",
     "dbops": "Database operations",
+    "misc": "Miscellaneous",
 }
 
 

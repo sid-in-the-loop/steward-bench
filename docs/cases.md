@@ -9,7 +9,7 @@ leaves.
 
 A case is identified by its domain and a short hash of its title: `case_identifier(domain,
 title)` in `steward/cases/case.py` gives `{domain}-{hash}`, and the folder carries that name.
-The domains are `swe`, `terminal`, `workplace`, `mlops` and `dbops`. Reports and the viewer
+The domains are `swe`, `terminal`, `workplace`, `mlops`, `dbops` and `misc` (Miscellaneous). Reports and the viewer
 show the domain and the title, never a code.
 
 ## What a case holds
@@ -472,3 +472,26 @@ session loop (`steward/cases/answer_key.py`) moves its files to a stash outside 
 while the agent acts and puts them back only around each item script, `during` script and
 check. `steward session-build --idle` also replays an agent that does nothing and lists the
 changed, goal and conflict shifts it would pass with no harm and its work counted as done.
+
+## The Miscellaneous base
+
+The domain `misc` covers agent jobs outside the office: households, creators, small
+businesses, field operations, and the robots and services expected in 2027 to 2030.
+`cases/_bases/home.sh` creates a neutral git-tracked checkout with no organisation, people or
+history; each task's `item.sh` stages its own world on top. State is plain files under `var/`
+(not committed) and the calendar under `~/data/calendar`. `HOME_VAR` and `HOME_DATA` move
+them, so a check can run a night on a copy. `HOME_ACTOR` names the actor and `HOME_NOW`
+fixes the clock; times are written `YYYY-MM-DD HH:MM`.
+
+| Tool | Commands and state |
+|---|---|
+| `tools/devices` | `list`, `show NAME`, `set NAME KEY VALUE`, `run NAME ACTION`. One `var/devices/NAME.state` file of `key: value` lines per device, with `kind`, `state`, `actions: lock=locked, unlock=unlocked` (each action and the state it leaves) and an optional `settings:` list that limits what `set` accepts; settings are stored as `setting.KEY` |
+| `tools/bookings` | `list [--status]`, `show ID`, `create --kind --what --who --start --end`, `cancel ID`, `extend ID --to T`. JSON files `var/bookings/BK-NNNN.json` with a history; two active bookings of the same `what` may not overlap |
+| `tools/pay` | `list [--status]`, `pay PAYEE AMOUNT [--memo]`, `refund ID`, `schedule PAYEE AMOUNT --on DATE`, `cancel ID`, `run-due [--at T]`. The ledger `var/pay/ledger.csv` has `id,date,payee,amount,status,memo`; the statuses are paid, scheduled, refunded and cancelled, and `run-due` pays scheduled entries whose date has come |
+| `tools/messages` | `threads`, `read THREAD [--last N]`, `send THREAD TEXT`. A thread is `var/messages/THREAD.jsonl` (`at`, `from`, `text`) that item.sh creates; every sent message is also appended to `var/log/sent.log` |
+| `tools/calendar` | `list [--on DATE] [--who NAME]`, `show ID`. Events are `~/data/calendar/ID.event` files with `title`, `start`, `end`, `who` |
+| `tools/jobs` | The runner of the Terminal base: `list`, `show`, `enable`, `disable`, `run`, `run-due [--at T]`. Jobs are `jobs/NAME.job` files with `schedule: daily HH:MM` and `command:`; a job runs with `DATA`, `VAR` and `HOME_NOW` set, so a job that calls the other tools sees the simulated time |
+
+Tools record what they do in `var/log/` (`devices.log`, `bookings.log`, `pay.log`,
+`sent.log`), which checks may read. `tests/cases/test_home_base.py` builds the base and
+exercises each tool once.

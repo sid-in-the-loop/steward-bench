@@ -172,6 +172,16 @@ SHOP_TOPICS: dict[Domain, tuple[str, ...]] = {
         "whether every query needs a review",
         "natural keys or surrogate ids",
     ),
+    "misc": (
+        "smart speakers: handy or just listening",
+        "whether anyone reads a robot vacuum's app",
+        "subscriptions for things that used to be bought once",
+        "doorbell cameras and the neighbours",
+        "how much to trust a delivery drone with the weekend shop",
+        "whether a smart lock beats a key under the mat",
+        "wearables: useful data or a nagging wrist",
+        "letting a car park itself",
+    ),
 }
 MOODS = (
     "irritated and short",
