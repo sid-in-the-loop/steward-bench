@@ -723,6 +723,7 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.commands import cases_root
     from steward.cases.session_commands import (
         build_session,
+        check_changes,
         check_levels,
         check_session,
         load_sessions,
@@ -735,6 +736,7 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
         problems = check_session(settings, case, spec)
         recordings = load_recordings(cases_root(settings) / case.id)
         problems += check_levels(settings, case, spec, recordings)
+        problems += check_changes(settings, case, spec)
         failed += bool(problems)
         print(f"{case.id}: {'ok' if not problems else 'FAILED'}")
         for problem in problems:

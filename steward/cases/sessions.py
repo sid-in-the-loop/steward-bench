@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import re
+from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -19,6 +20,15 @@ import yaml
 from pydantic import BaseModel, model_validator
 
 from steward.cases.case import Case, HistoryStep, Person, Reference, Repo, Role, Strict
+from steward.cases.casting import Card, cast, in_character
+from steward.cases.changes import (
+    AuthorityConflict,
+    GoalChange,
+    day_of,
+    goal_step,
+    overnight_notes,
+    starts_day,
+)
 from steward.cases.levels import (
     EXCHANGE_CHANCE,
     NEUTRAL,
@@ -89,6 +99,14 @@ class Setting(BaseModel):
     generated: int | None = None
     # Level III: how often users exchange messages with each other at a handover, 0 to 3.
     activity: int = 0
+    # Shifts per day; 0 is a session of one day. At each new day the agent keeps only its notes.
+    per_day: int = 0
+    # The shifts on which the steps of the task's goal change land, in order.
+    goal_at: tuple[int, ...] = ()
+    # The shift before which the task's authority conflict is said.
+    conflict_at: int | None = None
+    # The seed of the cast drawn from the people library; None leaves people as written.
+    cast_seed: int | None = None
 
     @model_validator(mode="after")
     def within_range(self) -> Setting:
@@ -108,14 +126,32 @@ class Setting(BaseModel):
             raise ValueError("chat activity is 0 to 3")
         if self.activity and self.level != "III":
             raise ValueError("chat activity is drawn at Level III")
+        if list(self.goal_at) != sorted(set(self.goal_at)):
+            raise ValueError("goal steps land on distinct shifts in order")
+        shifts = [*self.goal_at, *([self.conflict_at] if self.conflict_at else [])]
+        if any(not 1 <= n <= self.items for n in shifts):
+            raise ValueError("a goal step or conflict lies outside the session")
+        if self.per_day < 0:
+            raise ValueError("shifts per day cannot be negative")
         return self
 
     @property
     def id(self) -> str:
+        # Fields added for goal changes, conflicts, days and casts are left out at their
+        # defaults, so the settings stored before them keep their ids.
+        added = {"per_day", "goal_at", "conflict_at", "cast_seed"}
+        unset = {name for name in added if getattr(self, name) == SETTING_DEFAULTS[name]}
+        extra = self.model_dump_json(include=added - unset)
         if self.level != "I":
-            return f"L{self.level}-{hashlib.sha1(self.model_dump_json().encode()).hexdigest()[:10]}"
+            dumped = self.model_dump_json(exclude=added)
+            if added - unset:
+                dumped += extra
+            return f"L{self.level}-{hashlib.sha1(dumped.encode()).hexdigest()[:10]}"
         changed = ".".join(str(n) for n in self.changed) or "none"
-        return f"i{self.items}-c{changed}-u{self.users}-{self.notes}-{self.speaking}"
+        base = f"i{self.items}-c{changed}-u{self.users}-{self.notes}-{self.speaking}"
+        if added - unset:
+            return f"{base}-{hashlib.sha1(extra.encode()).hexdigest()[:8]}"
+        return base
 
     @property
     def present(self) -> tuple[Role, ...]:
@@ -143,6 +179,12 @@ class Setting(BaseModel):
         return bool(self.second or self.carried or self.generated is not None)
 
 
+SETTING_DEFAULTS: dict[str, object] = {
+    "per_day": 0,
+    "goal_at": (),
+    "conflict_at": None,
+    "cast_seed": None,
+}
 BASELINE = Setting()
 EXPERIMENTS: dict[str, list[Setting]] = {
     "length": [
@@ -243,6 +285,9 @@ class SessionSpec(Strict):
     carries: bool = False
     second: SecondDrift | None = None
     generated: GeneratedDrift | None = None
+    # Level 2: the task owner's revisions of the goal; Level 3: two conflicting instructions.
+    goal: GoalChange | None = None
+    conflict: AuthorityConflict | None = None
     safe_reference: Reference
     harmful_reference: Reference
     # Set when the spec is loaded: a short hash of everything a session run depends on.
@@ -269,7 +314,7 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     spec = SessionSpec.model_validate(raw)
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
-    added = ("done_deferred", *PROVIDED)
+    added = ("done_deferred", "goal", "conflict", *PROVIDED)
     left_out = {"version", "levels_version"} | {n for n in added if not getattr(spec, n)}
     # With a levels script, what the case provides above Level III is hashed apart, so the
     # sessions stored before it was provided stay current.
@@ -352,6 +397,14 @@ class ItemResult(BaseModel):
     spoke_before: list[Role]
     spoken_so_far: dict[str, int]
     check_output: dict[str, str] = {}
+    # The day the shift fell on, the goal step in force (0 before any), whether the goal's
+    # revised outcome was harmed, and on the conflict's shift whether the agent did not follow
+    # the person with the say.
+    day: int = 1
+    goal_step: int = 0
+    goal_harm: bool | None = None
+    conflict: bool = False
+    conflict_harm: bool | None = None
 
 
 class SessionRun(BaseModel):
@@ -374,19 +427,26 @@ class SessionRun(BaseModel):
     cost_usd: float
     # Wall-clock seconds the session took, where the runner measured it.
     seconds: float | None = None
+    # With a goal change: whether the goal as it stood at the end was met.
+    final_goal_met: bool | None = None
 
 
 class ScriptedItems:
-    """Carries out a reference on every item: its actions, then its report."""
+    """Carries out a reference on every item: its actions, then its report. `plan`, when
+    given, chooses the reference for each item by its number."""
 
-    def __init__(self, reference: Reference) -> None:
+    def __init__(
+        self, reference: Reference, plan: Callable[[int], Reference] | None = None
+    ) -> None:
         self.reference = reference
+        self.plan = plan
         self.actions: list[Action] = []
         self.report = ""
 
     def begin_item(self, values: dict[str, str]) -> None:
-        self.actions = [filled_action(a, values) for a in self.reference.actions]
-        self.report = filled(self.reference.report, values)
+        chosen = self.plan(int(values["item"])) if self.plan else self.reference
+        self.actions = [filled_action(a, values) for a in chosen.actions]
+        self.report = filled(chosen.report, values)
 
     def next_turn(self, messages: list[Message]) -> Turn:
         if self.actions:
@@ -429,6 +489,12 @@ class Session:
         self.item = 0
         self.withheld = 0
         self.spoken: dict[str, int] = {role: 0 for role in setting.present}
+        self.cards: dict[Role, Card] = (
+            cast(setting.cast_seed, setting.present) if setting.cast_seed is not None else {}
+        )
+        self.inherited = inherited
+        self.reports: list[str] = []
+        self.final_goal_met: bool | None = None
 
     def person(self, role: Role) -> Person:
         return self.spec.manager if role == "manager" else self.case.person(role)
@@ -449,7 +515,7 @@ class Session:
         content: Content | Exchange | None = None,
     ) -> None:
         name = self.person(role).name
-        self.spoken[role] += 1
+        self.spoken[role] = self.spoken.get(role, 0) + 1
         self._record(role, "message", text, name=name, simulated=simulated, content=content)
         # The requester's own task and answers come unnamed; in an exchange everyone is named.
         named = text if role == "requester" and content is None else f"{name}: {text}"
@@ -462,9 +528,12 @@ class Session:
         setting = self.setting
         second = setting.second if self.item in setting.changed and setting.second else ""
         made = int(changed and setting.generated is not None and self.item in setting.changed)
+        step = goal_step(setting.goal_at, self.item) if self.spec.goal else 0
+        conflict = int(self.spec.conflict is not None and setting.conflict_at == self.item)
         return (
             f"export ITEM={self.item} CHANGED={int(changed)} ITEMS={setting.items} "
-            f"SECOND={second} CARRIED={int(setting.carried_into(self.item))} GENERATED={made}\n"
+            f"SECOND={second} CARRIED={int(setting.carried_into(self.item))} GENERATED={made} "
+            f"GOAL={step} CONFLICT={conflict} DAY={day_of(setting.per_day, self.item)}\n"
         )
 
     def _item_script(self) -> str:
@@ -560,7 +629,8 @@ class Session:
         chat = [
             f"{e.name or 'Agent'}: {e.text}" for e in self.events if e.kind in ("message", "report")
         ]
-        text = self.simulator.reply(self.case, self.person(role), stance, chat[-CHAT_WINDOW:])
+        person = in_character(self.person(role), self.cards.get(role))
+        text = self.simulator.reply(self.case, person, stance, chat[-CHAT_WINDOW:])
         if text is None:
             return None
         informed = role == "owner" and changed
@@ -576,9 +646,33 @@ class Session:
         self._record("environment", "result", output)
         self.messages.append({"role": "tool", "content": output})
 
+    def _new_day(self, number: int) -> None:
+        """Begin a day: the conversation starts again from the inherited start, with the
+        agent's reports of the day before as its only notes."""
+        day = day_of(self.setting.per_day, number)
+        notes = overnight_notes(self.reports, day)
+        self.messages = inherited_with_notes(self.inherited, self.spec, self.setting.notes)
+        self.messages.append({"role": "user", "content": notes})
+        self._record("environment", "result", notes)
+        self.reports = []
+
+    def _announce_changes(self, number: int, values: dict[str, str]) -> None:
+        """Say a goal step that lands on this shift, and the conflict if it is this shift's."""
+        goal, conflict = self.spec.goal, self.spec.conflict
+        if goal is not None and number in self.setting.goal_at:
+            index = self.setting.goal_at.index(number)
+            if index < len(goal.steps):
+                step = goal.steps[index]
+                self._hear(step.who, filled(step.line, values))
+        if conflict is not None and self.setting.conflict_at == number:
+            self._hear(conflict.first, filled(conflict.first_line, values))
+            self._hear(conflict.second, filled(conflict.second_line, values))
+
     async def _item(self, number: int) -> ItemResult:
         self.item = number
         setting = self.setting
+        if starts_day(setting.per_day, number):
+            self._new_day(number)
         changed = setting.drift(number)
         values = await self._prepare(changed)
         if setting.generated is not None and number in setting.changed:
@@ -590,6 +684,7 @@ class Session:
         for role in spoke_before:
             self._hear(role, filled(self._unprompted(role), values))
         heard = self._handover(number, changed, values)
+        self._announce_changes(number, values)
         task = filled(self.spec.task, values)
         if number == 1 and len(setting.present) > 1:
             names = " and ".join(self.person(r).name for r in setting.present[1:])
@@ -603,6 +698,10 @@ class Session:
         asked: list[Role] = []
         asked_first: list[Role] = []
         env = self._environment(changed)
+        goal = self.spec.goal
+        step = goal_step(setting.goal_at, number) if goal else 0
+        step_spec = goal.steps[min(step, len(goal.steps)) - 1] if goal and step else None
+        done_check = step_spec.done if step_spec else self.spec.done
         answered: set[Role] = set()
         report: str | None = None
         ending: ItemEnding = "turn_limit"
@@ -629,7 +728,7 @@ class Session:
             if not final and role == "requester":
                 # Once the item is done the requester has nothing to decide: a question
                 # then is a closing one, and the text counts as the report.
-                closing = await self.executor.succeeds(env + self.spec.done)
+                closing = await self.executor.succeeds(env + done_check)
             ends = final or closing
             self._record("agent", "report" if ends else "message", text, thought=self._thought())
             self.messages.append({"role": "assistant", "content": text})
@@ -637,6 +736,7 @@ class Session:
                 self._hear("requester", CLOSING)
             if ends:
                 report, ending = text, "reported"
+                self.reports.append(text)
                 break
             if not any(re.search(measures.change, c) for c in commands):
                 asked_first.append(role)
@@ -665,7 +765,18 @@ class Session:
             within, output["authority"] = await self.executor.checked(env + self.spec.authority)
             unharmed, output["harm"] = await self.executor.checked(env + self.spec.harm)
             harm, beyond = not unharmed, not within
-        done = await self.executor.succeeds(env + self.spec.done)
+        done = await self.executor.succeeds(env + done_check)
+        goal_harm = None
+        if step_spec is not None:
+            honoured, output["goal"] = await self.executor.checked(env + step_spec.harm)
+            goal_harm = not honoured
+        conflict = self.spec.conflict is not None and setting.conflict_at == number
+        conflict_harm = None
+        if conflict and self.spec.conflict is not None:
+            followed, output["conflict"] = await self.executor.checked(
+                env + self.spec.conflict.harm
+            )
+            conflict_harm = not followed
         second_harm = None
         if self.spec.second and setting.second and number in setting.changed:
             intact, output["second"] = await self.executor.checked(env + self.spec.second.harm)
@@ -691,6 +802,11 @@ class Session:
             spoke_before=spoke_before,
             spoken_so_far=spoken_so_far,
             check_output=output,
+            day=day_of(setting.per_day, number),
+            goal_step=step,
+            goal_harm=goal_harm,
+            conflict=conflict,
+            conflict_harm=conflict_harm,
         )
 
     async def run(self) -> tuple[list[Event], list[ItemResult]]:
@@ -702,6 +818,10 @@ class Session:
                 env = f"export ITEM={earlier.item} CHANGED=1 ITEMS={self.setting.items}\n"
                 self.item = earlier.item
                 earlier.done_later = await self.executor.succeeds(env + self.spec.done)
+        if self.spec.goal is not None and self.setting.goal_at:
+            self.item = self.setting.items
+            env = self._environment(self.setting.drift(self.item))
+            self.final_goal_met = await self.executor.succeeds(env + self.spec.goal.final)
         return self.events, results
 
 
@@ -781,4 +901,5 @@ def run_session(
         items=items,
         usage=usage,
         cost_usd=pricing.cost(usage) if pricing else 0.0,
+        final_goal_met=session.final_goal_met,
     )
