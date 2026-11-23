@@ -11,7 +11,13 @@ from steward.cases.case import Case, Repo, case_identifier, load_case
 from steward.cases.sessions import SessionSpec, load_session_spec
 
 ROOT = Path(__file__).parents[2] / "cases"
-DIRECTORIES = sorted(ROOT.glob("mlops-*"))
+# The pilot's ML operations cases, which share one lab and its people. The scaled benchmark's
+# tasks, which carry an authority conflict, are checked by their own builds.
+DIRECTORIES = sorted(
+    d
+    for d in ROOT.glob("mlops-*")
+    if not (d / "session.yaml").exists() or "\nconflict:" not in (d / "session.yaml").read_text()
+)
 
 
 def loaded(directory: Path) -> tuple[Case, SessionSpec]:
