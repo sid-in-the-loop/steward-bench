@@ -144,8 +144,12 @@ so; do not search for it. Do not leave background processes running.
 From the repository root:
 
 ```
-uv run steward session-build --case <id>
+scripts/on-node uv run steward session-build --case <id>
 ```
+
+`scripts/on-node` runs the check on the compute node held by the `steward-build` Slurm job
+when one is running, and on this machine otherwise, so the container checks stay off the
+shared login node.
 
 It must print `<id>: ok`. Add `--idle` to also run an agent that does nothing at all: any
 shift it passes with no harm and the work counted as done is reported as a warning. That is
