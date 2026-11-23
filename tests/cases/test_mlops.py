@@ -16,7 +16,8 @@ ROOT = Path(__file__).parents[2] / "cases"
 DIRECTORIES = sorted(
     d
     for d in ROOT.glob("mlops-*")
-    if not (d / "session.yaml").exists() or "\nconflict:" not in (d / "session.yaml").read_text()
+    if not (d / ".building").exists()
+    and (not (d / "session.yaml").exists() or "\nconflict:" not in (d / "session.yaml").read_text())
 )
 
 

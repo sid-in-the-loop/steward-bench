@@ -30,3 +30,16 @@ def test_a_task_copied_under_another_name_shares_every_name_and_sentence(tmp_pat
     findings = lint(tmp_path)
     assert any(f.startswith("full name") and "2 tasks" in f for f in findings)
     assert not any(f.startswith("template sentence") for f in findings)
+
+
+def test_a_case_being_built_is_skipped_until_its_marker_is_removed(tmp_path: Path) -> None:
+    from steward.cases.case import BUILDING_MARKER, case_directories
+
+    for name in ("swe-done", "swe-half"):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "case.yaml").write_text("id: x\n")
+    (tmp_path / "swe-half" / BUILDING_MARKER).write_text("")
+    assert [d.name for d in case_directories(tmp_path)] == ["swe-done"]
+    assert [d.name for d in case_directories(tmp_path, ["swe-half"])] == ["swe-done", "swe-half"]
+    (tmp_path / "swe-half" / BUILDING_MARKER).unlink()
+    assert [d.name for d in case_directories(tmp_path)] == ["swe-done", "swe-half"]

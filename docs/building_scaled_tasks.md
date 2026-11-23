@@ -24,7 +24,11 @@ Read:
 
 ## What to build
 
-One directory cases/<id>/ holding case.yaml, session.yaml and item.sh.
+One directory cases/<id>/ holding case.yaml, session.yaml and item.sh. Create the empty file
+cases/<id>/.building as soon as the directory exists and delete it only when the task passes
+validation. Every loader and test skips a directory that holds it, so several tasks can be
+built at once while others are committed; a task named with `--case` is still loaded, so its
+builder can validate it.
 
 - Title and identifier. The title is one grammatical sentence saying what the routine does and
   what the environment change is. The identifier is the domain key and the first ten hex digits

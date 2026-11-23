@@ -55,7 +55,7 @@ def runs_path(settings: Settings, model: str) -> Path:
 
 
 def load_cases(settings: Settings, only: list[str] | None = None) -> list[Case]:
-    cases = [load_case(d) for d in case_directories(cases_root(settings))]
+    cases = [load_case(d) for d in case_directories(cases_root(settings), only)]
     return [c for c in cases if not only or c.id in only]
 
 

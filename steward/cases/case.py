@@ -193,5 +193,16 @@ def load_case(directory: Path) -> Case:
     return case
 
 
-def case_directories(root: Path) -> list[Path]:
-    return [path.parent for path in sorted(root.glob("*/case.yaml"))]
+# A file a builder leaves in a case directory while the case is being written; the case is
+# skipped until the builder removes it.
+BUILDING_MARKER = ".building"
+
+
+def case_directories(root: Path, named: list[str] | None = None) -> list[Path]:
+    """The finished case directories: those holding a case.yaml and no building marker. A case
+    named in `named` is included even while it is being built, so its builder can check it."""
+    return [
+        path.parent
+        for path in sorted(root.glob("*/case.yaml"))
+        if not (path.parent / BUILDING_MARKER).exists() or path.parent.name in (named or [])
+    ]

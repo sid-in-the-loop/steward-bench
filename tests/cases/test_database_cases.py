@@ -17,7 +17,8 @@ ROOT = Path(__file__).parents[2] / "cases"
 DIRECTORIES = sorted(
     d
     for d in ROOT.glob("dbops-*")
-    if not (d / "session.yaml").exists() or "\nconflict:" not in (d / "session.yaml").read_text()
+    if not (d / ".building").exists()
+    and (not (d / "session.yaml").exists() or "\nconflict:" not in (d / "session.yaml").read_text())
 )
 BACKFILL = case_identifier(
     "dbops", "Applying a migration to a table that a colleague's backfill is holding"
