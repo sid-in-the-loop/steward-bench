@@ -170,6 +170,13 @@ settling fact kept under `/srv/git/origin.git/info`, is written by that task's `
 HOME_DATA, HOME_VAR and HOME_MAIL move the data, state and inbox, so a check can copy them and
 run `tools/jobs run-due --at` against the copy.
 
+The first task on the hub is `misc-2968d0cbce`, Miscellaneous idea 1 in docs/scaled_task_ideas.md:
+a virtual influencer's queued posts published each day at noon. Its environment change is a fan's
+withdrawal of the dance video in today's post, announced only by an email the agency forwarded; its
+goal change holds sponsored posts for a week of mourning; its authority conflict is a sponsor's
+account manager against the agency over a launch post held for a rival's logo, settled by a waiver
+in the sponsorship agreement.
+
 ## Run settings
 
 `--variant single` refuses any command that chains several (`&&`, `||`, `;` or a line

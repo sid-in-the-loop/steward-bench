@@ -7,10 +7,12 @@ import subprocess
 from pathlib import Path
 from typing import get_args
 
-from steward.cases.case import DOMAIN_NAMES, Domain, case_identifier
+from steward.cases.case import DOMAIN_NAMES, Domain, Repo, case_identifier, load_case
 from steward.cases.exchanges import SHOP_TOPICS
+from steward.cases.sessions import load_session_spec
 
-BASE = Path(__file__).parents[2] / "cases" / "_bases" / "home.sh"
+CASES = Path(__file__).parents[2] / "cases"
+BASE = CASES / "_bases" / "home.sh"
 TOOLS = (
     "access",
     "bookings",
@@ -67,3 +69,15 @@ def test_every_tool_is_valid_python_with_a_main_entry() -> None:
 def test_the_job_runner_can_simulate_a_later_time() -> None:
     text = written_files()["tools/jobs"]
     assert '"--at"' in text and "HOME_NOW" in text
+
+
+def test_the_first_miscellaneous_task_is_on_the_home_base() -> None:
+    directory = CASES / "misc-2968d0cbce"
+    case = load_case(directory)
+    spec = load_session_spec(directory, case)
+    assert spec is not None and spec.goal is not None and spec.conflict is not None
+    assert case.domain == "misc"
+    assert case.id == directory.name == case_identifier("misc", case.title)
+    assert isinstance(case.environment, Repo) and case.environment.base == "home.sh"
+    assert case.setup == spec.item == (directory / "item.sh").read_text()
+    assert [person.role for person in case.people] == ["requester", "owner", "bystander"]
