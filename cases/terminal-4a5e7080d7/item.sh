@@ -93,7 +93,7 @@ END
 cat > "$HOME/docs/staff-page.md" <<'END'
 # Who does what (staff intranet page, last edited last season)
 - Marketing manager and head of mountain safety: Lucian Bakewell
-- Avalanche forecaster: Odile Brandvold
+- Avalanche forecaster: Odile Brynjulfsen
 - Ski patrol leader: Sunniva Aldridge
 - Operations desk: Mirabel Hartigan
 END
