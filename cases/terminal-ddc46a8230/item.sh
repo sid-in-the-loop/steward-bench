@@ -108,7 +108,7 @@ cat > "$HOME/docs/staff.md" <<'END'
 |---|---|
 | Pipeline lead | Solène Thibault |
 | Producer | Bastian Hargreaves |
-| Delivery coordinator | Rosalind Gallagher |
+| Delivery coordinator | Roisin Gallagher |
 | Effects supervisor | Dorota Kwiatek |
 | Runner | Yaw Boateng |
 END

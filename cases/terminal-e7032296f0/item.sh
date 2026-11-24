@@ -112,7 +112,7 @@ Kiosk checks are on the opening checklist, signed by visitor services.
 END
 cat > "$HOME/docs/kiosk-contacts.txt" <<'END'
 Display faults: visitor services, extension 214.
-Network faults: computing officer, Dmitri Volkov.
+Network faults: computing officer, Dragomir Volkov.
 Kiosk content and the learning programme: learning officer, Marit Aldersey.
 Lender's technical contact for gallery four is with the exhibitions office.
 END

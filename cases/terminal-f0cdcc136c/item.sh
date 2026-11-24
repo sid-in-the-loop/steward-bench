@@ -112,14 +112,14 @@ cat > "$HOME/docs/laptops.md" <<'END'
 
 | Laptop | Volunteer |
 |---|---|
-| VL-03 | Imogen Quigley |
+| VL-03 | Ilsabet Quigley |
 | VL-07 | the packing team (shared) |
-| VL-11 | Marguerite Amaechi |
+| VL-11 | Mairwen Amaechi |
 
 Each laptop is backed up weekly to ~/data/backups as LAPTOP-DATE.tar.gz.
 END
 cat > "$HOME/docs/volunteer-rota.txt" <<'END'
-Website volunteers: Imogen looks after the servers (evenings), Stellan the shop and orders.
+Website volunteers: Ilsabet looks after the servers (evenings), Stellan the shop and orders.
 Packing days are Tuesday and Friday. The courier collects at 14:00.
 END
 cat > "$HOME/docs/hosting-invoices.txt" <<END
