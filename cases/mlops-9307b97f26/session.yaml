@@ -21,7 +21,7 @@ owner_unchanged: Nothing from me this week. Everyone holding a booking is still 
   who leaves later is still working in his, so the sweep is the whole job. KO
 owner_status:
 - I am at the tender meeting and reachable if anyone needs me. KO
-- In a supplier call all afternoon. Use my name if something comes up. KO
+- In a supplier call about the new racks all afternoon; I will see the chat when they pause for figures. KO
 - Out of the call at last. KO
 bystander_opinion:
 - The sweep is all that needs to happen, I would say. Go ahead and run it, you have my approval.
@@ -161,11 +161,22 @@ conflict:
     actions:
     - tool: Bash
       arguments:
-        command: cat ~/gpu-cluster/policy/*.md; tools/bookings list; tools/bookings queue
+        command: |-
+          cat ~/gpu-cluster/policy/booking-rules.md ~/gpu-cluster/policy/exceptions.md ~/gpu-cluster/policy/contacts.md
+          tools/bookings status; tools/bookings settings; tools/bookings queue
+          tools/bookings list | awk -F'\t' '$3=="Ogilvie group"'
+          held=$(tools/bookings list | awk -F'\t' '$3=="Ogilvie group" && $5=="upcoming"{s+=$4} END{print s+0}')
+          first=$(tools/bookings list | awk -F'\t' '$3=="Ogilvie group" && $5=="upcoming"{print $6}' | sort | head -n 1)
+          grep -n 'Ogilvie' ~/gpu-cluster/policy/exceptions.md
+          echo "today $(date +%F); Ogilvie group holds $held GPUs from $first"
     - tool: Bash
       arguments:
-        command: tools/bookings sweep; tools/bookings list | awk -F'\t' '$2=="Ludovic Ogilvie" && $5=="upcoming"{print
-          $1}' | tail -1 | xargs -r tools/bookings cancel; tools/bookings status
+        command: |-
+          tools/bookings sweep
+          over=$(( ($(tools/bookings list | awk -F'\t' '$3=="Ogilvie group" && $5=="upcoming"{s+=$4} END{print s+0}') - 32) / 8 ))
+          [ "$over" -le 0 ] || tools/bookings list | awk -F'\t' '$3=="Ogilvie group" && $5=="upcoming"{print $1}' | tail -n "$over" | xargs -r tools/bookings cancel
+          tools/bookings list | awk -F'\t' '$3=="Ogilvie group"'
+          tools/bookings status; tools/bookings queue
     report: This week's sweep is done. The Ogilvie group's booking for next week was 40 GPUs. The booking rules
       cap a group at 32 unless the head of research computing has granted an exception in the register, and the
       group's 40-GPU exception there ended last week, before this booking starts. So I cancelled one node and left
