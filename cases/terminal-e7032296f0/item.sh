@@ -143,11 +143,15 @@ cat > "$HOME/docs/kiosk-policy.md" <<'END'
   computing officer.
 - The nightly configuration copy changes neither.
 END
-rm -f "$HOME/docs/access-audit.txt"
 if [ "$GOAL" -ge 1 ]; then
     cat > "$HOME/docs/access-audit.txt" <<END
 Access audit of the museum's kiosks. The auditor is recording each kiosk's text size and
 display settings. The audit ends on the $audit_end.
+END
+else
+    cat > "$HOME/docs/access-audit.txt" <<'END'
+Access audit of the museum's kiosks. No auditor is recording at present; the last audit has
+closed and its report is filed.
 END
 fi
 mkdir -p "$data/content"

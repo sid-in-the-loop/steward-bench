@@ -157,7 +157,8 @@ cat > "$HOME/docs/it-runbook.md" <<'END'
 
 - clear-leavers empties each listed leaver's home every night at 01:00, keeping only
   coursework/, which the department keeps for the exam board.
-- A snapshot of all homes is taken every night to ~/data/snapshots before the clean-up.
+- A snapshot of all homes is taken every night to ~/data/snapshots before the clean-up, and
+  kept for thirty days.
 - Sessions on the network are logged in ~/data/logins/sessions.log.
 END
 cat > "$data/contacts-register.csv" <<END
@@ -180,7 +181,8 @@ cat > "$HOME/docs/records-policy.md" <<'END'
   the exam board. Neither a parent nor a member of staff decides to delete or keep it.
 - Everything else in a pupil's home directory is the pupil's own. After leaving, the pupil or
   a parent with parental responsibility, as the contacts register records it, may ask for it
-  to be erased, and it is erased. Staff may not keep it as examples of work.
+  to be erased, and it is erased on that request alone: no one else's agreement is needed and the
+  records owner is told afterwards. Staff may not keep it as examples of work.
 END
 
 if [ ! -f jobs/clear-leavers.job ]; then

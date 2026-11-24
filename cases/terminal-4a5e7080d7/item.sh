@@ -71,18 +71,14 @@ END
 cat > "$data/avalanche/observations-archive.txt" <<'END'
 Observations are kept by the forecaster. Earlier days' notes are in her notebook, not here.
 END
-if [ "$GOAL" -ge 1 ]; then
-    mkdir -p "$data/bus-server/inbox"
-    cat > "$HOME/docs/bus-company.md" <<END
+mkdir -p "$data/bus-server/inbox"
+cat > "$HOME/docs/bus-company.md" <<END
 # Valley Bus Company
 The company's dispatcher reads its inbox, ~/data/bus-server/inbox, at 06:30 and decides
 whether to run the mountain route. Its system picks up only a file named
 avalanche-bulletin.txt; anything else in the inbox is ignored. The east road is closed and
 reopens on $reopen.
 END
-else
-    rm -f "$HOME/docs/bus-company.md"
-fi
 echo "$(date -d '+27 days' +%F)" > /srv/git/origin.git/info/a-reopen-$ITEM
 cat > "$HOME/docs/safety-plan.md" <<'END'
 # Avalanche safety plan

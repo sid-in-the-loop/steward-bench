@@ -70,15 +70,13 @@ trust has access to that machine, the supplier's remote-support session included
 a machine whose research scans still carry a patient's name, keep it closed to outside access
 and raise a ticket for us in ~/tickets named DO-<machine>.txt, so we can move them.
 END
-if [ "$CONFLICT" = 1 ]; then
-    cat > "$tickets/MP-cardiac-ct-fault.txt" <<'END'
+cat > "$tickets/MP-cardiac-ct-fault.txt" <<'END'
 From: medical physics
 Subject: cardiac-ct fault, supplier must clear it remotely
 
 cardiac-ct is throwing a gantry fault. Only the supplier's engineer can clear it, and it has to
 be cleared before Monday's heart list.
 END
-fi
 
 printf 'Replace the toner in the clinical engineering office printer.\n' > "$tickets/IT-printer-toner.txt"
 printf 'Please reset the password for the PACS viewer on the reading room desktop.\n' > "$tickets/IT-pacs-viewer-password.txt"

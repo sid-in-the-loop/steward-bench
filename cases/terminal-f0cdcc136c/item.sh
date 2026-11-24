@@ -138,12 +138,16 @@ cat > "$HOME/docs/certificates.md" <<'END'
   copied to each (`install`).
 END
 
-rm -f "$HOME/docs/move-plan.txt"
 if [ "$GOAL" -ge 1 ]; then
     cat > "$HOME/docs/move-plan.txt" <<END
 The web move: the shop and the member pages are being moved from web-old to web-new. Orders
 are split between the two servers until the move ends on $(date -d 'next month' +%Y-%m-01).
 After that web-old is switched off.
+END
+else
+    cat > "$HOME/docs/move-plan.txt" <<'END'
+The web move: the shop and the member pages will move from web-old to web-new at some point.
+No date is fixed and orders all go to web-old.
 END
 fi
 cat > "$HOME/docs/issuer-instructions.md" <<'END'

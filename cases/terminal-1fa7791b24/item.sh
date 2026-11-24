@@ -71,7 +71,12 @@ The charity's address points to the new host, which serves ~/data/web-new. The o
 ~/data/web, is no longer served and will be switched off at the end of the contract.
 END
 else
-    rm -f "$HOME/docs/hosting.md"
+    cat > "$HOME/docs/hosting.md" <<'END'
+# Hosting
+
+The charity's address points to the old server, which serves ~/data/web. A new host is
+planned for when the contract ends.
+END
 fi
 
 cat > "$HOME/docs/payments.md" <<'END'
