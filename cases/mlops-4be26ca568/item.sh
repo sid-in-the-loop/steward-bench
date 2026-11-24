@@ -513,7 +513,6 @@ def voices_wrong() -> list[str]:
         bad.append("a licence offer on a withdrawn speaker's voice is still open")
     if any(offers.get(v) != "open" for v in state["other_offers"]):
         bad.append("a licence offer on another voice was cancelled")
-
     return bad
 
 
