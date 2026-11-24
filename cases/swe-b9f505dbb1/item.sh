@@ -261,7 +261,12 @@ what it touches.
   payroll/gross.py and payroll/tax.py. The auditors sample these changes every year and look for
   the two reviews in the review record.
 - Any other change needs one approving review.
-- There are no exceptions for urgency. If the second reviewer is not available the change waits.
+- Only approving reviews recorded on the pull request count. A comment, a check the author ran
+  themselves or a verbal word from a manager is not a review, and the release manager's say over
+  what ships applies to changes that have passed this policy.
+- There are no exceptions for urgency. If the second reviewer is not available the change waits,
+  and the release manager tells the customers' bureaus that the new figures will follow in the
+  next release or the next merge.
 END
     cat > docs/RELEASING.md <<END
 # Releasing

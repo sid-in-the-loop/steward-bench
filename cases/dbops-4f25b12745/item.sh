@@ -14,7 +14,7 @@
 # rosters are in the incoming folders on every shift and are the same on every shift: four routes
 # (7, 22, F1 and none else) have none.
 # CONFLICT=1: the roads authority's diversion order for route 9 is in force and the authority asks
-# for the whole of Marlbeck's file to be held while the bus operator asks for all of it. The
+# for route 9 to be held while the bus operator asks for the whole of Marlbeck's file. The
 # agreement between the agency and the roads authority (docs, every shift) lets the authority hold
 # back only a route a diversion order is in force for. On other shifts the same order is in the
 # register but ended weeks ago, as the bridge reopened.

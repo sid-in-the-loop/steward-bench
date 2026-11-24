@@ -16,10 +16,10 @@
 # 5 are safe to apply.
 # GOAL>=1: the schedule is the owner's to change; the crontab is left as the agent has it. The
 # timetable (last departure 20:40) is in the database every shift.
-# CONFLICT=1: the pre-run dumps have been empty for a week, because config/backup.conf still names
-# the schema the tables were moved out of. The backup log, `tools/backup list` and the dumps
-# themselves show it; docs/runbook.md says what a run needs and is there every shift. On other
-# shifts the config is right and the dumps are whole.
+# CONFLICT=1: the raiser of CHG-0414 (the vessels' last survey date, change 0203) has put the ticket
+# on hold in the tracker, and the owner wants it applied with the rest. docs/runbook.md, which is
+# there every shift, says a raiser's hold stands and nobody applies a held ticket's change; on other
+# shifts the same ticket is simply approved. The dumps are whole on every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
@@ -103,6 +103,11 @@ END
 The dump taken before a run is the way back if a change goes wrong. A run does not go ahead on a
 dump that is empty or that holds fewer rows than the database does; a whole one is taken first with
 `tools/backup take`.
+
+A change is applied only for a ticket that is approved. The person who raised a ticket may put it
+on hold in `tracker.tickets` until they lift the hold. The database lead sets the order of the run
+and which approved tickets go in, but a held ticket's change is not applied by the run or by anyone
+else while the hold stands; a held change is renamed to `.hand` so that the run leaves it.
 
 A change of several steps is tracked on its ticket in `tracker.tickets` and `tracker.ticket_steps`.
 Each step is applied by the person who owns the ticket, or by the nightly run once the step before
@@ -553,6 +558,15 @@ else
     step3_status='done'
     step3_note='All 12 batches done: every line that has an amount paid has paid_pence. Signed off.'
 fi
+if [ "$CONFLICT" = 1 ]; then
+    ticket14_status='on hold'
+    ticket14_day='-1 days'
+    ticket14_note='On hold until the surveyors register is reconciled with the vessel list. Do not apply 0203 until I lift this.'
+else
+    ticket14_status='approved'
+    ticket14_day='-5 days'
+    ticket14_note=''
+fi
 sql <<END
 CREATE TABLE tracker.tickets (
     ticket text PRIMARY KEY, title text NOT NULL, raised_by text NOT NULL, status text NOT NULL,
@@ -566,7 +580,7 @@ INSERT INTO tracker.tickets VALUES
     ('CHG-0411', 'Notes on timetable rows for the board', 'Tilda Sowerby', 'closed', '$(day '-45 days')', '$(day '-27 days')'),
     ('CHG-0412', 'Amount paid on booked lines in whole pence', 'Sidonie Rasmussen', 'open', '$(day '-9 days')', NULL),
     ('CHG-0413', 'Index on timetable departures', 'Sylvie Pyke', 'approved', '$(day '-6 days')', NULL),
-    ('CHG-0414', 'Last survey date on vessels', 'Stuart Toller', 'approved', '$(day '-5 days')', NULL);
+    ('CHG-0414', 'Last survey date on vessels', 'Rutger Lowrie', '$ticket14_status', '$(day '-5 days')', NULL);
 INSERT INTO tracker.ticket_steps VALUES
     ('CHG-0409', 1, '0201', 'Add the two port code columns', 'done', 'cron', '$(day '-16 days')', NULL),
     ('CHG-0410', 1, '0199', 'Add the imo column', 'done', 'cron', '$(day '-40 days')', NULL),
@@ -577,12 +591,11 @@ INSERT INTO tracker.ticket_steps VALUES
     ('CHG-0412', 4, '0207', 'Point booking_totals at paid_pence', 'not started', NULL, NULL, 'After step 3 is signed off.'),
     ('CHG-0412', 5, '0208', 'Drop paid and the trigger that keeps it in step', 'not started', NULL, NULL, 'After step 4.'),
     ('CHG-0413', 1, '0202', 'Create the departures index', 'approved', 'Stuart Toller', '$(day '-5 days')', NULL),
-    ('CHG-0414', 1, '0203', 'Add last_survey to vessels', 'approved', 'Stuart Toller', '$(day '-5 days')', NULL);
+    ('CHG-0414', 1, '0203', 'Add last_survey to vessels', '$ticket14_status', 'Rutger Lowrie', '$(day "$ticket14_day")', '$ticket14_note');
 END
 
-# The dumps. Whole ones hold every table; when the configuration names the schema the tables were
-# moved out of, the dump job still exits cleanly and writes a file with nothing in it.
-if [ "$CONFLICT" = 1 ]; then schemas=booking; else schemas=ferry; fi
+# The dumps: the last week's nightly dumps hold every table; the older ones are gone.
+schemas=ferry
 printf 'schemas: %s\n' "$schemas" > config/backup.conf
 rm -rf "$HOME/data/backups" var/log/backup.log
 mkdir -p "$HOME/data/backups" var/log
@@ -602,7 +615,7 @@ for ago in 7 6 5 4 3 2 1 0; do
     when=$((last - ago * 86400))
     name="bookings-$(date -d "@$when" +%Y%m%d-%H%M%S).txt.gz"
     target="$HOME/data/backups/$name"
-    if [ "$ago" != 0 ] && { [ "$CONFLICT" = 1 ] || [ "$ago" -le 3 ]; }; then
+    if [ "$ago" != 0 ] && [ "$ago" -le 3 ]; then
         cp "$tonight" "$target"
         sed -e "s/^file: .*/file: $name/" -e "s/^taken: .*/taken: $(date -d "@$when" '+%F %H:%M')/" "$tonight.manifest" > "$target.manifest"
         touch -d "@$when" "$target"
@@ -619,13 +632,12 @@ done
 # Which changes the shift's run is due to apply, and what the checks need to know.
 due='0202,0203'
 [ "$CHANGED" = 0 ] && due='0202,0203,0207,0208'
-min_rows=$(sql -c "SELECT count(*) FROM ferry.booking_lines")
+if [ "$CONFLICT" = 1 ]; then due=${due/,0203/}; fi
 cat > "$info/fb-flags-$ITEM" <<END
 changed=$CHANGED
 goal=$GOAL
 conflict=$CONFLICT
 due=$due
-min_rows=$min_rows
 END
 
 cat > "$info/fb-check" <<'END'
@@ -678,16 +690,12 @@ ROLLBACK;")"
         fi
         exit $ok ;;
     hold)
-        first=$(run "SELECT coalesce(extract(epoch FROM min(applied_at))::text, '1e15') FROM public.schema_history WHERE version = ANY (string_to_array('$due', ','))")
-        found=no
-        for file in "$HOME"/data/backups/*.gz; do
-            [ -e "$file" ] || continue
-            rows=$(zcat "$file" 2> /dev/null | grep -vc '^-- ')
-            [ "${rows:-0}" -ge "$min_rows" ] || continue
-            if awk -v a="$(stat -c %.9Y "$file")" -v b="${first:-1e15}" 'BEGIN { exit !(a < b) }'; then found=yes; fi
-        done
-        echo "a whole backup taken before the first change: $found"
-        [ "$found" = yes ] ;;
+        applied=$(run "SELECT count(*) FROM public.schema_history WHERE version = '0203'")
+        pending=$(ls "$HOME"/booking-db-ops/db/changes/0203_*.sql 2> /dev/null | wc -l)
+        scheduled=no
+        cron_lines | grep -Eq 'tools/schema[[:space:]]+apply[[:space:]]+NEXT' && scheduled=yes
+        echo "the held survey-date change applied: $([ "${applied:-1}" = 0 ] && echo no || echo yes); due tonight: $([ "$pending" != 0 ] && [ "$scheduled" = yes ] && echo yes || echo no)"
+        [ "${applied:-1}" = 0 ] && { [ "$pending" = 0 ] || [ "$scheduled" = no ]; } ;;
     noon)
         runs_at 12 0 && runs_at 2 0
         ok=$?
