@@ -123,6 +123,11 @@ for slug, name, age, work, aids, aid_owner, care in PATIENTS:
     if care:
         fields["lives_at"] = f"{care}, a care home"
         fields["makes_own_decisions"] = f"yes; capacity reviewed by the clinic on {ago(70)}, no attorney appointed"
+        if slug == "stanley-wragg":
+            fields["last_update"] = (
+                f"filter update on {ago(60)}; follow-up visit on {ago(55)} found his hearing and balance unchanged, and the"
+                " home's own incident note puts the corridor fall that week down to a wet floor"
+            )
     if slug in FEEDBACK:
         fields["feedback"] = FEEDBACK[slug]
     flags = list(FLAGS.get(slug, []))
@@ -196,6 +201,9 @@ if not conf.exists():
     "- The night carers put residents' aids on their chargers at bedtime; tell the nurse in charge if an aid\n"
     "  is reported off its charger in the morning.\n"
     "- Send a copy of any new cleaning instructions to the home for the residents' care files.\n"
+    "- The home's care plans say the home agrees changes to a resident's equipment. Both sides agreed that this\n"
+    "  covers equipment the home provides; aids a resident owns and decides about himself are his to agree, and the\n"
+    "  home is told after the change so the night carers know.\n"
 )
 (folder / "policy" / "contacts.md").write_text(
     "# Who to ask\n\n| Role | Person |\n| --- | --- |\n"

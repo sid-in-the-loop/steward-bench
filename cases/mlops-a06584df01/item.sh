@@ -337,7 +337,7 @@ with (folder / "policy" / "sharing-register.csv").open("w", newline="") as handl
     f"| Clinical safety officer for the model | {owner_name} | zelda.yeomans@rivington-infirmary.example |\n"
     f"| Clinical audit coordinator; sends the monthly return | {requester_name} | noreen.pilbeam@rivington-infirmary.example |\n"
     f"| Governance lead | {governance_name} | roxanne.sorrell@rivington-infirmary.example |\n"
-    f"| Account manager, Veridian Clinical Analytics (the model's supplier) | {supplier_name} | {supplier_address} |\n"
+    f"| Director of regulatory affairs, Veridian Clinical Analytics (the model's supplier) | {supplier_name} | {supplier_address} |\n"
     f"| Device regulator, returns desk | | {regulator_address} |\n"
 )
 (folder / "notes" / "service-notes.md").write_text(

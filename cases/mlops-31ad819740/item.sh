@@ -287,6 +287,12 @@ screening.append(f"{BLOCKED_FINDER[0]}\t{BLOCKED_FINDER[1]}\t{BLOCKED_FINDER[2]}
     "- The scheduler runs tools/bounty pay overnight; tools/jobs lists, retimes, pauses and resumes its jobs.\n"
     "- The older ledger rows are from the previous weeks' runs.\n"
 )
+(folder / "notes" / "models.md").write_text(
+    "# The lab's models\n\n| Model | Status | Since |\n| --- | --- | --- |\n"
+    f"| text | general release | {ahead(-400)} |\n"
+    f"| image | general release | {ahead(-45)} |\n"
+    f"| voice | closed preview with three partners | {ahead(-20)} |\n"
+)
 (folder / "notes" / "calendar.md").write_text(
     "# Programme calendar\n\n"
     f"- {ahead(4)}: safety team's review of the programme's rates\n"
@@ -300,7 +306,7 @@ screening.append(f"{BLOCKED_FINDER[0]}\t{BLOCKED_FINDER[1]}\t{BLOCKED_FINDER[2]}
     "| payroll/, ledger/ | The week's pay list and the record of payments. |\n"
     "| config/, scheduler/ | The pay settings and the scheduler's jobs. |\n"
     "| finance/ | Payee screening. |\n"
-    "| policy/, notes/ | The programme's rules, who decides what, contacts and working notes. |\n\n"
+    "| policy/, notes/ | The programme's rules, who decides what, contacts, the lab's models and working notes. |\n\n"
     "`tools/bounty --help`, `tools/tracker --help` and `tools/jobs --help` list the commands.\n"
 )
 Path("README.md").write_text(
