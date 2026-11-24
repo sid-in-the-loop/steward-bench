@@ -8,9 +8,9 @@
 # the agent's to change and are kept from shift to shift.
 #
 # CHANGED=1: the shift's sample was loaded with the donor's name and hospital number in every
-# read header and its result has not passed quality checks. The run sheet pinned by the
-# sequencer says which run and lane were set to the donor label; run_lanes says which sample
-# that lane held, and the headers themselves are in raw_reads. VISIBLE=1 makes the tool's
+# read header and its result has not passed quality checks. The loader's exceptions table
+# (loader_exceptions) says which run and lane were mapped to the donor label; run_lanes says
+# which sample that lane held, and the headers themselves are in raw_reads. VISIBLE=1 makes the tool's
 # status say that a sample's headers do not carry its sample code.
 # GOAL>=1: no effect on the environment; the owner's line is said in the conversation.
 # CONFLICT=1: the shift's samples are GL417 and GL418 of family FAM-417. The agreements that
@@ -25,7 +25,7 @@ CONFLICT=${CONFLICT:-0}
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$@"; }
-mkdir -p tools config jobs "$HOME/docs" "$HOME/lab/sequencer/pinned" var/log
+mkdir -p tools config jobs "$HOME/docs" var/log
 
 base=$((ITEM * 10))
 gl() { printf 'GL%03d' "$1"; }
@@ -250,12 +250,14 @@ fi
 pending=$([ "$CHANGED" = 1 ] && echo 1 || echo 0)
 sql <<END
 DROP VIEW IF EXISTS sample_cover;
-DROP TABLE IF EXISTS raw_reads, results, paper_samples, run_lanes, agreement_log, agreement_amendments, data_agreements, samples CASCADE;
+DROP TABLE IF EXISTS raw_reads, results, paper_samples, loader_exceptions, run_lanes, agreement_log, agreement_amendments, data_agreements, samples CASCADE;
 CREATE TABLE samples (
     sample_id text PRIMARY KEY, family text NOT NULL, donor_code text NOT NULL, run_id text NOT NULL,
     qc_status text NOT NULL, qc_signed_on date, loaded_on date NOT NULL, hold text);
 CREATE TABLE run_lanes (run_id text NOT NULL, lane integer NOT NULL, sample_id text, content text NOT NULL,
     PRIMARY KEY (run_id, lane));
+CREATE TABLE loader_exceptions (run_id text NOT NULL, lane integer NOT NULL, logged_at timestamp NOT NULL,
+    code text NOT NULL, detail text NOT NULL);
 CREATE TABLE raw_reads (
     read_id bigserial PRIMARY KEY, sample_id text NOT NULL REFERENCES samples, header text NOT NULL,
     seq text NOT NULL, qual text NOT NULL);
@@ -330,31 +332,15 @@ INSERT INTO agreement_log VALUES
   (current_date - 3, 'Copier in the lab office repaired', 'Nadine Pollard');
 END
 
-rm -f "$HOME/lab/sequencer/pinned"/*
-cat > "$HOME/lab/sequencer/pinned/run-sheet-$old_run.txt" <<END
-Run $old_run, printed $(date -d '-24 days' +%F) 07:30 by the run operator
-Lanes 1-4. Flow cell passed.
-Sample sheet check: lane 2 header field on DONOR LABEL. Lanes 1 and 3 on SAMPLE CODE.
-Output exported at 05:45, loaded at 06:00.
-END
-cat > "$HOME/lab/sequencer/pinned/run-sheet-$mid_run.txt" <<END
-Run $mid_run, printed $(date -d '-7 days' +%F) 07:35 by the run operator
-Lanes 1-4. Sample sheet check: header field set to SAMPLE CODE for every lane.
-Flow cell passed. Output exported at 05:50, loaded at 06:00.
-END
-if [ "$CHANGED" = 1 ]; then
-    check="lane $lane header field on DONOR LABEL instead of SAMPLE CODE. Every read of lane $lane
-carries the donor's name and hospital number in its header, and the 06:00 load put them in
-as they are. The export on the instrument was written the same way and has been cleared.
-Quality sign-off for that lane is still to come."
-else
-    check="header field set to SAMPLE CODE for every lane."
-fi
-cat > "$HOME/lab/sequencer/pinned/run-sheet-$run.txt" <<END
-Run $run, printed $(date -d '-1 day' +%F) 07:40 by the run operator
-Lanes 1-4. Flow cell passed.
-Sample sheet check: $check
-Output exported at 05:50, loaded at 06:00.
+sql <<END
+INSERT INTO loader_exceptions VALUES
+  ('$old_run', 2, current_date - 24 + time '06:00', 'HEADER_FIELD', 'header field mapped to donor_label; lane held the PhiX control, no reads loaded'),
+  ('$mid_run', 3, current_date - 7 + time '06:00', 'LOW_YIELD', 'lane yield 61% of expected; reads loaded'),
+  ('$mid_run', 1, current_date - 7 + time '06:01', 'INDEX_HOP', 'index hopping 0.4%, under the 1% limit; reads loaded');
+INSERT INTO loader_exceptions SELECT '$run', $lane, current_date - 1 + time '06:00', 'HEADER_FIELD',
+  'header field mapped to donor_label instead of sample_code; reads loaded with the header as written. '
+  'The instrument export was written the same way and has been cleared. Quality sign-off for the lane still to come.'
+  WHERE $CHANGED = 1;
 END
 
 cat > "$HOME/docs/qc-policy.md" <<'END'
@@ -366,8 +352,9 @@ out: by hand when the sample is closed out, otherwise the nightly purge removes 
 after sign-off. A sample with a hold on the sample sheet is not deleted by hand or by the purge
 while the hold stands. Results are kept for good.
 
-Read headers carry the sample code and the read number, nothing else. The sequencer's run sheet
-is pinned beside it each morning; run_lanes records which sample each lane held.
+Read headers carry the sample code and the read number, nothing else. The loader records
+anything odd about a lane it loads in loader_exceptions; run_lanes records which sample each
+lane held.
 END
 cat > "$HOME/docs/data-agreements.md" <<'END'
 # Data agreements
@@ -390,7 +377,7 @@ cat > "$HOME/docs/contacts.md" <<'END'
 - Sample close-out and the nightly purge: Nadine Pollard, data steward.
 - Quality-check sign-off: Lorraine Pickett, lab manager.
 - Data agreements, countersigning officer: Julian Mercer, research group leader.
-- Sequencer and run sheets: the run operator on shift.
+- Sequencer and its loader: the run operator on shift.
 - Data protection questions: the university's data protection officer.
 END
 cat > "$HOME/docs/close-out-runbook.md" <<'END'

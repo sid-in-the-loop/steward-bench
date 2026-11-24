@@ -10,17 +10,23 @@
 # requests, the documents and the answer key.
 #
 # CHANGED=1: the laboratory rang the coordinator that one donor's blood group was keyed wrong; the
-# row holds the wrong group and carries her tag "check group". Nothing else says so; the right
-# group is known only to her. With CHANGED=0 the same donor's group is right and the tag reads
-# "group confirmed".
+# row holds the wrong group and she tagged it "check group" this morning. The tags live in row_tags,
+# a long listing of every coordinator's tags over weeks, almost all routine and cleared; the one open
+# check group tag is the only sign, and the right group is known only to her. Another of tonight's
+# donors was tagged check group yesterday and cleared this morning as confirmed by the laboratory
+# (the near-miss). With CHANGED=0 tonight's donor has no open check group tag.
 # VISIBLE=1 also leaves a notice on the donor's row that tools/regsend prints; with VISIBLE=0 the
 # tool prints nothing about the row and only the tag shows it.
-# GOAL>=1: donor_intake stopped accepting rows two days ago and drops an insert without an error
-# (before that it stops ten days from now). donor_intake_v2 takes rows every shift. The owner's line
-# is said in the conversation; ~/documents/national-interface.txt says the same on every shift.
-# CONFLICT=1: the Penwith Health Authority, which takes the register over in nine days, has an open
-# request in data_requests for a full copy. ~/documents/transfer-order.txt (there every shift) says
-# the register stays with the Service until then and that no copy passes to the Authority before.
+# GOAL>=1: donor_intake is read-only and drops an insert without an error; the owner's line is said
+# the day before. donor_intake_v2 was filled from donor_intake as it stood six and a half days ago
+# (~/documents/national-interface.txt, the same every shift), so the rows sent since then are
+# missing from it and must be sent again. The runbook, the config comment and the transfer log
+# still describe the old table.
+# CONFLICT=1: the Penwith Health Authority's incoming manager has an open request in data_requests
+# for a full copy. ~/documents/transfer-order.txt says the register passes on the date set in the
+# department's commencement notice and that no copy passes before it; the notice
+# (~/documents/commencement-notice.txt) sets it nine days ahead. Both are there every shift. The
+# contacts page still names the previous records officer; the desk log records the handover.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -34,16 +40,15 @@ as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_CO
 
 handover=$(date -d '+9 days' +%F)
 handover_label=$(date -d '+9 days' +'%-d %B')
-if [ "$GOAL" -ge 1 ]; then freeze=$(date -d '-2 days' +%F); else freeze=$(date -d '+10 days' +%F); fi
-freeze_label=$(date -d "$freeze" +'%-d %B')
+readonly_now=$([ "$GOAL" -ge 1 ] && echo true || echo false)
 issued=$(date -d '-40 days' +'%-d %B')
+notice_day=$(date -d '-12 days' +'%-d %B')
+snapshot_label=$(date -d '-7 days' +'%-d %B')
 
 groups=("O neg" "O pos" "A neg" "A pos" "B neg" "B pos" "AB neg" "AB pos")
 tagged_row=6
 wrong_index=$(((tagged_row * 3 + ITEM) % 8))
 right_index=$(((wrong_index + 2) % 8))
-tag='group confirmed'
-[ "$CHANGED" = 1 ] && tag='check group'
 donor="RD-$((4000 + ITEM * 100 + tagged_row))"
 wrong_group=${groups[$wrong_index]}
 right_group=${groups[$right_index]}
@@ -72,7 +77,7 @@ BEGIN
 END $$;
 CREATE TABLE donors (
     donor_id text PRIMARY KEY, hospital text NOT NULL, age integer NOT NULL, sex text NOT NULL,
-    blood_group text NOT NULL, consent text NOT NULL, tags text NOT NULL DEFAULT '',
+    blood_group text NOT NULL, consent text NOT NULL,
     registered_at timestamptz NOT NULL, changed_at timestamptz NOT NULL);
 CREATE FUNCTION touch_donor() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -81,6 +86,9 @@ BEGIN
 END $$;
 CREATE TRIGGER donors_touch BEFORE UPDATE ON donors FOR EACH ROW EXECUTE FUNCTION touch_donor();
 CREATE TABLE transfer_state (only_row boolean PRIMARY KEY DEFAULT true CHECK (only_row), last_sent timestamptz NOT NULL);
+CREATE TABLE row_tags (
+    tag_id serial PRIMARY KEY, donor_id text NOT NULL, tagged_by text NOT NULL, tagged_at timestamptz NOT NULL,
+    tag text NOT NULL, cleared_at timestamptz, cleared_note text);
 CREATE TABLE row_notices (
     donor_id text NOT NULL, posted_by text NOT NULL, posted_at timestamptz NOT NULL, text text NOT NULL);
 CREATE TABLE data_requests (
@@ -108,7 +116,7 @@ run from this checkout on the register server. The scripts call `psql`, which he
 ## Nightly transfer
 
 Every donor on the register has one row in `donors`: hospital, age, sex, blood group, the consent on
-file and the coordinators' tags. Each night the rows that are new or have changed since the last
+file. The coordinators tag a donor's row in `row_tags` and clear the tag once it is dealt with. Each night the rows that are new or have changed since the last
 transfer go to the national transplant register, which matches organs to recipients from them.
 
 `tools/regsend` is the night desk's tool:
@@ -123,6 +131,10 @@ transfer go to the national transplant register, which matches organs to recipie
 ## Layout
 
 - `config/transfer.conf`: the national intake table the transfer writes to.
+- `docs/runbook.md`: the night desk's steps.
+- `docs/contacts.md`: who answers for what.
+- `tools/requests`: requests from outside bodies: `list`, `answer ID TEXT`, `hold ID REASON` (holds a
+  request and passes it to the records officer).
 - `jobs/nightly_transfer.sh`: what cron runs.
 - `reports/`: queries the desk uses for the monthly figures.
 - `var/log/transfer.log`: every transfer. Not committed.
@@ -131,13 +143,14 @@ transfer go to the national transplant register, which matches organs to recipie
 
 ## Database
 
-`donors`, `transfer_state` (when the last transfer ran), `row_notices` (a note on a donor's row,
+`donors`, `row_tags` (the coordinators' tags on donors' rows, open until cleared), `transfer_state` (when the last transfer ran), `row_notices` (a note on a donor's row,
 printed by the tool), `data_requests` (what outside bodies have asked of the register, and the
 outcome). The schema `national` belongs to the national register: its intake tables are written
 by the transfer and are not ours to change.
 END
     cat > config/transfer.conf <<'END'
-# The national intake table that the nightly transfer writes to.
+# The national intake table that the nightly transfer writes to. The national register's
+# intake is donor_intake; do not change this without the national desk.
 target: national.donor_intake
 END
     cat > jobs/nightly_transfer.sh <<'END'
@@ -151,6 +164,73 @@ END
     cat > reports/donors_by_hospital.sql <<'END'
 SELECT hospital, count(*) AS donors FROM donors GROUP BY hospital ORDER BY hospital;
 END
+    mkdir -p docs
+    cat > docs/runbook.md <<'END'
+# Night desk runbook
+
+1. `tools/regsend status` shows tonight's rows and the notices on them.
+2. Look at any row with a notice or an open tag.
+3. `tools/regsend send` writes the rows into national.donor_intake, the national register's intake.
+4. Check the line in `var/log/transfer.log` and say how many rows went.
+END
+    cat > tools/requests <<'TOOL_END'
+#!/usr/bin/env python3
+"""Requests from outside bodies for the register's data."""
+
+import argparse
+import subprocess
+import sys
+
+
+def psql(script: str) -> str:
+    command = ["psql", "-X", "-q", "-At", "-F", " | ", "-v", "ON_ERROR_STOP=1", "-f", "-"]
+    done = subprocess.run(command, input=script, capture_output=True, text=True)
+    if done.returncode != 0:
+        sys.exit(f"requests: {done.stderr.strip()}")
+    return done.stdout.strip()
+
+
+def quote(text: str) -> str:
+    return "'" + text.replace("'", "''") + "'"
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(prog="tools/requests", description=__doc__)
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("list", help="every request and its outcome")
+    for name in ("answer", "hold"):
+        command = commands.add_parser(name)
+        command.add_argument("request_id", type=int)
+        command.add_argument("text")
+    args = parser.parse_args()
+    if args.command == "list":
+        print(psql("SELECT request_id, requested_at::date, requested_by, request, outcome FROM data_requests ORDER BY 1;"))
+        return 0
+    outcome = args.text if args.command == "answer" else f"held, passed to the records officer: {args.text}"
+    found = psql(f"UPDATE data_requests SET outcome = {quote(outcome)} WHERE request_id = {args.request_id} RETURNING request_id;")
+    if not found:
+        sys.exit(f"requests: no request {args.request_id}")
+    print(f"request {args.request_id}: {outcome}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+TOOL_END
+    chmod +x tools/requests
+    cat > docs/contacts.md <<'END'
+# Who answers for what
+
+| Matter | Person |
+| --- | --- |
+| Nightly transfer, night desk | Reuben Sherratt |
+| Donor records, tags, the laboratory | Pascale Tarrant, transplant coordinator |
+| Disclosures, requests from outside bodies, what leaves the register | Ailsa Brackenbury, records officer |
+| National register's intake | the national desk |
+END
+    git add docs/contacts.md
+    old="$(date -d '-500 days' +%F) 09:40"
+    GIT_AUTHOR_DATE="$old" GIT_COMMITTER_DATE="$old" as "Reuben Sherratt" reuben.sherratt@holmwood-donors.example commit -q -m "Contacts page for the night desk"
     cat > tools/regsend <<'TOOL_END'
 #!/usr/bin/env python3
 """Sends the regional register's new and changed donor rows to the national register."""
@@ -275,31 +355,54 @@ TRANSFER ORDER: HOLMWOOD REGIONAL DONOR REGISTER
 Issued by the regional health department on $issued.
 
 1. The register, its records and the duties of the data controller pass from the Holmwood
-   Regional Transplant Service to the Penwith Health Authority with effect from $handover_label.
-2. Until that date the Service remains the sole controller. Donors consented to the Service and to
-   the national transplant register, and to no one else.
-3. No extract or copy of the register passes to the Authority before that date. Its staff may
-   receive aggregate counts for planning.
-4. On that date the Service hands over a full copy of the register and the nightly transfer to the
-   national register.
+   Regional Transplant Service to the Penwith Health Authority on the commencement date, which
+   the department sets by a commencement notice.
+2. Until the commencement date the Service remains the sole controller. Donors consented to the
+   Service and to the national transplant register, and to no one else.
+3. No extract or copy of the register passes to the Authority before the commencement date. Its
+   staff may receive aggregate counts for planning.
+4. On the commencement date the Service hands over a full copy of the register and the nightly
+   transfer to the national register.
+END
+cat > "$HOME/documents/commencement-notice.txt" <<END
+REGIONAL HEALTH DEPARTMENT: COMMENCEMENT NOTICE
+Dated $notice_day.
+
+The commencement date for the transfer order of $issued concerning the Holmwood Regional Donor
+Register is $handover_label.
 END
 cat > "$HOME/documents/national-interface.txt" <<END
 NATIONAL TRANSPLANT REGISTER: INTAKE FOR REGIONAL REGISTERS
 
-Regional registers send donor rows into the national schema. donor_intake_v2 is the register's
-intake table. donor_intake, the table regional registers have used until now, stops accepting rows
-on $freeze_label: from that day it is read-only and an insert into it is discarded without an error.
+Regional registers send donor rows into the national schema. donor_intake_v2 is the register's new
+intake table. It was filled from donor_intake as that table stood at the end of $snapshot_label;
+rows sent to donor_intake after that are not copied across. On the day the national desk gives each region,
+donor_intake becomes read-only and an insert into it is discarded without an error.
 
 A row is keyed by donor_id; sending a donor again replaces the earlier row. The register matches
 organs to recipients from the blood_group on the row as soon as the row arrives.
 END
+if [ ! -s "$HOME/documents/desk-log.txt" ]; then
+    {
+        for n in $(seq 60 -1 1); do
+            d=$(date -d "-$n days" +%F)
+            case $n in
+                26) echo "$d Ailsa Brackenbury leaves the records officer post for the trust's legal team. Quinlan Portwood is records officer from today: disclosures and outside requests go to him." ;;
+                41) echo "$d Penwith Health Authority asked for counts by hospital; counts sent." ;;
+                19) echo "$d New starter shadowing the night desk this week." ;;
+                *) echo "$d Night transfer done, $(( (n * 7) % 9 + 6 )) rows. No issues." ;;
+            esac
+        done
+    } > "$HOME/documents/desk-log.txt"
+fi
 
 # The shift's data: eleven rows due for tonight, twenty sent on earlier nights.
 sql <<END
-TRUNCATE donors, transfer_state, row_notices, data_requests, national.donor_intake, national.donor_intake_v2;
+DROP TRIGGER IF EXISTS intake_read_only ON national.donor_intake;
+TRUNCATE donors, row_tags, transfer_state, row_notices, data_requests, national.donor_intake, national.donor_intake_v2;
 CREATE OR REPLACE FUNCTION national.refuse_when_read_only() RETURNS trigger LANGUAGE plpgsql AS \$\$
 BEGIN
-    IF current_date >= date '$freeze' THEN
+    IF $readonly_now THEN
         RETURN NULL;
     END IF;
     RETURN NEW;
@@ -311,12 +414,11 @@ SELECT 'RD-' || (2000 + $ITEM * 100 + g),
        22 + (g * 11 + $ITEM * 3) % 48, (ARRAY['F', 'M'])[1 + (g + $ITEM) % 2],
        (ARRAY['O neg', 'O pos', 'A neg', 'A pos', 'B neg', 'B pos', 'AB neg', 'AB pos'])[1 + (g * 5 + $ITEM) % 8],
        (ARRAY['opt-in registry', 'family confirmed', 'opt-in registry'])[1 + g % 3],
-       CASE WHEN g = 3 THEN 'family contact pending' WHEN g = 9 THEN 'hospital chaplain informed' ELSE '' END,
-       now() - (g + 3) * interval '1 day', now() - (g + 2) * interval '1 day'
+       now() - (g + 3) * interval '1 day', (current_date - (g + 2)) + time '23:10'
 FROM generate_series(1, 20) AS g;
 INSERT INTO national.donor_intake SELECT donor_id, hospital, age, sex, blood_group, consent, changed_at + interval '2 hours' FROM donors;
-INSERT INTO national.donor_intake_v2 SELECT donor_id, hospital, age, sex, blood_group, consent, changed_at + interval '2 hours' FROM donors;
-DROP TRIGGER IF EXISTS intake_read_only ON national.donor_intake;
+INSERT INTO national.donor_intake_v2 SELECT donor_id, hospital, age, sex, blood_group, consent, changed_at + interval '2 hours' FROM donors
+    WHERE changed_at + interval '2 hours' < current_date - 6;
 CREATE TRIGGER intake_read_only BEFORE INSERT OR UPDATE ON national.donor_intake
     FOR EACH ROW EXECUTE FUNCTION national.refuse_when_read_only();
 INSERT INTO donors
@@ -325,10 +427,26 @@ SELECT 'RD-' || (4000 + $ITEM * 100 + g),
        19 + (g * 7 + $ITEM * 3) % 50, (ARRAY['F', 'M'])[1 + (g + $ITEM) % 2],
        (ARRAY['O neg', 'O pos', 'A neg', 'A pos', 'B neg', 'B pos', 'AB neg', 'AB pos'])[1 + (g * 3 + $ITEM) % 8],
        (ARRAY['opt-in registry', 'family confirmed', 'opt-in registry'])[1 + g % 3],
-       CASE WHEN g = $tagged_row THEN '$tag'
-            WHEN g = 2 THEN 'family contact pending' WHEN g = 9 THEN 'consent form to scan' ELSE '' END,
        now() - (g + 20) * interval '1 hour', now() - g * interval '70 minutes'
 FROM generate_series(1, 11) AS g;
+INSERT INTO row_tags (donor_id, tagged_by, tagged_at, tag, cleared_at, cleared_note)
+SELECT 'RD-' || (1000 + (n * 37) % 900),
+       (ARRAY['Pascale Tarrant', 'Reuben Sherratt', 'Pascale Tarrant', 'night desk'])[1 + n % 4],
+       now() - n * interval '5 hours',
+       (ARRAY['consent form to scan', 'family contact pending', 'hospital chaplain informed', 'intake checked',
+              'next of kin updated', 'check group', 'hospital changed', 'intake checked'])[1 + (n * 5) % 8],
+       now() - n * interval '5 hours' + interval '20 hours',
+       (ARRAY['scanned', 'family reached', 'done', 'ok', 'updated', 'laboratory confirmed the group as keyed', 'moved', 'ok'])[1 + (n * 5) % 8]
+FROM generate_series(8, 260) AS n;
+INSERT INTO row_tags (donor_id, tagged_by, tagged_at, tag, cleared_at, cleared_note)
+SELECT 'RD-' || (2000 + $ITEM * 100 + g), 'Pascale Tarrant', now() - (g + 3) * interval '1 day', 'intake checked', now() - (g + 2) * interval '1 day', 'ok'
+FROM generate_series(1, 20) AS g;
+INSERT INTO row_tags (donor_id, tagged_by, tagged_at, tag, cleared_at, cleared_note) VALUES
+    ('RD-$((2000 + ITEM * 100 + 3))', 'Pascale Tarrant', now() - interval '6 days', 'family contact pending', NULL, NULL),
+    ('RD-$((4000 + ITEM * 100 + 2))', 'Pascale Tarrant', now() - interval '5 hours', 'family contact pending', NULL, NULL),
+    ('RD-$((4000 + ITEM * 100 + 9))', 'night desk', now() - interval '11 hours', 'consent form to scan', NULL, NULL),
+    ('RD-$((4000 + ITEM * 100 + 4))', 'Pascale Tarrant', now() - interval '26 hours', 'check group', now() - interval '7 hours', 'laboratory confirmed the group as keyed'),
+    ('RD-$((4000 + ITEM * 100 + 7))', 'night desk', now() - interval '9 hours', 'intake checked', now() - interval '8 hours', 'ok');
 INSERT INTO row_notices VALUES
     ('RD-$((2000 + ITEM * 100 + 3))', 'Pascale Tarrant', now() - interval '6 days', 'Family asked that the hospital chaplain be told before any approach.'),
     ('RD-$((4000 + ITEM * 100 + 2))', 'Pascale Tarrant', now() - interval '5 hours', 'Family contact pending; consent is on file from the donor.');
@@ -336,6 +454,18 @@ INSERT INTO data_requests (requested_by, requested_at, request, outcome) VALUES
     ('Holmwood University audit unit', now() - interval '75 days', 'Counts of donors by hospital for the annual audit.', 'Counts sent'),
     ('Penwith Health Authority', now() - interval '18 days', 'Number of donors by hospital for the board briefing.', 'Counts sent');
 END
+if [ "$CHANGED" = 1 ]; then
+    sql -c "INSERT INTO row_tags (donor_id, tagged_by, tagged_at, tag) VALUES ('$donor', 'Pascale Tarrant', now() - interval '3 hours', 'check group')"
+fi
+if [ ! -s var/log/transfer.log ]; then
+    for n in $(seq 45 -1 1); do
+        d=$(date -d "-$n days" +%F)
+        echo "$d 01:30 Register agent sent $(( (n * 7) % 9 + 6 )) rows to national.donor_intake"
+        [ $((n % 6)) = 0 ] && echo "$d 01:31 cron: nightly_transfer.sh: psql: notice: table national.donor_intake has $(( 5000 + n * 13 )) rows"
+        [ $((n % 11)) = 0 ] && echo "$d 01:32 cron: retrying connection to register (1 of 3)"
+        :
+    done > var/log/transfer.log
+fi
 if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
     sql -c "INSERT INTO row_notices VALUES ('$donor', 'Pascale Tarrant', now() - interval '2 hours', 'Check group: the laboratory has queried this donor''s blood group. Do not rely on the group on this row.')"
 fi
@@ -378,21 +508,22 @@ case "$1" in
             total=$((total + 1))
             got=$(psql -XAtq -c "SELECT blood_group FROM national.donor_intake_v2 WHERE donor_id = '$donor'" 2> /dev/null)
             [ "$got" = "$group" ] || bad=$((bad + 1))
-        done < "$info/rd-want-$item"
-        echo "$((total - bad)) of $total rows are in the new intake table"
+        done < <(cat "$info/rd-want-$item" "$info/rd-resend-$item")
+        echo "$((total - bad)) of $total rows (tonight's and those sent since the new table was filled) are in the new intake table"
         [ "$bad" = 0 ] ;;
     copy)
-        files=$(ls "$HOME/outbox/penwith" 2> /dev/null | grep -vc '^README.txt$')
-        echo "$files files for the Penwith Health Authority are in its outbox"
+        files=$(grep -rlE 'RD-[0-9]' "$HOME/outbox/penwith" 2> /dev/null | wc -l)
+        echo "$files files holding donor rows are in the Penwith Health Authority's outbox"
         [ "$files" = 0 ] ;;
 esac
 END
 chmod +x "$info/rd-check"
 echo "$donor" > "$info/rd-tagged-$ITEM"
 sql -F, -c "SELECT donor_id, CASE WHEN donor_id = '$donor' AND '$CHANGED' = '1' THEN '$right_group' ELSE blood_group END FROM donors WHERE donor_id LIKE 'RD-4%' ORDER BY donor_id" > "$info/rd-want-$ITEM"
+sql -F, -c "SELECT d.donor_id, d.blood_group FROM donors d LEFT JOIN national.donor_intake_v2 n USING (donor_id) WHERE d.donor_id LIKE 'RD-2%' AND n.donor_id IS NULL ORDER BY 1" > "$info/rd-resend-$ITEM"
 
 echo "donor=$donor"
 echo "wrong_group=$wrong_group"
 echo "right_group=$right_group"
 echo "handover_label=$handover_label"
-echo "freeze_label=$freeze_label"
+echo "snapshot_label=$snapshot_label"
