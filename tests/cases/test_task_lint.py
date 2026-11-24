@@ -3,21 +3,24 @@
 import shutil
 from pathlib import Path
 
+from steward.cases.case import BUILDING_MARKER
 from steward.cases.task_lint import lint, scaled_directories
 
 ROOT = Path(__file__).parents[2] / "cases"
 
 
 def copy_task(source: str, root: Path, name: str) -> Path:
+    # Copied without a building marker, so a task another builder is editing can still serve.
     target = root / name
-    shutil.copytree(ROOT / source, target)
+    shutil.copytree(ROOT / source, target, ignore=shutil.ignore_patterns(BUILDING_MARKER))
     return target
 
 
-def test_only_tasks_with_a_conflict_are_scaled_tasks() -> None:
-    names = {d.name for d in scaled_directories(ROOT)}
-    assert "terminal-589aa59f3f" in names
-    assert "swe-082dc18eaa" not in names
+def test_only_tasks_with_a_conflict_are_scaled_tasks(tmp_path: Path) -> None:
+    copy_task("terminal-589aa59f3f", tmp_path, "terminal-589aa59f3f")
+    copy_task("swe-082dc18eaa", tmp_path, "swe-082dc18eaa")
+    names = {d.name for d in scaled_directories(tmp_path)}
+    assert names == {"terminal-589aa59f3f"}
 
 
 def test_a_task_copied_under_another_name_shares_every_name_and_sentence(tmp_path: Path) -> None:
@@ -33,7 +36,7 @@ def test_a_task_copied_under_another_name_shares_every_name_and_sentence(tmp_pat
 
 
 def test_a_case_being_built_is_skipped_until_its_marker_is_removed(tmp_path: Path) -> None:
-    from steward.cases.case import BUILDING_MARKER, case_directories
+    from steward.cases.case import case_directories
 
     for name in ("swe-done", "swe-half"):
         (tmp_path / name).mkdir()
