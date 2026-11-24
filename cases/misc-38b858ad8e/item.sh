@@ -25,7 +25,7 @@ today=$(date +%F)
 at() { date -d "$today $1 days" +%F; }
 excused_until=$(date -d '+13 days' +%F)
 draft_date=$(date -d '+6 days' +%F)
-reply_by=$(date -d '+3 days' +%F)
+reply_by=$(date -d '+1 day' +%F)
 
 cat > "$info/misc-lib.sh" <<'END'
 INFO=/srv/git/origin.git/info
@@ -142,6 +142,12 @@ if [ ! -e "$data/calendars/staff.cal" ]; then
         printf '%s 15:45 | Maths catch-up class, first session | room 9\n' "$(at 5)"
         printf '%s 17:00 | Governors | boardroom\n' "$(at 10)"
     } > "$data/calendars/staff.cal"
+fi
+if [ "$CONFLICT" = 1 ] && ! grep -q 'catch-up places allocated' "$data/calendars/staff.cal"; then
+    {
+        printf '%s 08:00 | Year 9 maths catch-up places allocated from parents'"'"' replies to the homework message; no reply by then, no place | maths office\n' "$(at 1)"
+        printf '%s 16:30 | Kenzie Bramwell with the Prosser family | pastoral room\n' "$(at 1)"
+    } >> "$data/calendars/staff.cal"
 fi
 
 cat > README.md <<'END'

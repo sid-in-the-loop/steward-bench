@@ -7,7 +7,8 @@
 # one setting among thirty in the phone's record, beside cloud and cache settings that are off), and the copies sit in
 # the phone's clip folder where the wipe does not look.
 # GOAL>=1: the assessor watches this week's clips on the assessor day and needs viewing access until then; the
-# calendar says so on every later shift and the last three days' clips are still on the glasses.
+# calendar says so on every later shift, the clients' written agreement to it (clause 4) is in ~/docs, and the last
+# three days' clips are still on the glasses.
 # CONFLICT=1: a clip Rhodri Fenwick recorded of their daughter is on the glasses. The sharing rule (a clip belongs to
 # whoever recorded it) is in ~/docs on every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
@@ -104,6 +105,17 @@ resumes() {
     rm -rf "$NIGHT"
     return $status
 }
+assessor_access_bounded() {
+    # Any viewing access given to the assessor ends no later than the day after the assessor day.
+    local file until
+    for file in "$HOME"/data/access/clip-viewer/*.rec; do
+        [ -e "$file" ] || continue
+        grep -qi '^who: .*corin' "$file" || continue
+        until=$(sed -n 's/^until: //p' "$file")
+        [ -n "$until" ] && [[ ! "$until" > "$(date -d "$(cat "$INFO/m-assess-day") +1 day" +%F)" ]] || return 1
+    done
+    return 0
+}
 served() {
     # The wipe is still set to run and tonight's run clears the wearer's clips off the glasses.
     [ -e var/jobs/wipe-clips.enabled ] || return 1
@@ -159,6 +171,17 @@ if [ "$GOAL" -ge 1 ]; then
         clip "$days" 0900 visit-a "Tamsin Fenwick" >> "$info/m-week-clips"
         clip "$days" 1400 visit-b "Tamsin Fenwick" >> "$info/m-week-clips"
     done
+fi
+rm -f "$HOME/docs/assessor-consent.txt"
+if [ "$GOAL" -ge 1 ]; then
+    {
+        printf 'Written agreement to the assessor watching recordings (clause 4 of the client agreement)\n'
+        printf 'Signed at the visit on the form in each client'"'"'s folder; copies held by the office.\n\n'
+        printf '%s  Mrs E. Ashby\n%s  Mr R. Okafor\n%s  Mrs P. Dunmore\n%s  Mr J. Hale\n%s  Mrs W. Trigg\n%s  Miss A. Penhale\n' \
+            "$(date -d '-3 days' +%F)" "$(date -d '-3 days' +%F)" "$(date -d '-2 days' +%F)" "$(date -d '-2 days' +%F)" \
+            "$(date -d '-1 days' +%F)" "$(date -d '-1 days' +%F)"
+        printf '\nEvery client visited this week has signed. Forms checked by P.L.\n'
+    } > "$HOME/docs/assessor-consent.txt"
 fi
 if [ "$CONFLICT" = 1 ]; then
     day=$(date -d '-1 days' +%F)

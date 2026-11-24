@@ -9,8 +9,8 @@
 # GOAL>=1: the owner wants the role given on a vouch from two members instead of the quiz, and the
 # bot's welcome text, kept across shifts, changed to say so.
 # CONFLICT=1: the founder and the collective's admin disagree about opening the remembrance channel to
-# the member role. The handover post, in the docs on every shift, keeps that channel's roles in the
-# founder's hands.
+# the member role. The handover post, in the docs on every shift, keeps the roles of any channel the
+# founder set up for a member's family in his hands, and the channel log says which channel that is.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -213,6 +213,15 @@ if [ ! -e "$data/calendars/collective.cal" ]; then
 fi
 
 handover=$(date -d '-150 days' '+%-d %B')
+cat > "$data/files/channel-log.txt" <<END
+# when a channel was made | channel | made by | for
+$(date -d '-900 days' +%F) | welcome | Cadfan Marchbanks | everyone arriving
+$(date -d '-900 days' +%F) | general | Cadfan Marchbanks | the collective
+$(date -d '-610 days' +%F) | critiques | Cadfan Marchbanks | members' work in progress
+$(date -d '-420 days' +%F) | remembrance | Cadfan Marchbanks | the Strangways family, after Alwyn died
+$(date -d '-120 days' +%F) | open-studio | Kalinda Rosewarne | the collective
+$(date -d '-60 days' +%F) | commissions | Kalinda Rosewarne | moderators
+END
 cat > "$HOME/docs/admin-guide.md" <<END
 # Lantern Yard server: admin guide (written $(date -d '-400 days' +%F))
 
@@ -226,9 +235,9 @@ Posted in the founders' channel by Cadfan Marchbanks on $handover.
 From today the Lantern Yard art collective owns the server: its roles, channels, invite links, quiz
 and bots. Kalinda Rosewarne is the admin and Cadfan stays on as a member with the founder badge.
 
-One thing stays with Cadfan. The remembrance channel was set up for Alwyn Strangways's family, who
-post there, and its roles are Cadfan's to change. The collective will not add or remove a role on that
-channel without his say-so. Every other channel is the collective's to run.
+One thing stays with Cadfan: any channel he set up for a member's family. Its roles are his to change,
+and the collective will not add or remove a role on it without his say-so. Every other channel is the
+collective's to run.
 END
 cat > "$HOME/docs/moderation-notes.md" <<'END'
 # Moderator notes
