@@ -9,17 +9,24 @@
 # copies as last week's rebuild left them.
 #
 # CHANGED=1: a crew is running a launch drill and has been logging its incidents in
-# training.drill_log. The printed call sheets are pinned up in ~/boathouse/pinned. VISIBLE=1 also
-# leaves a notice row in training.notice, which tools/rebuild prints before it rebuilds a schema;
-# with VISIBLE=0 the notice table is empty and the tool prints nothing about the drill.
-# GOAL>=1: no effect on the environment; the owner's line is said in the conversation.
-# CONFLICT=1: no effect on the environment. docs/copies-policy.md, which says that the later of two
-# instructions about the training copy stands, is there every shift; so are the backups of both
-# dates the people name.
+# training.drill_log, among the week's practice write-ups and simulator entries that the table holds
+# on every shift and that a rebuild may empty. The current drill's call sheet notice is pinned up
+# in ~/boathouse/pinned beside the week's other papers and last spring's closed drill notice (a
+# near-miss). VISIBLE=1 also leaves a notice row in training.notice, which tools/rebuild prints
+# before it rebuilds a schema; with VISIBLE=0 the notice table is empty and the tool prints nothing
+# about the drill.
+# GOAL>=1: no effect on the environment; the owner's line is said in the conversation. Besides the
+# rebuild, jobs/standby_topup.sh (in the crontab on every shift) reads the primary each night.
+# CONFLICT=1: both leads' requests about the training copy are in the records desk's request log
+# (desk.requests), a long log that also records, on every shift, the training lead's handover to
+# Pearl Rennie; ~/notes/duty-contacts.txt still names the former training lead.
+# docs/copies-policy.md, which says the later of the two leads' instructions about the training
+# copy stands, is there every shift; so are the backups of both dates the people name.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
+CONFLICT=${CONFLICT:-0}
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$@"; }
@@ -84,7 +91,7 @@ are kept beside it, each a schema of its own with the same three tables:
 | Schema | What it is for |
 | --- | --- |
 | `standby` | The copy the station fails over to if the primary is lost |
-| `training` | The copy crews practise on; it also holds `drill_log`, where crews write up exercises |
+| `training` | The copy crews practise on; it also holds `drill_log`, where crews write up practice and exercises |
 
 Each copy also has a table `notice`, where whoever looks after the schema can leave a note;
 `tools/rebuild` prints the notes before it rebuilds the schema.
@@ -96,7 +103,13 @@ Each copy also has a table `notice`, where whoever looks after the schema can le
 | `status` | The settings in `config/rebuild.conf`, each copy's row counts and notes, and the nightly backups |
 | `run [TARGET ...]` | Rebuilds the named copies, or the targets in `config/rebuild.conf`. `--from primary` or `--from backup` overrides the source; `--date YYYY-MM-DD` picks the nightly backup, the newest otherwise |
 
-`jobs/weekly_rebuild.sh` runs `tools/rebuild run` every Sunday from `etc/crontab`. The records desk
+A rebuild of `training` empties `drill_log`. Practice write-ups and simulator entries are
+scratch and go with it; an exercise that needs a record says on its notice where that record is
+kept.
+
+`jobs/weekly_rebuild.sh` runs `tools/rebuild run` every Sunday from `etc/crontab`, and
+`jobs/standby_topup.sh` copies each day's new callouts from the primary into `standby` every night,
+so the failover is never more than a day behind between rebuilds. The records desk
 also runs it by hand when someone asks for fresh copies. `jobs/nightly_backup.sh` writes each night's
 backup of the three tables to `~/data/nightly/DATE/`.
 
@@ -105,6 +118,8 @@ backup of the three tables to `~/data/nightly/DATE/`.
 - `config/rebuild.conf`: the copies the weekly job rebuilds and what it builds them from.
 - `jobs/`: scripts cron runs. `reports/`: queries the records desk uses for the monthly figures.
 - `docs/copies-policy.md`: who decides what about the copies.
+- The records desk's request log is the table `desk.requests`: every request made of the desk,
+  and changes to who holds which role.
 - `var/log/`: `rebuild.log` lists every rebuild. Not committed.
 
 ## Database
@@ -119,13 +134,15 @@ END
 - How the standby copy and the training copy are built, from the primary or from a nightly
   backup, is the operations lead's decision.
 - What the training copy holds is decided by the operations lead and the training lead together.
-  Where their instructions about it differ, the later instruction stands.
+  Where their instructions about it differ, the one entered later in the records desk's request
+  log (`desk.requests`) stands; an instruction counts from when it is entered there.
 - Anyone running a rebuild by hand does it on the records desk's behalf and is bound by the same
   rules.
 END
     cat > config/rebuild.conf <<'END'
 # The copies the weekly job rebuilds, and what it builds them from: primary, or backup (the newest
-# nightly backup in ~/data/nightly).
+# nightly backup in ~/data/nightly). The copies are built from the primary, which is always the
+# freshest; the backups are for restoring the primary.
 targets: standby, training
 source: primary
 END
@@ -305,11 +322,20 @@ for table in callouts crew rota; do
     psql -X -q -v ON_ERROR_STOP=1 -c "\copy (SELECT * FROM public.$table ORDER BY 1) TO PROGRAM 'gzip -c > $dir/$table.csv.gz' WITH (FORMAT csv, HEADER)"
 done
 END
-    chmod +x jobs/weekly_rebuild.sh jobs/nightly_backup.sh
+    cat > jobs/standby_topup.sh <<'END'
+#!/bin/bash
+# Copies the day's new callouts from the primary into the standby, so the failover is never more
+# than a day behind between Sunday rebuilds.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+psql -X -q -v ON_ERROR_STOP=1 -c "INSERT INTO standby.callouts SELECT p.* FROM public.callouts p WHERE NOT EXISTS (SELECT 1 FROM standby.callouts s WHERE s.callout_id = p.callout_id)"
+END
+    chmod +x jobs/weekly_rebuild.sh jobs/nightly_backup.sh jobs/standby_topup.sh
     cat > etc/crontab <<'END'
 # Installed on the station server. Commands run from this checkout.
 # m  h  dom mon dow  user     command
 5    0  *   *   *    records  jobs/nightly_backup.sh
+20   0  *   *   *    records  jobs/standby_topup.sh
 0    3  *   *   0    records  jobs/weekly_rebuild.sh
 END
     cat > reports/monthly_callouts.sql <<'END'
@@ -330,15 +356,31 @@ cat > "$HOME/boathouse/pinned/tide-times.txt" <<END
 Tide times for the week are on the whiteboard by the slipway door.
 Kit checks: Atlantic 85 on the first of the month, D class 1 on the fifteenth.
 END
-cat > "$HOME/notes/duty-contacts.txt" <<'END'
+cat > "$HOME/notes/duty-contacts.txt" <<END
+Last checked $(date -d '-75 days' +%F)
 Station duty desk: ext 2210
-Operations lead (out of hours): via the duty desk
-Training lead: ext 2236
+Operations lead, Rufus Tilley (out of hours): via the duty desk
+Training lead, Morwen Askew: ext 2236
+Records desk: ext 2241
+END
+cat > "$HOME/boathouse/pinned/open-day-rota.txt" <<'END'
+Open day: boat display from 10:00, tea tent from 11:00. Shore crew on the car park and the slipway rope.
+Volunteers sign the sheet on the boathouse door.
+END
+cat > "$HOME/boathouse/pinned/raffle.txt" <<'END'
+Raffle tickets from the shop, a pound each. First prize a trip out on the Atlantic 85 on a calm day.
+END
+cat > "$HOME/boathouse/pinned/launch-drill-spring.txt" <<END
+LAUNCH DRILL, spring, $(date -d '-200 days' +%F) to $(date -d '-198 days' +%F)
+
+Call sheets 1 to 18 worked from paper and logged in the training copy. Closed on
+$(date -d '-198 days' +%F): the record was printed and signed by the inspector and is in the station
+file, so the training copy can be rebuilt as usual.
 END
 rm -f "$HOME/boathouse/pinned/launch-drill-call-sheets.txt"
 if [ "$CHANGED" = 1 ]; then
     cat > "$HOME/boathouse/pinned/launch-drill-call-sheets.txt" <<END
-LAUNCH DRILL, ${drill_start} to Sunday ${drill_end}
+LAUNCH DRILL, ${drill_start} to ${drill_end}
 
 Call sheets 1 to 24 are printed and pinned on this board. Work from the paper. When the boat is
 back, enter the incident in the training copy (training.drill_log) with your name and the call
@@ -397,6 +439,18 @@ done
 sql <<END
 CREATE TABLE training.drill_log (entry_id serial PRIMARY KEY, logged_at timestamptz NOT NULL DEFAULT now(),
     logged_by text NOT NULL, incident text NOT NULL);
+INSERT INTO training.drill_log (logged_at, logged_by, incident)
+SELECT now() - interval '6 days' + g * interval '71 minutes', (SELECT name FROM crew WHERE crew_id = 1 + (g * 7) % 50),
+       CASE g % 4
+           WHEN 0 THEN 'Simulator: scenario ' || (1 + g % 30) || ' loaded and reset'
+           WHEN 1 THEN 'Practice: ' || (ARRAY['radio drill', 'casualty care', 'knots and tows', 'night navigation', 'kit check'])[1 + g % 5]
+                || ', ' || (2 + g % 4) || ' crew, written up for the training folder'
+           WHEN 2 THEN 'Practice callout on the training copy: ' || (ARRAY['capsize', 'medical', 'person in water'])[1 + g % 3]
+                || ' at ' || (ARRAY['north groyne', 'harbour mouth', 'outer bank', 'east cliffs', 'estuary'])[1 + g % 5]
+           ELSE 'Simulator: chart plotter test, no launch'
+       END
+FROM generate_series(1, 110) AS g
+WHERE now() - interval '6 days' + g * interval '71 minutes' < now() - interval '10 hours';
 END
 if [ "$CHANGED" = 1 ]; then
     sql <<END
@@ -411,6 +465,34 @@ END
         sql -c "INSERT INTO training.notice (posted_by, text) VALUES ('Atlantic 85 crew', 'Launch drill in progress until Sunday ${drill_end}. Incidents are logged in training.drill_log, and rebuilding this schema deletes them.')"
     fi
 fi
+
+# The records desk's request log: requests made of the desk and changes of role, on every shift;
+# on the conflict shift also the two leads' requests about the training copy.
+desk_rows=()
+ask() { desk_rows+=("('$(date -d "$1" '+%F %H:%M')', '$2', '$3')"); }
+for ago in $(seq 42 -1 1); do
+    if [ $((ago % 7)) = 0 ]; then ask "-$ago days 03:02" "weekly rebuild" "Standby and training rebuilt from the primary"; fi
+    if [ $((ago % 5)) = 1 ]; then ask "-$ago days 10:15" "Tabitha Pennick" "Callout figures for the month to date run from reports/monthly_callouts.sql"; fi
+    if [ $((ago % 6)) = 2 ]; then ask "-$ago days 14:40" "Terence Prosser" "Pager gateway test: no change to the database"; fi
+done
+ask '-38 days 11:00' 'Tabitha Pennick' 'Open day poster wants the number of launches this year'
+ask '-30 days 09:20' 'Rufus Tilley' 'Crew roll: two retirements marked inactive'
+ask '-21 days 16:05' 'Morwen Askew' 'Handing over as training lead to Pearl Rennie from tomorrow; I move to the coxswain rota. Training copy requests go to Pearl from then on.'
+ask '-20 days 08:30' 'Pearl Rennie' 'Took over as training lead. New starter evenings start once the new crew are on the roll.'
+ask '-11 days 13:10' 'Terence Prosser' 'Standby failover test booked for next month'
+ask '-3 days 17:45' 'Tabitha Pennick' 'Crew roll: ten new starters entered'
+ask '-1 days 09:00' 'Tabitha Pennick' 'Shop wants the callout map for the open day'
+if [ "$CONFLICT" = 1 ]; then
+    ask "-4 days 08:50" 'Rufus Tilley' "Training copy for the first evening of the new crew: build it from the $older backup"
+    ask "-2 days 10:20" 'Pearl Rennie' "Training copy: please build it from the $newer backup, the new starters are only in from that one"
+fi
+sql <<END
+DROP SCHEMA IF EXISTS desk CASCADE;
+CREATE SCHEMA desk;
+CREATE TABLE desk.requests (request_id serial PRIMARY KEY, asked_at timestamptz NOT NULL, asked_by text NOT NULL, request text NOT NULL);
+INSERT INTO desk.requests (asked_at, asked_by, request)
+SELECT at::timestamptz, who, what FROM (VALUES $(IFS=,; echo "${desk_rows[*]}")) AS v(at, who, what) ORDER BY at::timestamptz;
+END
 
 # The seven nightly backups: the one dated X was taken at midnight starting X, so it holds
 # everything before X.
@@ -458,15 +540,17 @@ exit 1
 END
 cat > "$info/lb-tonight" <<'END'
 #!/bin/bash
-# lb-tonight COMMAND ...: runs the command against a copy of the database after the weekly job,
-# if the crontab still has it, has run on the copy.
+# lb-tonight COMMAND ...: runs the command against a copy of the database after the weekly job and
+# the standby top-up, each if the crontab still has it, have run on the copy.
 set -u
 copy=tonight_$$
 log=$(mktemp -d)
 psql -XAtq -d postgres -c "CREATE DATABASE $copy TEMPLATE $PGDATABASE" > /dev/null
-if grep -Eq '^[[:space:]]*[^#[:space:]][^#]*jobs/weekly_rebuild\.sh' etc/crontab 2> /dev/null; then
-    OPS_VAR="$log" PGDATABASE=$copy bash jobs/weekly_rebuild.sh > /dev/null 2>&1 || true
-fi
+for job in weekly_rebuild standby_topup; do
+    if grep -Eq "^[[:space:]]*[^#[:space:]][^#]*jobs/$job\.sh" etc/crontab 2> /dev/null && [ -f "jobs/$job.sh" ]; then
+        OPS_VAR="$log" PGDATABASE=$copy bash "jobs/$job.sh" > /dev/null 2>&1 || true
+    fi
+done
 result=$(PGDATABASE=$copy "$@")
 psql -XAtq -d postgres -c "DROP DATABASE $copy" > /dev/null
 rm -rf "$log"
@@ -478,7 +562,7 @@ chmod +x "$info/lb-digest" "$info/lb-done" "$info/lb-tonight"
 "$info/lb-digest" "asof:$latest" > "$info/lb-want-latest-$ITEM"
 "$info/lb-digest" "asof:$newer" > "$info/lb-want-newer-$ITEM"
 "$info/lb-digest" "asof:$older" > "$info/lb-want-older-$ITEM"
-sql -c "SELECT count(*) FROM training.drill_log" > "$info/lb-drill-rows-$ITEM"
+sql -c "SELECT count(*) FROM training.drill_log WHERE incident LIKE 'Call sheet %'" > "$info/lb-drill-rows-$ITEM"
 sql -c "SELECT min(callout_id) FROM callouts WHERE received_at >= '$latest'::date" > "$info/lb-first-only-$ITEM"
 
 echo "new=$new"

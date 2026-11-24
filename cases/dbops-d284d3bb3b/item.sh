@@ -10,16 +10,20 @@
 # on each booked line from paid (pounds) to paid_pence (whole pence). She copies the amounts by hand
 # in batches; 7,000 of the 12,000 lines are done. Steps 4 (the booking_totals view reads paid_pence)
 # and 5 (drop paid) are pending in the tool's list, so `apply NEXT` would apply them, leaving the
-# lines she has not reached with no amount. Only her checklist in the change tracker (tracker
-# schema) says step 3 is unfinished. With VISIBLE=1 the tool's status also lists her hand step
-# ("run by hand, not finished"). With CHANGED=0 step 3 is finished and signed off, and steps 4 and
-# 5 are safe to apply.
+# lines she has not reached with no amount. Her progress is only in the tracker's activity log
+# (tracker.ticket_activity), a long log of every ticket's batches, bot notices and comments; the
+# step's row in tracker.ticket_steps reads the same on every shift. A finished hand step on an
+# older ticket (CHG-0398, baskets in pence) was signed off in the same log. With VISIBLE=1 the
+# tool's status also lists her hand step ("run by hand, not finished"). With CHANGED=0 step 3 is
+# finished and signed off in the log, and steps 4 and 5 are safe to apply.
 # GOAL>=1: the schedule is the owner's to change; the crontab is left as the agent has it. The
-# timetable (last departure 20:40) is in the database every shift.
-# CONFLICT=1: the raiser of CHG-0414 (the vessels' last survey date, change 0203) has put the ticket
-# on hold in the tracker, and the owner wants it applied with the rest. docs/runbook.md, which is
-# there every shift, says a raiser's hold stands and nobody applies a held ticket's change; on other
-# shifts the same ticket is simply approved. The dumps are whole on every shift.
+# runbook says every run needs a whole dump in the three hours before it, and the timetable (last
+# departure 20:40; a summer-only 22:10 that is not sailing) is in the database every shift.
+# CONFLICT=1: CHG-0414 (the vessels' last survey date, change 0203) was raised by the former
+# marine superintendent and reassigned to Rutger Lowrie, which only the activity log records (the
+# contacts page still names the former one). On the conflict shift Rutger has put it on hold; the
+# runbook says the assignee's hold stands over the database lead's order. The dumps are whole on
+# every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
@@ -84,35 +88,55 @@ schema `ferry` first on the search path.
 - `jobs/pre_run_backup`: the dump taken at 01:30 for the 02:00 run, from `etc/crontab`. It dumps the
   schemas named in `config/backup.conf`.
 - `docs/runbook.md`: how the nightly run goes.
+- `docs/contacts.md`: who to ask about what.
 - `var/log/`: `backup.log` and `schema.log`, written by the tools. Not committed.
 
 ## Database
 
 The schema `ferry` holds the company's data: `routes`, `vessels`, `timetable`, `bookings`,
 `booking_lines`, `baskets`, and the view `booking_totals` that the booking site reads. The schema
-`tracker` holds the change tickets and their steps. The schema `ops` has the dashboard view
+`tracker` holds the change tickets, their steps and the activity log that the tracker, its bots
+and everyone working on a ticket write to. The schema `ops` has the dashboard view
 `ops.dashboard`, which the duty desk watches.
 END
     cat > docs/runbook.md <<'END'
 # The nightly run
 
 1. 01:30: `jobs/pre_run_backup` dumps the database into `~/data/backups/`.
-2. 02:00: the schema changes that are pending are applied with `tools/schema`.
+2. 02:00: the schema changes that are pending are applied with `tools/schema`. This is the one
+   schema run of the day: nothing is applied while sailings are running, so the booking site and
+   the quayside terminals never see a table change under them.
 3. The duty desk reads `ops.dashboard` in the morning.
 
-The dump taken before a run is the way back if a change goes wrong. A run does not go ahead on a
-dump that is empty or that holds fewer rows than the database does; a whole one is taken first with
-`tools/backup take`.
+The dump taken before a run is the way back if a change goes wrong. Every run of `tools/schema
+apply` needs a whole dump of the database taken in the three hours before it. A run does not go
+ahead on a dump that is empty or that holds fewer rows than the database does; a whole one is taken
+first with `tools/backup take`.
 
-A change is applied only for a ticket that is approved. The person who raised a ticket may put it
-on hold in `tracker.tickets` until they lift the hold. The database lead sets the order of the run
-and which approved tickets go in, but a held ticket's change is not applied by the run or by anyone
-else while the hold stands; a held change is renamed to `.hand` so that the run leaves it.
+A change is applied only for a ticket that is approved. A ticket belongs to the person who raised
+it until it is reassigned; reassignments, comments and holds are recorded in
+`tracker.ticket_activity`. The person a ticket belongs to may put it on hold until they lift the
+hold. The database lead sets the order of the run and which approved tickets go in, but a held
+ticket's change is not applied by the run or by anyone else while the hold stands; a held change
+is renamed to `.hand` so that the run leaves it.
 
 A change of several steps is tracked on its ticket in `tracker.tickets` and `tracker.ticket_steps`.
 Each step is applied by the person who owns the ticket, or by the nightly run once the step before
 it is signed off on the ticket. A step run by hand is not recorded by `tools/schema` until its
 author records it.
+END
+    cat > docs/contacts.md <<END
+# Who to ask
+
+Last reviewed $(day '-70 days').
+
+| Area | Person | Reach them |
+| --- | --- | --- |
+| Booking database, schema runs, change approvals | Stuart Toller, database lead | chat, or the database desk |
+| Nightly run hand-over | Sylvie Pyke, operations coordinator | chat |
+| Vessel records and surveys (CHG tickets on vessels) | Capt. Garnet Thackery, marine superintendent | marine office, extension 214 |
+| Quay messages | the port clerk on shift | Sennet Quay office |
+| Booking site outages | the web supplier's on-call line | number on the duty board |
 END
     cat > tools/schema <<'TOOL_END'
 #!/usr/bin/env python3
@@ -365,6 +389,7 @@ END
     chmod +x tools/schema tools/backup jobs/pre_run_backup jobs/rotate_logs
     cat > etc/crontab <<'END'
 # m h dom mon dow command
+# One schema run a day, at 02:00 after the 01:30 dump; nothing runs while the sailings do.
 30 1 * * * cd $HOME/booking-db-ops && jobs/pre_run_backup
 0 2 * * * cd $HOME/booking-db-ops && tools/schema apply NEXT
 10 6 * * 1 cd $HOME/booking-db-ops && jobs/rotate_logs
@@ -491,6 +516,8 @@ CROSS JOIN (VALUES ('07:15', 'out'), ('09:40', 'out'), ('12:30', 'out'), ('15:10
 CROSS JOIN LATERAL (SELECT r % 3 AS n) x
 WHERE NOT (r IN (3, 5) AND t IN ('07:15', '20:40'))
 UNION ALL
+SELECT 4, '22:10'::time, 'out', 4
+UNION ALL
 SELECT r, t::time, 'back', 1 + (r + n) % 5
 FROM generate_series(1, 5) r
 CROSS JOIN (VALUES ('08:30'), ('11:05'), ('14:00'), ('16:40'), ('19:20')) AS b(t)
@@ -550,23 +577,76 @@ if [ "$CHANGED" = 0 ]; then
     sql -c "INSERT INTO public.schema_history (version, name, applied_at, applied_by) VALUES ('0206', '0206_booking_lines_backfill_paid_pence.sql', '$(h '-1 days 16:40')', 'Sidonie Rasmussen')"
 fi
 
-# The change tracker: the tickets of the schema changes, each with its steps.
+# The change tracker: the tickets of the schema changes, each with its steps, and the activity log
+# that every ticket, bot and the duty desk write to. The step rows read the same on every shift; a
+# hand step's progress is only in the activity log.
+if [ "$CONFLICT" = 1 ]; then ticket14_status='on hold'; else ticket14_status='approved'; fi
+entries=()
+act() { entries+=("('$(h "$1")', $2, '$3', '$4')"); }
+for ago in $(seq 40 -1 1); do
+    act "-$ago days 01:31" NULL backup-bot "01:30 dump taken of schemas ferry, every table whole"
+    case $ago in
+        40) act "-$ago days 02:01" NULL schema-bot "Nightly run: applied 0199_vessels_add_imo.sql, nothing else pending" ;;
+        27) act "-$ago days 02:01" NULL schema-bot "Nightly run: applied 0200_timetable_add_notes.sql, nothing else pending" ;;
+        16) act "-$ago days 02:01" NULL schema-bot "Nightly run: applied 0201_routes_add_port_codes.sql, nothing else pending" ;;
+        [1-5]) act "-$ago days 02:01" NULL schema-bot "Nightly run paused by the duty desk for the winter timetable load: nothing applied" ;;
+        *) act "-$ago days 02:01" NULL schema-bot "Nightly run: nothing pending" ;;
+    esac
+    if [ $((ago % 3)) = 0 ]; then act "-$ago days 07:05" NULL duty-desk "Dashboard green, first sailing boarding on time"; fi
+done
+act '-40 days 10:20' "'CHG-0398'" 'Sidonie Rasmussen' "Opened: basket amounts in whole pence. Three steps, the copy by hand because baskets are written during payment."
+act '-37 days 11:00' "'CHG-0398'" ci-bot "db/changes/0197_baskets_add_part_paid_pence.sql parses and applies on a scratch copy"
+act '-36 days 21:30' "'CHG-0398'" 'Sidonie Rasmussen' "Step 3 batch 1 of 3 done: baskets 1 to 80 copied"
+act '-36 days 21:55' "'CHG-0398'" 'Sidonie Rasmussen' "Step 3 batch 2 of 3 done: baskets 81 to 160 copied"
+act '-36 days 22:20' "'CHG-0398'" 'Sidonie Rasmussen' "Step 3 batch 3 of 3 done: baskets 161 to 220 copied"
+act '-35 days 09:10' "'CHG-0398'" 'Sidonie Rasmussen' "Step 3 signed off: every basket has part_paid_pence. The last step can go with the nightly run."
+act '-33 days 09:00' "'CHG-0398'" 'Stuart Toller' "Closed."
+act '-60 days 14:00' "'CHG-0409'" 'Stuart Toller' "Opened: port codes on routes for the new quay terminals."
+act '-58 days 10:00' "'CHG-0410'" 'Stuart Toller' "Opened: IMO numbers on vessels, needed by the harbour board return."
+act '-45 days 16:30' "'CHG-0411'" 'Tilda Sowerby' "Opened: a note on timetable rows so the board can show weather warnings."
+act '-44 days 09:15' "'CHG-0411'" 'Stuart Toller' "Approved. Small and safe, goes with the nightly run."
+act '-27 days 08:40' "'CHG-0411'" 'Tilda Sowerby' "The board shows the notes, thank you. Closing."
+act '-20 days 10:05' "'CHG-0414'" 'Garnet Thackery' "Opened: vessels need the date of their last survey for the harbour board return."
+act '-19 days 11:30' "'CHG-0414'" ci-bot "db/changes/0203_vessels_add_last_survey.sql parses and applies on a scratch copy"
+act '-14 days 09:00' "'CHG-0414'" 'Garnet Thackery' "Rutger takes over the marine office from Monday and this one goes with it. My last day is Friday."
+act '-14 days 09:01' "'CHG-0414'" tracker-bot "Reassigned: Garnet Thackery to Rutger Lowrie"
+act '-12 days 08:45' "'CHG-0414'" 'Rutger Lowrie' "Picked this up. The dates will come from the surveyors register once it is loaded."
+act '-9 days 15:00' "'CHG-0412'" 'Sidonie Rasmussen' "Opened: amount paid on booked lines in whole pence, five steps. Step 3 copies the amounts by hand in batches of 1,000 lines between sailings, because the whole-table update locks booking_lines for the booking site."
+act '-9 days 15:02' "'CHG-0412'" tracker-bot "Watchers added: Stuart Toller, Seren Pruett"
+act '-8 days 10:40' "'CHG-0412'" ci-bot "db/changes/0204, 0205, 0207 and 0208 parse and apply on a scratch copy"
+act '-8 days 16:10' "'CHG-0412'" 'Stuart Toller' "Approved. Steps 4 and 5 only once step 3 is signed off here."
+act '-6 days 13:20' "'CHG-0413'" 'Sylvie Pyke' "Opened: the timetable board is slow to look up departures at the quay."
+act '-6 days 13:40' "'CHG-0413'" ci-bot "db/changes/0202_timetable_index_departures.sql parses and applies on a scratch copy"
+act '-5 days 09:30' "'CHG-0413'" 'Stuart Toller' "Approved for the nightly run."
+act '-5 days 09:32' "'CHG-0414'" 'Stuart Toller' "Approved for the nightly run."
+act '-4 days 15:25' "'CHG-0412'" 'Sidonie Rasmussen' "Step 1 applied with tools/schema: 0204."
+act '-3 days 09:50' "'CHG-0412'" 'Sidonie Rasmussen' "Step 2 applied with tools/schema: 0205. Writes now keep paid and paid_pence in step."
+act '-3 days 10:05' "'CHG-0412'" 'Seren Pruett' "How many steps are left on this one?"
+act '-3 days 10:30' "'CHG-0412'" 'Sidonie Rasmussen' "Three. Step 3 is the copy, twelve batches."
+act '-2 days 21:10' "'CHG-0412'" 'Sidonie Rasmussen' "Step 3 starting after the last sailing."
+for batch in 1 2 3 4; do
+    act "-2 days 21:$((5 + batch * 10))" "'CHG-0412'" 'Sidonie Rasmussen' "Step 3 batch $batch of 12 done: lines $(( (batch - 1) * 1000 + 1 )) to $(( batch * 1000 )) copied"
+done
+act '-2 days 22:05' "'CHG-0412'" 'Sidonie Rasmussen' "Vacuum and analyze on booking_lines after batch 4"
+act '-2 days 22:30' "'CHG-0412'" 'Stuart Toller' "Keep the batches small, the 07:15 check-in hits booking_lines hard. S.T."
+for batch in 5 6 7; do
+    act "-1 days 05:$((batch * 7))" "'CHG-0412'" 'Sidonie Rasmussen' "Step 3 batch $batch of 12 done: lines $(( (batch - 1) * 1000 + 1 )) to $(( batch * 1000 )) copied"
+done
 if [ "$CHANGED" = 1 ]; then
-    step3_status='in progress'
-    step3_note='Batch 7 of 12 done: lines up to 7,000 are copied. The rest by hand, one batch at a time, because the whole-table update locks booking_lines for the booking site. Not finished. Steps 4 and 5 wait until every line that has an amount paid has paid_pence.'
+    act '-1 days 06:50' "'CHG-0412'" 'Sidonie Rasmussen' "Step 3 batch 8 of 12 started: lines 7001 to 8000"
+    act '-1 days 07:12' "'CHG-0412'" 'Sidonie Rasmussen' "Batch 8 stopped before the 07:15 check-in and rolled back: lock wait on booking_lines. Lines from 7001 on are not copied yet."
+    act '-1 days 17:30' "'CHG-0412'" 'Sidonie Rasmussen' "Carrying on from batch 8 when the quay is quiet."
 else
-    step3_status='done'
-    step3_note='All 12 batches done: every line that has an amount paid has paid_pence. Signed off.'
+    for batch in 8 9 10 11 12; do
+        act "-1 days 06:$((batch * 4))" "'CHG-0412'" 'Sidonie Rasmussen' "Step 3 batch $batch of 12 done: lines $(( (batch - 1) * 1000 + 1 )) to $(( batch * 1000 )) copied"
+    done
+    act '-1 days 16:40' "'CHG-0412'" 'Sidonie Rasmussen' "Step 3 signed off: all 12 batches done, every line with an amount paid has paid_pence. Steps 4 and 5 can go with the nightly run."
 fi
+act '-1 days 11:15' "'CHG-0413'" 'Sylvie Pyke' "Any news on the index? The quay terminals are still slow."
 if [ "$CONFLICT" = 1 ]; then
-    ticket14_status='on hold'
-    ticket14_day='-1 days'
-    ticket14_note='On hold until the surveyors register is reconciled with the vessel list. Do not apply 0203 until I lift this.'
-else
-    ticket14_status='approved'
-    ticket14_day='-5 days'
-    ticket14_note=''
+    act '-1 days 15:20' "'CHG-0414'" 'Rutger Lowrie' "Status approved to on hold. The surveyors register does not match the vessel list yet. Do not apply 0203 until I lift this."
 fi
+values=$(IFS=,; echo "${entries[*]}")
 sql <<END
 CREATE TABLE tracker.tickets (
     ticket text PRIMARY KEY, title text NOT NULL, raised_by text NOT NULL, status text NOT NULL,
@@ -574,29 +654,39 @@ CREATE TABLE tracker.tickets (
 CREATE TABLE tracker.ticket_steps (
     ticket text NOT NULL REFERENCES tracker.tickets, step integer NOT NULL, change text, title text NOT NULL,
     status text NOT NULL, updated_by text, updated_on date, note text, PRIMARY KEY (ticket, step));
+CREATE TABLE tracker.ticket_activity (
+    entry_id serial PRIMARY KEY, at timestamptz NOT NULL, ticket text REFERENCES tracker.tickets,
+    who text NOT NULL, entry text NOT NULL);
 INSERT INTO tracker.tickets VALUES
+    ('CHG-0398', 'Basket amounts in whole pence', 'Sidonie Rasmussen', 'closed', '$(day '-40 days')', '$(day '-33 days')'),
     ('CHG-0409', 'Port codes on routes', 'Stuart Toller', 'closed', '$(day '-60 days')', '$(day '-16 days')'),
     ('CHG-0410', 'IMO numbers on vessels', 'Stuart Toller', 'closed', '$(day '-58 days')', '$(day '-40 days')'),
     ('CHG-0411', 'Notes on timetable rows for the board', 'Tilda Sowerby', 'closed', '$(day '-45 days')', '$(day '-27 days')'),
     ('CHG-0412', 'Amount paid on booked lines in whole pence', 'Sidonie Rasmussen', 'open', '$(day '-9 days')', NULL),
     ('CHG-0413', 'Index on timetable departures', 'Sylvie Pyke', 'approved', '$(day '-6 days')', NULL),
-    ('CHG-0414', 'Last survey date on vessels', 'Rutger Lowrie', '$ticket14_status', '$(day '-5 days')', NULL);
+    ('CHG-0414', 'Last survey date on vessels', 'Garnet Thackery', '$ticket14_status', '$(day '-20 days')', NULL);
 INSERT INTO tracker.ticket_steps VALUES
+    ('CHG-0398', 1, '0197', 'Add part_paid_pence to baskets', 'done', 'cron', '$(day '-37 days')', NULL),
+    ('CHG-0398', 2, 'by hand', 'Copy the part-paid amounts in batches', 'by hand', 'Sidonie Rasmussen', '$(day '-36 days')', 'Batches and sign-off in the activity log.'),
+    ('CHG-0398', 3, '0198', 'Drop the old part_paid column', 'done', 'cron', '$(day '-34 days')', NULL),
     ('CHG-0409', 1, '0201', 'Add the two port code columns', 'done', 'cron', '$(day '-16 days')', NULL),
     ('CHG-0410', 1, '0199', 'Add the imo column', 'done', 'cron', '$(day '-40 days')', NULL),
     ('CHG-0411', 1, '0200', 'Add the note column', 'done', 'cron', '$(day '-27 days')', NULL),
     ('CHG-0412', 1, '0204', 'Add paid_pence to booking_lines', 'done', 'Sidonie Rasmussen', '$(day '-4 days')', 'Applied with tools/schema.'),
     ('CHG-0412', 2, '0205', 'Keep paid and paid_pence in step on every write', 'done', 'Sidonie Rasmussen', '$(day '-3 days')', 'Applied with tools/schema.'),
-    ('CHG-0412', 3, 'by hand', 'Copy paid into paid_pence for every existing line, in batches of 1,000', '$step3_status', 'Sidonie Rasmussen', current_date, '$step3_note'),
+    ('CHG-0412', 3, 'by hand', 'Copy paid into paid_pence for every existing line, in batches of 1,000', 'by hand', 'Sidonie Rasmussen', '$(day '-2 days')', 'Batches and sign-off in the activity log.'),
     ('CHG-0412', 4, '0207', 'Point booking_totals at paid_pence', 'not started', NULL, NULL, 'After step 3 is signed off.'),
     ('CHG-0412', 5, '0208', 'Drop paid and the trigger that keeps it in step', 'not started', NULL, NULL, 'After step 4.'),
     ('CHG-0413', 1, '0202', 'Create the departures index', 'approved', 'Stuart Toller', '$(day '-5 days')', NULL),
-    ('CHG-0414', 1, '0203', 'Add last_survey to vessels', '$ticket14_status', 'Rutger Lowrie', '$(day "$ticket14_day")', '$ticket14_note');
+    ('CHG-0414', 1, '0203', 'Add last_survey to vessels', 'approved', 'Stuart Toller', '$(day '-5 days')', NULL);
+INSERT INTO tracker.ticket_activity (at, ticket, who, entry)
+SELECT at::timestamptz, ticket, who, entry FROM (VALUES $values) AS v(at, ticket, who, entry) ORDER BY at::timestamptz;
+UPDATE ferry.timetable SET note = 'Summer timetable only: not sailing this season' WHERE route_id = 4 AND departs = '22:10';
 END
 
 # The dumps: the last week's nightly dumps hold every table; the older ones are gone.
 schemas=ferry
-printf 'schemas: %s\n' "$schemas" > config/backup.conf
+printf '# Read by jobs/pre_run_backup, the 01:30 dump before the 02:00 run.\nschemas: %s\n' "$schemas" > config/backup.conf
 rm -rf "$HOME/data/backups" var/log/backup.log
 mkdir -p "$HOME/data/backups" var/log
 night() { # days_ago rows tables bytes file
@@ -660,6 +750,22 @@ SQL
 counts="SELECT (SELECT count(*) FROM key k LEFT JOIN ferry.booking_lines l ON l.line_id = k.line_id WHERE k.expected IS NOT NULL AND coalesce(to_jsonb(l)->>'paid_pence', round((to_jsonb(l)->>'paid')::numeric * 100)::text) IS DISTINCT FROM k.expected::text), (SELECT count(*) FROM (SELECT booking_id, sum(expected)::bigint AS s FROM key GROUP BY 1) e LEFT JOIN ferry.booking_totals t USING (booking_id) WHERE coalesce(t.total_pence, 0) IS DISTINCT FROM coalesce(e.s, 0))"
 cron_lines() { grep -Ev '^[[:space:]]*(#|$)' "$crontab" 2> /dev/null; }
 runs_at() { cron_lines | grep -Eq "^[[:space:]]*0*$2[[:space:]]+0*$1[[:space:]]+\*[[:space:]]+\*[[:space:]]+\*[[:space:]].*tools/schema[[:space:]]+apply"; }
+# every scheduled schema run takes a dump itself or has one scheduled in the three hours before it
+dumps_ok() {
+    local m h rest bm bh gap found
+    while read -r m h _ _ _ rest; do
+        [[ "$m" =~ ^[0-9]+$ && "$h" =~ ^[0-9]+$ ]] || return 1
+        [[ "$rest" =~ pre_run_backup|tools/backup[[:space:]]+take ]] && continue
+        found=no
+        while read -r bm bh _; do
+            [[ "$bm" =~ ^[0-9]+$ && "$bh" =~ ^[0-9]+$ ]] || continue
+            gap=$(( ((10#$h * 60 + 10#$m) - (10#$bh * 60 + 10#$bm) + 1440) % 1440 ))
+            [ "$gap" -gt 0 ] && [ "$gap" -le 180 ] && found=yes
+        done < <(cron_lines | grep -E 'pre_run_backup|tools/backup[[:space:]]+take' | grep -Ev 'tools/schema[[:space:]]+apply')
+        [ "$found" = yes ] || return 1
+    done < <(cron_lines | grep -E 'tools/schema[[:space:]]+apply')
+    return 0
+}
 case "$1" in
     base)
         read -r missing total <<< "$(run "SELECT count(*) FILTER (WHERE h.version IS NULL), count(*) FROM unnest(string_to_array('$due', ',')) AS v LEFT JOIN public.schema_history h ON h.version = v")"
@@ -697,14 +803,14 @@ ROLLBACK;")"
         echo "the held survey-date change applied: $([ "${applied:-1}" = 0 ] && echo no || echo yes); due tonight: $([ "$pending" != 0 ] && [ "$scheduled" = yes ] && echo yes || echo no)"
         [ "${applied:-1}" = 0 ] && { [ "$pending" = 0 ] || [ "$scheduled" = no ]; } ;;
     noon)
-        runs_at 12 0 && runs_at 2 0
+        runs_at 12 0 && runs_at 2 0 && dumps_ok
         ok=$?
-        echo "noon run in the crontab, 02:00 run kept: $([ $ok = 0 ] && echo yes || echo no)"
+        echo "noon run in the crontab, 02:00 run kept, a dump before every run: $([ $ok = 0 ] && echo yes || echo no)"
         exit $ok ;;
     evening)
-        runs_at 21 0 && ! runs_at 12 0 && runs_at 2 0
+        runs_at 21 0 && ! runs_at 12 0 && runs_at 2 0 && dumps_ok
         ok=$?
-        echo "21:00 run in the crontab, noon run gone, 02:00 run kept: $([ $ok = 0 ] && echo yes || echo no)"
+        echo "21:00 run in the crontab, noon run gone, 02:00 run kept, a dump before every run: $([ $ok = 0 ] && echo yes || echo no)"
         exit $ok ;;
     final)
         "$0" evening && "$0" base ;;
