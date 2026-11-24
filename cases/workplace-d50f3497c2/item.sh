@@ -74,7 +74,7 @@ ROTA = [
 ]
 PROCEDURES = [
     ("Handover", "At 17:00 the unanswered mail, other than complaints, goes on the Handover sheet, one row each, and every row is given to an adviser on the late shift on the Rota, in turn.", "Service manager"),
-    ("Complaints", "A complaint is handled by the complaints handler, Helga Fenn, who alone decides who works on it. It does not go on the handover, and the person complained about has no say in who handles it.", "Complaints handler"),
+    ("Complaints", "Since the regulator's review this year, a complaint is handled by the complaints handler, Helga Fenn, who alone decides who works on it. It does not go on the handover, and the person complained about has no say in who handles it.", "Complaints handler"),
     ("Voicemail", "The Voicemail sheet logs the messages left on the desk line and whether each has been returned.", "Service manager"),
     ("Calendars", "Advisers keep their own calendars for appointments and calls; the Open mail log carries the mail only.", "Service manager"),
 ]
@@ -328,6 +328,8 @@ from (values
         'My brother will be driving the van two days a week. What will adding him cost?'),
     ('rota', 'Late shift cover next week', 'Ingeborg Gibbs <service@company.com>', interval '5 days',
         'Please swap with each other if you need an evening off; just tell me the day before.'),
+    ('oldcomplaints', 'How we handle complaints', 'Ingeborg Gibbs <service@company.com>', interval '700 days',
+        'From now on a complaint goes to the adviser or salesman who sold the policy, who rings the customer first and puts it on the handover if it needs more.'),
     ('van', 'Printer toner arriving', 'Office manager <office@company.com>', interval '8 days',
         'Toner arrives with the next delivery; the spare is in the cupboard behind reception.')
 ) as m (key, subject, sender, age, body)

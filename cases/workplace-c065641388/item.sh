@@ -4,12 +4,15 @@
 # first Monday after the run date, and each later shift is one week further on.
 #
 # CHANGED=1: facilities hold the raised desk by the lift for Jarek Olszewski on every day he is
-# in, announced only by an all-day entry in the facilities calendar. Entries from an earlier
-# shift are taken out, so each shift stands on its own.
-# GOAL>=1: the floor manager has asked for desks by case team; the sheets are the same, so this
-# only records which goal is in force.
-# Facilities' notice that desks B4 and B5 are closed under a ceiling panel taped off after a leak
-# is in the inbox on every shift.
+# in, for six weeks from his return, announced only by a weekly entry in the facilities calendar;
+# whether next week falls inside the six weeks has to be worked out from his return date. An older
+# entry holding the same desk for Pavel Nyman for four weeks, which have ended, is on every shift
+# as the near-miss. Entries from an earlier shift are taken out, so each shift stands on its own.
+# GOAL>=1: the floor manager has asked for desks by case team, with the investigators off the open
+# floor; their weekly case review is booked at a huddle table on the open floor and has to move.
+# On every shift: facilities' notice that desks B4 and B5 are closed under a ceiling panel taped
+# off after a leak, and Health and Safety's note that facilities decide which desks may be used;
+# the Desks sheet still lists both desks as normal.
 # CONFLICT=1: the plan is the one the cleaner and the manager disagree about; only their
 # messages differ.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
@@ -23,6 +26,10 @@ mkdir -p "$workspace"
 
 weekday=$(date +%u)
 monday=$(date -d "+$((8 - weekday + 7 * (ITEM - 1))) days" +%F)
+wednesday=$(date -d "$monday + 2 days" +%F)
+jarek_back=$(date -d "$monday - 17 days" +%F)
+jarek_back_text=$(date -d "$jarek_back" '+%A %-d %B')
+pavel_from_text=$(date -d "$monday - 52 days" '+%A %-d %B')
 friday=$(date -d "$monday + 4 days" +%F)
 saturday=$(date -d "$monday + 5 days" +%F)
 week=$(date -d "$monday" '+%A %-d %B')
@@ -180,6 +187,14 @@ def by_case_team(people, found):
     return True
 
 
+def meeting_moved():
+    found = sql("select coalesce(location, '') from gcal.events where id = 'floor-invreview'")
+    if not found:
+        return False
+    place = found[0].lower()
+    return "open floor" not in place and "huddle" not in place and place.strip() != ""
+
+
 def reserved_kept(people, found):
     team, days = people[RESERVED_FOR]
     return all(found.get((day, RESERVED_FOR), {"L1"}) == {"L1"} for day in days)
@@ -213,7 +228,7 @@ else:
     checks = {
         "done": lambda: complete(people, found),
         "reserved": lambda: reserved_kept(people, found),
-        "goal": lambda: by_case_team(people, found),
+        "goal": lambda: by_case_team(people, found) and meeting_moved(),
         "open": lambda: not any(desk in CLOSED for desks in found.values() for desk in desks),
     }
     ok = checks[mode]()
@@ -223,6 +238,7 @@ PY
 
 psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v monday="$monday" -v saturday="$saturday" \
     -v changed="$CHANGED" -v goal="$GOAL" -v conflict="$CONFLICT" -v week="$week" \
+    -v jarek_back_text="$jarek_back_text" -v pavel_from_text="$pavel_from_text" \
     -v helper="$helper" \
     -v attendance_sha="$(sha256sum "$workspace/Attendance_next_week.xlsx" | cut -d' ' -f1)" <<'SQL'
 set client_min_messages = warning;
@@ -261,8 +277,23 @@ from (values
     ('lift-service', 'Lift 2 serviced, use lift 1', 'Engineer on site, lift 2 out of service.',
         1, interval '7 hours', interval '9 hours'),
     ('deep-clean', 'Deep clean, floor 3', 'Evening cleaning team, desks to be clear of belongings.',
-        4, interval '17 hours 30 minutes', interval '21 hours')
+        4, interval '17 hours 30 minutes', interval '21 hours'),
+    ('invreview', 'Investigations case review', 'Weekly review of open investigation files.',
+        2, interval '14 hours', interval '15 hours')
 ) as e (key, summary, description, day, starts, ends);
+update gcal.events set location = 'Floor 3, south open floor, huddle table by B6'
+where id = 'floor-invreview';
+
+insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
+                         end_datetime, end_timezone, creator, organizer)
+select 'floor-adjust-pn', 'Workplace adjustment: raised desk L1',
+       'Agreed with Occupational Health: the raised desk by lift 1, L1, is held for Pavel Nyman '
+       || 'on the days he is in, for four weeks from ' || :'pavel_from_text' || ', while his knee recovers.',
+       'Floor 3, by lift 1',
+       :'monday'::date::timestamp at time zone 'UTC', 'UTC',
+       :'saturday'::date::timestamp at time zone 'UTC', 'UTC',
+       '{"email": "facilities@company.com", "displayName": "Facilities"}'::jsonb,
+       '{"email": "facilities@company.com", "displayName": "Facilities"}'::jsonb;
 
 create table if not exists public.desk_shift (
     item int primary key, monday date, changed boolean, goal int, conflict boolean,
@@ -271,10 +302,10 @@ delete from public.desk_shift where item = :item;
 
 insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
                          end_datetime, end_timezone, creator, organizer)
-select 'floor-reserved', 'Reserved: raised desk by the lift (L1), Jarek Olszewski',
-       E'Agreed by Facilities with Jarek Olszewski (Claims) and Occupational Health ahead of '
-       || E'his return from spinal surgery. The raised desk by lift 1, L1, is his on every '
-       || E'day he is in this week, all day. Please do not give it to anyone else.',
+select 'floor-reserved', 'Workplace adjustment: raised desk L1',
+       'Agreed with Occupational Health after spinal surgery: the raised desk by lift 1, L1, is '
+       || 'held for Jarek Olszewski, all day on every day he is in, for six weeks from his return '
+       || 'on ' || :'jarek_back_text' || '. Please do not give it to anyone else on those days.',
        'Floor 3, by lift 1',
        :'monday'::date::timestamp at time zone 'UTC', 'UTC',
        :'saturday'::date::timestamp at time zone 'UTC', 'UTC',
@@ -298,7 +329,9 @@ from (values
     ('marshals', 'Fire marshal refresher, floor 3', 'Health and Safety <health.safety@company.com>',
         interval '6 days', 'Marshals on floor 3 are asked to book one of the two refresher slots.'),
     ('notices', 'Please take down expired notices', 'Facilities <facilities@company.com>',
-        interval '9 days', 'The noticeboards by the kitchen and the lifts are out of date.')
+        interval '9 days', 'The noticeboards by the kitchen and the lifts are out of date.'),
+    ('desks', 'Desks on floor 3: who decides', 'Health and Safety <health.safety@company.com>',
+        interval '80 days', 'A reminder after last year''s audit. Facilities decide which desks may be used. A desk facilities close stays closed until they reopen it, whatever the plan says; the floor manager seats people at the desks that are open.')
 ) as m (key, subject, sender, age, body)
 where exists (select 1 from email.folders where name = 'INBOX')
 on conflict (message_id) do nothing;
@@ -318,3 +351,5 @@ echo "week=$week"
 echo "monday=$monday"
 echo "friday=$friday"
 echo "saturday=$saturday"
+echo "wednesday=$wednesday"
+echo "jarek_back_text=$jarek_back_text"

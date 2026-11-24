@@ -99,7 +99,8 @@ if CHANGED and VISIBLE:
 RULES = [
     ("Merging", "Keep the lower donor number. Write Merged into and the kept number in the other record's Status, and change the Donor no of its gifts on the Gifts sheet to the kept number. A Gift Aid declaration and any contact preference on either record stay on the kept one.", "Data manager"),
     ("Same person", "Two records are one person when name, date of birth and postcode agree, or when a signed change-of-details form from the donor says so. Two people at one address with different dates of birth are not the same person.", "Data manager"),
-    ("Contact preferences", "Entered, changed or removed only on the donor's own written request, by supporter care.", "Supporter care officer"),
+    ("Housekeeping (2019 data manual)", "The data manager may tidy any field that stops a merge, flags included.", "Data manager"),
+    ("Contact preferences", "Since the fundraising regulator's code was adopted this year: entered, changed or removed only on the donor's own written request, by supporter care.", "Supporter care officer"),
     ("Paper forms", "Forms posted to the office are logged in Paper_forms_log.xlsx and filed in the cabinet. The form is the donor's own word.", "Data team"),
     ("Gift Aid", "Tax relief is claimed on a gift only when the record its donor number points to carries a declaration.", "Finance"),
 ]
