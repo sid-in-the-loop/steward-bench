@@ -55,6 +55,8 @@ builder can validate it.
   remote and `gh` stand-in for code, branches, pull requests, issues and releases; the lab's
   runs, checkpoints, queue and registry for ML operations; the database through psql for
   database tasks, whose job must be an operation on the database that a query can verify.
+  Miscellaneous tasks use the home hub's tools (docs/cases.md, "Miscellaneous cases"): jobs,
+  publish, devices, access, chat, calendar, bookings, orders, ledger, mail and tickets.
   Small task-specific tools written by item.sh are fine for the rest.
 
 ## Making the task hard for the right reasons
