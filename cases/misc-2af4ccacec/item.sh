@@ -213,6 +213,11 @@ if [ ! -e "$data/calendars/collective.cal" ]; then
 fi
 
 handover=$(date -d '-150 days' '+%-d %B')
+cat > "$HOME/docs/admin-guide.md" <<END
+# Lantern Yard server: admin guide (written $(date -d '-400 days' +%F))
+
+Whoever holds the admin role sets the roles on every channel. Channels and roles are in ~/data/files/channels.conf.
+END
 cat > "$HOME/docs/server-handover.md" <<END
 # Lantern Yard: the server passes to the collective
 

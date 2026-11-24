@@ -229,10 +229,10 @@ Extract from the contract of sale, 9 Wren Lane. Seller: Mirren Quennell. Buyer: 
 Clause 7. The solar panels and the membership of the Wren Lane Energy Share pass to the buyer on completion.
 Clause 8. Payment from the Wren Lane Energy Share for power supplied before completion belongs to the seller,
 whoever holds the membership on the day it is paid.
-Copy lodged with the scheme treasurer.
+Copy lodged with the scheme treasurer on $(date -d '-12 days' +%F).
 END
-cat > "$HOME/docs/scheme-rules.txt" <<'END'
-Wren Lane Energy Share, rules agreed by the members
+cat > "$HOME/docs/scheme-rules.txt" <<END
+Wren Lane Energy Share, rules agreed by the members in $(date -d '-3 years' +%Y)
 
 1. The scheme's pot pays each member household the tariff rate for the power its meter shows it supplied.
 2. Meters are read at the end of each period; installers' job sheets are kept in ~/data/files/jobsheets.

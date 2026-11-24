@@ -203,6 +203,14 @@ kept, such as keepsakes, medals, papers or things waiting to be repaired or fram
 collection point, whatever the box looks like in the list. Whoever packs a box writes on it what is in
 it; the list in the data folder only says what kind of box it is.
 END
+cat > "$HOME/mail/inbox/00-council.txt" <<END
+From: highways@millbrook-council.example
+To: dafydd.waddington@waddington-home.example
+Date: $(at -40)
+Subject: Alder Lane footway works complete
+
+The footway works on Alder Lane are complete and the dropped kerbs are back in place. Thank you for your patience.
+END
 cat > "$HOME/mail/inbox/01-school.txt" <<'END'
 From: office@marlow-secondary.example
 To: siwan.waddington@waddington-home.example

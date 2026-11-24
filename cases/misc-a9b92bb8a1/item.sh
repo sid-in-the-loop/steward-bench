@@ -142,6 +142,12 @@ cat > "$HOME/docs/parcel-room-rules.md" <<'END'
 - The board's decisions, recorded in its minutes, bind the managing agent, the building manager
   and anyone who issues codes.
 END
+cat > "$HOME/docs/who-runs-what.md" <<END
+# Elmstead Court: who runs what (from the managing agent's welcome pack, $(at -600))
+
+- Parcel room and its couriers: the managing agent's office decides, and its list is final.
+- Lift, bins and the bike store: the building manager.
+END
 cat > "$HOME/docs/board-minutes.md" <<END
 # Residents' board: minutes kept for the managing agent
 

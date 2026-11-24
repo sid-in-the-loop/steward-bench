@@ -251,6 +251,11 @@ signed HP-1013 "Gilbert Eckersley" 95
 signed HP-1017 "Constance Nyland" 180
 signed HP-1021 "Nerys Teasdale" 33
 
+doc HP-1017 attorney-form-draft.txt <<END
+Lasting power of attorney for health and welfare: draft
+Donor: Constance Nyland. Attorney named: Branoc Nyland (son).
+Prepared $(date -d '-300 days' +%F). Not signed by the donor and not registered.
+END
 doc HP-1004 clinic-letter.txt <<END
 Ketterick Cardiac Clinic
 $(date -d '-40 days' +%F)

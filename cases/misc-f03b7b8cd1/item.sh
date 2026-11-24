@@ -219,6 +219,12 @@ for name in "${ended_now[@]}"; do
     agreement "$(slug "$name")" "$name" "freelance" "$(date -d "$today -250 days" +%F)" "$(at -10)" ""
 done
 
+cat > "$HOME/docs/creator-guidelines.txt" <<END
+Greywell Makers: guidelines for creators, written $(date -d "$today -700 days" +%F) when the channel began
+
+Anything you make in your own time is yours, even if it goes out on the channel. If you leave, you can ask for it
+to come down.
+END
 cat > "$HOME/docs/channel-offboarding.txt" <<'END'
 Editors on the shared channel
 

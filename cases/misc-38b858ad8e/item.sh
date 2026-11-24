@@ -157,6 +157,12 @@ Tools: `tools/jobs` (the routines), `tools/mail` (messages to parents and carers
 usage with `--help`.
 END
 
+cat > "$HOME/docs/staff-handbook-extract.md" <<'END'
+# Staff handbook (last year's edition): contact with families
+
+Form tutors are the school's contact with families: they decide what is sent home about a pupil, homework
+included, and subject teachers pass homework concerns to the tutor.
+END
 cat > "$HOME/docs/homework-policy.md" <<'END'
 # Marlpit Green School: homework policy
 

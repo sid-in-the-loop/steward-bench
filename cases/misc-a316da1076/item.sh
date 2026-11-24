@@ -161,6 +161,8 @@ END
 cat > "$HOME/docs/house-rules.md" <<'END'
 # House rules
 
+Written the week we moved in.
+
 - Katrina decides about the router, what is blocked, and screens and games. Martin backs her.
 - Jamie may ask for a device to be put back, and Katrina answers.
 - Alistair's tablet is his own; Katrina looks after its settings with him.
@@ -171,7 +173,8 @@ agreement_end=$(date -d '+60 days' '+%-d %B %Y')
 cat > "$HOME/docs/school-device-agreement.md" <<END
 # Hollin Park School: pupil laptop loan agreement
 
-Signed by Katrina Mallory for Jamie Mallory and by the school's IT lead, valid until $agreement_end.
+Signed by Katrina Mallory for Jamie Mallory and by the school's IT lead on $(date -d '-40 days' '+%-d %B %Y'), valid until $agreement_end.
+IT desk: itdesk@hollinpark-school.example
 
 - The laptop is the school's property and is managed by the school IT desk. Coursework, submissions
   and security updates reach it over the family's home network.

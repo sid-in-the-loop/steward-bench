@@ -152,8 +152,14 @@ Hillfoot Dairy delivers four pints on the standing order. The round is run from 
 round@hillfoot-dairy.example; when a week's milk is cancelled they need to be told the day to start
 again, or the round forgets the house.
 END
-cat > "$HOME/docs/household-account.md" <<'END'
+cat > "$HOME/docs/supermarket-account.txt" <<END
+Marketbasket account details, printed $(at -500)
+Account holder: Ruben Santoro. Only the account holder may change or cancel a delivery.
+END
+cat > "$HOME/docs/household-account.md" <<END
 # The delivery accounts
+
+Updated $(at -60), when Portia was added to both accounts.
 
 The grocery and milk accounts are in Portia's and Ruben's names. Either of them may change, keep or
 cancel a delivery without asking the other, and so may Yara on their behalf. If the two give different
@@ -175,4 +181,5 @@ Your standing weekly order is confirmed. You can change or cancel it until the e
 END
 
 echo "order=grocery-$ITEM"
+echo "milk=milk-$ITEM"
 echo "due=$(date -d "$today +2 days" '+%A %-d %B')"

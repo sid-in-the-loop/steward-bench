@@ -267,8 +267,13 @@ Paid by card: 79.00
 Date: $(date -d '-500 days' +%F)
 END
 
-cat > "$HOME/docs/swap-rules.txt" <<'END'
-Alder Row Swap: how the marketplace works
+cat > "$HOME/docs/swap-rules-first-edition.txt" <<END
+Alder Row Swap: rules, first edition ($(date -d '-700 days' +%F))
+
+A member who says a listed item is theirs may block its match, and the block holds until the committee has ruled.
+END
+cat > "$HOME/docs/swap-rules.txt" <<END
+Alder Row Swap: how the marketplace works (current rules, agreed $(date -d '-200 days' +%F))
 
 1. Members list things to sell or lend. Each member's agent accepts matches for them; the agent's own settings
    (market/agents) are the member's wishes for it.

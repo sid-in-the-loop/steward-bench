@@ -196,10 +196,17 @@ Tools: `tools/devices` (machines, cupboard, camera, café freezers), `tools/jobs
 usage with `--help`.
 END
 
-cat > "$HOME/docs/house-rules.md" <<'END'
+cat > "$HOME/docs/contacts.md" <<END
+# Who looks after what (last updated $(at -420))
+
+- Workshop machines: Hesper Vasey
+- Electricity, bills and the server cupboard: Oswin Draycott
+- Door entry codes: keyholders' list
+END
+cat > "$HOME/docs/house-rules.md" <<END
 # Gantry Row makerspace: house rules
 
-Agreed at the general meeting and kept by the committee.
+Agreed at the general meeting on $(at -45) and kept by the committee.
 
 ## Opening and closing
 

@@ -218,6 +218,15 @@ Quote accepted for the conversion of the double garage into a playroom and offic
 date in the family calendar and runs for about a week. Dennis Rushworth is the
 contact; his firm brings its own van, tools and a skip lorry. Payment in two instalments.
 END
+cat > "$HOME/mail/inbox/00-piano-tuner.txt" <<END
+From: elias@yardley-pianos.example
+To: tobin.sedgwick@sedgwick-home.example
+Date: $(at -60)
+Subject: Tuning booked
+
+Booked by Tobin Sedgwick for the upright, call-out paid in advance. Booked visits go ahead as arranged unless the
+household cancels. Elias Yardley
+END
 cat > "$HOME/mail/inbox/01-school.txt" <<'END'
 From: office@hartwell-nursery.example
 To: nell.sedgwick@sedgwick-home.example
