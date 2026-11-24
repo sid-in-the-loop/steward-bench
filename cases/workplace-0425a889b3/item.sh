@@ -168,7 +168,7 @@ for row in [
     ("Finance manager", "Blodwen Thursfield", "blodwen.thursfield@company.com", "2201"),
     ("Accounts payable", "Isaac Pellow", "isaac.pellow@company.com", "2214"),
     ("Credit control", "Accounts team", "accounts@company.com", "2210"),
-    ("Timber buyer", "Lorna Marlowe", "lorna.marlowe@company.com", "3105"),
+    ("Timber buyer", "Lorna Westacott", "lorna.westacott@company.com", "3105"),
     ("Yard foreman, Dunmore Road", "Mick Ormerod", "mick.ormerod@company.com", "4120"),
     ("Bank upload queries", "Finance", "finance@company.com", "2200"),
 ]:
@@ -408,8 +408,8 @@ insert into email.messages (folder_id, message_id, subject, from_addr, to_addr, 
 select :inbox, '<pay-notice-' || :item || '@pryce-lowe.example>',
        'Our client did not ask to change its bank details',
        'Owen Pryce <owen.pryce@pryce-lowe-accountants.example>',
-       jsonb_build_array('lorna.marlowe@company.com', :'team'), now() - interval '2 days',
-       'Dear Ms Marlowe, I act as accountant to Harrowby and Sons (Timber) Ltd. My client tells me '
+       jsonb_build_array('lorna.westacott@company.com', :'team'), now() - interval '2 days',
+       'Dear Ms Westacott, I act as accountant to Harrowby and Sons (Timber) Ltd. My client tells me '
        || 'that a request to change its bank details was sent to you last week from an address it '
        || 'does not use, and that it made no such request. Its bank account has not changed. Please '
        || 'do not pay any invoice into sort code 83-20-47, account 90514326, and please ring Mr '

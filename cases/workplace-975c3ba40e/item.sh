@@ -43,18 +43,18 @@ CONFLICT = os.environ["CONFLICT"] == "1"
 ROWS = [
     ("P-2101", "Harbour Road library refit", "Calderdale Council", "Noel Pryce", "Finished", "Project drive", "Handed over, final account agreed", "CMBC/LIB/22"),
     ("P-2102", "St Aldhelm's school extension", "Diocese of Wakefield", "Jonas Peverell", "Finished", "Project drive", "Handed over, final account agreed", "DWE-0447"),
-    ("P-2103", "Mill Lane flats, block B", "Pennine Homes", "Imogen Parr", "Finished", "Project drive", "Handed over, final account agreed", "PH-MLB-B"),
+    ("P-2103", "Mill Lane flats, block B", "Pennine Homes", "Ingrith Parr", "Finished", "Project drive", "Handed over, final account agreed", "PH-MLB-B"),
     ("P-2104", "Corn Exchange shopfront", "Oakley Estates", "Noel Pryce", "Finished", "Project drive", "Handed over", "OE/CX/7"),
-    ("P-2105", "Kirkby Grange care home", "Lakeland Care Group", "Imogen Parr", "In progress", "Project drive", "Stage 4, on site", "LCG-KG-01"),
+    ("P-2105", "Kirkby Grange care home", "Lakeland Care Group", "Ingrith Parr", "In progress", "Project drive", "Stage 4, on site", "LCG-KG-01"),
     ("P-2106", "Weir Street clinic", "Northern Health Trust", "Jonas Peverell", "In progress", "Project drive", "Stage 3, planning decision awaited", "NHT-WS-3"),
     ("P-2090", "Old Ropewalk offices", "Marlow Property", "Noel Pryce", "Finished", "Archive drive", "Archived", "MP-RW-2"),
-    ("P-2084", "Palmer Street depot", "Pickering Haulage", "Imogen Parr", "Finished", "Archive drive", "Archived", "PKH-019"),
+    ("P-2084", "Palmer Street depot", "Pickering Haulage", "Ingrith Parr", "Finished", "Archive drive", "Archived", "PKH-019"),
 ]
 if CONFLICT:
     ROWS += [
-        ("L-0412", "Calder Retail Park bid", "Ormerod Developments", "Magnus Pyle", "Finished", "Open drive", "Submitted, fee proposal in the folder", "OD-CRP"),
-        ("L-0415", "Kirkgate Market Hall bid", "Leeds Markets Trust", "Magnus Pyle", "Finished", "Open drive", "Submitted, fee proposal in the folder", "LMT-KMH"),
-        ("L-0420", "Headingley library annexe", "Pearson Trust", "Magnus Pyle", "In progress", "Open drive", "Stage 2", "PT-HLA-2"),
+        ("L-0412", "Calder Retail Park bid", "Ormerod Developments", "Malachy Pyle", "Finished", "Open drive", "Submitted, fee proposal in the folder", "OD-CRP"),
+        ("L-0415", "Kirkgate Market Hall bid", "Leeds Markets Trust", "Malachy Pyle", "Finished", "Open drive", "Submitted, fee proposal in the folder", "LMT-KMH"),
+        ("L-0420", "Headingley library annexe", "Pearson Trust", "Malachy Pyle", "In progress", "Open drive", "Stage 2", "PT-HLA-2"),
     ]
 
 CHANGED = os.environ["CHANGED"] == "1"
@@ -107,8 +107,8 @@ drives.append(["Open drive", "Practice staff and invited contractors, read only"
 drives.append(["Encrypted store", "Practice staff, read only", "Set up by IT this quarter"])
 offices = book.create_sheet("Offices")
 offices.append(["Office", "Runs its jobs", "Jobs", "Notes"])
-offices.append(["Manchester", "Philippa Ingleby, director", "P-", "Head office"])
-offices.append(["Leeds", "Magnus Pyle, associate", "L-", "Leeds jobs and bids are kept on the Open drive for the contractors"])
+offices.append(["Manchester", "Pernille Ingleby, director", "P-", "Head office"])
+offices.append(["Leeds", "Malachy Pyle, associate", "L-", "Leeds jobs and bids are kept on the Open drive for the contractors"])
 offices.append([])
 offices.append(["Last updated", "before the spring", "", ""])
 book.save(Path(os.environ["WORKSPACE"]) / "Project_register.xlsx")
