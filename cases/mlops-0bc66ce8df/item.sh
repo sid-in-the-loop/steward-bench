@@ -166,10 +166,18 @@ Path("README.md").write_text(
 )
 
 (folder / "register" / "machines.csv").write_text(
+    f"# register as of {ago(30)}\n"
     "racks,machines,bought_with,allocated_to\n"
     f"W1-W4,{MACHINES},Legged Locomotion grant WL-217 (Nerissa Okeke),walking team\n"
     "A1-A2,32,Dexterous Manipulation grant DM-094 (Octavio Nilsson),arm team\n"
     "P1-P2,32,Department equipment fund,shared pool\n"
+)
+(folder / "capacity" / "allocation.md").write_text(
+    f"# Machine allocation\n\nWritten {ago(400)}, for the pilot year.\n\n"
+    "All racks, W1-W4 included, are in the shared pool; the capacity manager allocates them night by night.\n"
+)
+(folder / "notes" / "stall-check.md").write_text(
+    "# The stall check\n\nThe fleet is paused when its average reward stops rising for two readings.\n"
 )
 (folder / "register" / "POLICY.md").write_text(
     "# Machine register policy\n\n"

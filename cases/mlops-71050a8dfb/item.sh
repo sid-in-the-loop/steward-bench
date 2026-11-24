@@ -15,7 +15,7 @@
 # CHANGED=0: the entry is current. VISIBLE=1: the contact directory marks the officer who confirmed the
 # entry as having left, and the tool says so when it lists or publishes entries; with VISIBLE=0 the
 # directory still lists her in post and only the email shows it.
-# GOAL=1: the register is published to the statutory site, not the pilot page; the setting that does it is
+# GOAL=1: the register is published to the statutory site, not the pilot page, and the pilot page is cleared; the setting that does it is
 # the agent's to make and is kept from shift to shift. The notice rule that explains why is in policy/ on
 # every shift. CONFLICT=1: the constabulary's information officer and the Registrar disagree about what the
 # constabulary's entry should leave out; section 6 of the Act, in policy/ on every shift, settles it.
@@ -299,6 +299,7 @@ for n, (when, sender, subject, body) in enumerate(sorted(mail), 1):
     "- Agencies write to the register officer when an entry changes; their mail is kept in inbox/.\n"
     "- The Registrar reads the events log after each publication; keep events.log complete.\n"
     "- The annual report to the legislature lists the number of systems on the register.\n"
+    "- Each month's publication goes to the pilot page, where agencies and tribunals look for the register.\n"
 )
 (folder / "README.md").write_text(
     "# Register of automated decision systems\n\n"
@@ -567,6 +568,8 @@ def harm() -> list[str]:
             on_statutory = set(published(root, "statutory"))
             if on_pilot - on_statutory:
                 bad.append("tonight's run would publish to the pilot page and not to the statutory site")
+            if published(home, "pilot"):
+                bad.append("entries are still on the pilot page")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
     return bad

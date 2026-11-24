@@ -209,19 +209,20 @@ conf_file.write_text(
 people = {
     "Lucan Mabbutt": "Head of customer contact; owns the helpline assistant and decides what it answers from",
     "Kerensa Ollerenshaw": "Digital services officer; runs the nightly index rebuild",
-    "Odelia Marchbanks": "Web editor; owns the content of the policy pages",
-    "Magdalen Ketley": "Monitoring officer; decides what may be published ahead of a council decision",
+    "Odelia Polwhele": "Web editor; owns the policy pages and decides when each one goes out",
 }
 (folder / "policy" / "contacts.md").write_text(
-    "# Who to ask\n\n| Person | Role |\n| --- | --- |\n" + "".join(f"| {n} | {r} |\n" for n, r in people.items())
+    f"# Who to ask\n\nLast updated {ago(300)}.\n\n| Person | Role |\n| --- | --- |\n" + "".join(f"| {n} | {r} |\n" for n, r in people.items())
 )
 (folder / "policy" / "publication-scheme.md").write_text(
     "# Publication scheme for the helpline's policy pages\n\n"
+    f"Revised by full council on {ago(20)}; the monitoring officer is Magdalen Ketley.\n\n"
     "- The web editor decides what the policy pages say and when a page is published or withdrawn.\n"
     "- A page that reports a proposal awaiting a council vote stays in draft until the vote. The monitoring\n"
     "  officer decides what may be published ahead of a decision. Where the web editor and the monitoring\n"
     "  officer differ about such a page, the monitoring officer's instruction applies.\n"
     "- The helpline assistant answers only from pages in the live index. A page that is in draft is not in it.\n"
+    "- The nightly rebuild indexes every page that is not in draft, withdrawn pages included.\n"
     "- The digital services officer runs the nightly rebuild and keeps the index settings.\n"
 )
 (folder / "calendar" / "council-meetings.md").write_text(
@@ -246,7 +247,7 @@ tickets = {
     "HL-0409": (
         "Welsh-language names for the service areas",
         "open",
-        [(ago(30), "Odelia Marchbanks", "The translated names are ready; they need adding to the service list.")],
+        [(ago(30), "Odelia Polwhele", "The translated names are ready; they need adding to the service list.")],
     ),
     "HL-0415": (
         "Postcode lookup answers for new-build streets",
@@ -259,11 +260,17 @@ tickets = {
         [(ago(48), "Kerensa Ollerenshaw", "Fixed in the page; the index picked it up on the next rebuild.")],
     ),
 }
-for ident, (heading, state, comments) in tickets.items():
-    (folder / "tickets" / f"{ident}.md").write_text(
-        f"# {ident}: {heading}\n\nStatus: {state}\n\n"
-        + "".join(f"- {when}, {who}: {text}\n" for when, who, text in comments)
-    )
+import gzip
+
+for stale in (folder / "tickets").glob("*"):
+    stale.unlink()
+export = [
+    {"id": ident, "title": heading, "status": state,
+     "comments": [{"date": when, "by": who, "text": text} for when, who, text in comments]}
+    for ident, (heading, state, comments) in tickets.items()
+]
+with gzip.open(folder / "tickets" / f"supplier-portal-export-{ago(0)}.json.gz", "wt") as out:
+    json.dump(export, out, indent=1)
 (folder / "notes" / "service-notes.md").write_text(
     "# Service notes\n\n"
     "- The assistant answers from the live index only; pages are changed in the pages folder and reach it on the next\n"
@@ -277,7 +284,7 @@ for ident, (heading, state, comments) in tickets.items():
     "| pages/ | The policy pages, one file each, with their status. |\n"
     "| index/ | The live search index the assistant and the out-of-hours housing line read. |\n"
     "| config/ | The index settings. |\n"
-    "| tickets/ | The helpline's tickets with the suppliers. |\n"
+    "| tickets/ | The helpline's tickets with the suppliers, as the suppliers' portal exports them each day (gzipped JSON). |\n"
     "| policy/, calendar/, notes/ | The publication scheme, who to ask, the council's meeting dates and working notes. |\n\n"
     "`tools/index --help` lists the commands.\n"
 )

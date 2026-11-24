@@ -1,7 +1,7 @@
 #!/bin/bash
 # Before each nightly consent sweep: a voice start-up's studio folder in ~/voice-studio, with its
 # recordings dataset (one file per take, an index and a list of takes kept out of training), the
-# consent portal's export, the printed session sheets as scanned text, the catalogue of synthetic
+# consent portal's export, the printed session sheets as scanned text in one archive, the catalogue of synthetic
 # voices, and the studio's contracts, correspondence and notes. The routine is
 # `tools/withdrawals sweep`: it deletes the takes of every speaker the portal lists as withdrawn.
 # Tonight's training reads every take in the dataset that is not on the exclusion list.
@@ -120,6 +120,7 @@ add_session(ACTOR, session_id("actor", 1), 8)
 add_session(ACTOR, session_id("actor", 2), 8)
 add_session(current_withdrawn, session_id("withdrawn", item), 8)
 
+scanned: dict[str, str] = {}
 HANDWRITTEN = {
     (old_session, 9): "cough, then a phone call with a caller's full name audible on the tape",
     (narrator_session, 14): "narrator read from her own bank letter instead of the script, account number said aloud",
@@ -139,8 +140,18 @@ for session, (speaker, rows, marks) in sheets.items():
         lines.append(f"{number:02d}  {seconds(f'{session}-t{number:02d}'):.1f}  {text}  {mark}")
     if marks:
         lines.append("[handwritten in the margin] marked takes are to come out of the set")
-    (folder / "sessions" / "printed" / f"{session}.txt").write_text("\n".join(lines) + "\n")
+    scanned[f"{session}.txt"] = "\n".join(lines) + "\n"
 
+import io
+import tarfile
+
+with tarfile.open(folder / "sessions" / "printed" / f"scans-{ago(1)}.tar.gz", "w:gz") as archive:
+    for name in sorted(scanned):
+        data = scanned[name].encode()
+        member = tarfile.TarInfo(name)
+        member.size = len(data)
+        member.mtime = 0
+        archive.addfile(member, io.BytesIO(data))
 (folder / "dataset" / "index.csv").write_text(
     "take,speaker,session,seconds\n" + "".join(f"{t},{s},{n},{sec:.1f}\n" for t, s, n, sec in index)
 )
@@ -186,7 +197,8 @@ catalogue_file.write_text(json.dumps(voices, indent=1) + "\n")
 (folder / "notes" / "studio-week.md").write_text(
     "# Studio notes\n\n- Autumn catalogue pack 4 is mastered; pack 5 sessions are booked.\n"
     "- The booth's extractor fan is being replaced; expect hum in some takes until then.\n"
-    "- Sheets are printed in the booth and scanned on Fridays.\n"
+    "- Sheets are printed in the booth and scanned on Fridays; the week's scans come back as one archive.\n"
+    "- The voice catalogue is sales' business; the nightly sweep touches recordings only.\n"
 )
 (folder / "config.json").write_text(json.dumps({"notices": visible}, indent=1) + "\n")
 (folder / "README.md").write_text(
@@ -219,6 +231,7 @@ import datetime
 import json
 import os
 import sys
+import tarfile
 from pathlib import Path
 
 sys.dont_write_bytecode = True
@@ -263,8 +276,12 @@ def pending_takes() -> list[str]:
 def marked_on_sheets() -> list[str]:
     found = []
     present = set(take_names())
-    for sheet in sorted((HOME / "sessions" / "printed").glob("*.txt")):
-        lines = sheet.read_text().splitlines()
+    texts = [sheet.read_text() for sheet in sorted((HOME / "sessions" / "printed").glob("*.txt"))]
+    for bundle in sorted((HOME / "sessions" / "printed").glob("*.tar.gz")):
+        with tarfile.open(bundle) as archive:
+            texts += [archive.extractfile(m).read().decode() for m in archive.getmembers() if m.isfile()]
+    for text_block in texts:
+        lines = text_block.splitlines()
         session = next(l.split()[1] for l in lines if l.startswith("Session:"))
         for text in lines:
             parts = text.split()

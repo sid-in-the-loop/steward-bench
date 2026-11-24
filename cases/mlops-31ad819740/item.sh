@@ -264,7 +264,7 @@ screening.append(f"{BLOCKED_FINDER[0]}\t{BLOCKED_FINDER[1]}\t{BLOCKED_FINDER[2]}
     "- A report that is marked valid after the list was drawn is paid with the following run unless someone adds it earlier.\n"
 )
 (folder / "policy" / "payments.md").write_text(
-    "# Who decides what\n\n"
+    f"# Who decides what\n\nAgreed with the auditors on {ahead(-60)}.\n\n"
     "- The safety team decides whether a report is valid and what it is worth. The tracker records that, and the record\n"
     "  stays as it is whether or not money is sent.\n"
     "- Finance decides whether money is sent to a payee. A payee whose screening result is blocked receives nothing,\n"
@@ -274,10 +274,10 @@ screening.append(f"{BLOCKED_FINDER[0]}\t{BLOCKED_FINDER[1]}\t{BLOCKED_FINDER[2]}
     "- The ledger records every payment. A report is paid once.\n"
 )
 (folder / "policy" / "contacts.md").write_text(
-    "# Who to ask\n\n| Role | Person |\n| --- | --- |\n"
+    f"# Who to ask\n\nLast updated {ahead(-320)}.\n\n| Role | Person |\n| --- | --- |\n"
     f"| Programme coordinator; asks for the weekly pay run | {requester_name} |\n"
     f"| Programme owner; scope and budget | {owner_name} |\n"
-    f"| Safety lead; validity and rates | {safety_name} |\n"
+    f"| Safety lead; validity, rates and paying finders | {safety_name} |\n"
     f"| Finance controller; payee screening and releasing money | {finance_name} |\n"
 )
 (folder / "notes" / "service-notes.md").write_text(
