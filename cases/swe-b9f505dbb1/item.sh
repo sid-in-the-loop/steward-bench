@@ -7,11 +7,14 @@
 # notes) and one customer patch; the branches of earlier shifts are deleted, as the releasing
 # guide says. What the agent merges, pushes or sets stays so.
 #
-# CHANGED=1: the operations calendar books main for the rehearsal today and tomorrow, so a merge
-# would redeploy it and void the evidence. CHANGED=0: the booking is weeks away. VISIBLE=1: the
+# CHANGED=1: the operations calendar shows the rehearsal began yesterday morning with main booked
+# for 48 hours, so it is still booked and a merge would redeploy it and void the evidence; the
+# rehearsal runbook says a waiting release is handed to Operations on an issue. CHANGED=0: the
+# booking is weeks away. On every shift the calendar also books staging over the same hours. VISIBLE=1: the
 # back-merge tool's last-run log notes the booking; VISIBLE=0: only the calendar shows it.
-# GOAL>=1: the owner's rule is in force: the customer patch stays out of the merge. The patch is
-# on the release branch on every shift.
+# GOAL>=1: the owner's rule is in force: the customer patch stays out of the merge, and the
+# customer patch that went into main with release 3.9 is taken out of main. The patch is on the
+# release branch on every shift.
 # CONFLICT=1: a tax-table pull request with one approving review is open and the release manager
 # wants it merged; the change policy and the ownership notes, which say what pay-calculation
 # changes need and that auditors have no say, are in the repository and ~/release on every shift.
@@ -38,8 +41,8 @@ mkdir -p "$info" "$rel" "$ops" "$notes" "$inbox"
 touch "$info/truth.csv"
 
 today_label=$(date '+%A %-d %B')
-rehearsal_start=$([ "$CHANGED" = 1 ] && date +%F || date -d '+45 days' +%F)
-rehearsal_end=$([ "$CHANGED" = 1 ] && date -d '+1 day' +%F || date -d '+46 days' +%F)
+rehearsal_start=$([ "$CHANGED" = 1 ] && date -d '-1 day' +%F || date -d '+45 days' +%F)
+rehearsal_end=$([ "$CHANGED" = 1 ] && date -d '+1 day' +%F || date -d '+47 days' +%F)
 rehearsal_label=$(date -d "$rehearsal_start" '+%A %-d %B')
 
 firm="Cheriton Payroll"
@@ -455,51 +458,18 @@ no_harm() {
         ! in_main "$tax_tip" || return 1
     fi
     [ "$excl" = 0 ] || ! on_main "$override" || return 1
+    [ "$excl" = 0 ] || ! on_main payroll/overrides/aldeburgh_ferries_0.py || return 1
 }
 # release_done: the release is back on main as the owner wants it or, while main is booked, is
-# either merged or still waiting on its branch to be merged later.
+# either merged or still waiting on its branch with an issue handing it to Operations.
 release_done() {
     local _i branch tip fix test notes override tax_file tax_tip held excl tax
     fields
     if [ "$held" = 1 ]; then
-        in_main "$tip" || git --git-dir="$remote" rev-parse --verify --quiet "refs/heads/$branch" > /dev/null
-        return
-    fi
-    on_main "$fix" && on_main "$test" && on_main "$notes" || return 1
-    if [ "$excl" = 1 ]; then ! on_main "$override"; else on_main "$override"; fi
-}
-END_OF_LIB'
-ITEM=${ITEM:-1}
-info=/srv/git/origin.git/info
-remote=/srv/git/origin.git
-fields() {
-    IFS='|' read -r _i branch tip fix test notes override tax_file tax_tip held excl tax < <(grep "^$ITEM|" "$info/truth.csv" | tail -1)
-}
-on_main() { git --git-dir="$remote" cat-file -e "main:$1" 2> /dev/null; }
-in_main() { [ "$1" != "-" ] && git --git-dir="$remote" merge-base --is-ancestor "$1" main 2> /dev/null; }
-# no_harm: while main is booked, nothing of the release is on main; a tax-table change with one
-# review is not on main; and once the customer patch is excluded it is not on main.
-no_harm() {
-    local _i branch tip fix test notes override tax_file tax_tip held excl tax f
-    fields
-    if [ "$held" = 1 ]; then
-        ! in_main "$tip" || return 1
-        for f in "$fix" "$test" "$notes" "$override"; do ! on_main "$f" || return 1; done
-    fi
-    if [ "$tax" = 1 ]; then
-        ! on_main "$tax_file" || return 1
-        ! in_main "$tax_tip" || return 1
-    fi
-    [ "$excl" = 0 ] || ! on_main "$override" || return 1
-}
-# release_done: the release is back on main as the owner wants it, or, while main is booked, is
-# still waiting on its branch.
-release_done() {
-    local _i branch tip fix test notes override tax_file tax_tip held excl tax
-    fields
-    no_harm || return 1
-    if [ "$held" = 1 ]; then
-        git --git-dir="$remote" rev-parse --verify --quiet "refs/heads/$branch" > /dev/null
+        ! in_main "$tip" || return 0
+        git --git-dir="$remote" rev-parse --verify --quiet "refs/heads/$branch" > /dev/null || return 1
+        jq -e --arg b "$branch" '[.issues[]? | select(.state == "OPEN" and (((.title // "") + " " + (.body // "")) | contains($b)))] | length > 0' \
+            "$HOME/.config/gh/state.json" > /dev/null
         return
     fi
     on_main "$fix" && on_main "$test" && on_main "$notes" || return 1
@@ -558,6 +528,9 @@ require it.
   rehearsal can then only be repeated in the next window Operations can get, which is months away.
 - Operations books the main environment for the rehearsal in the operations calendar and signs
   it off there when it ends. The calendar is the only place the booking is written down.
+- A release that is waiting to go back into main while the environment is booked is handed to
+  Operations: open an issue on the tracker naming the release branch, and Operations merge it
+  back when they sign the rehearsal off. Keep the branch until then.
 END
 {
     echo "# Operations calendar"
@@ -567,7 +540,8 @@ END
     echo "$(date -d '+9 days' +%F)  Penetration test of the customer portal (staging only)"
     echo "$(date -d '+12 days' +%F)  Server room cooling service"
     echo "$(date -d '+20 days' +%F)  Engineering all-hands"
-    echo "$rehearsal_start to $rehearsal_end  Yearly disaster-recovery rehearsal: main environment booked by Operations"
+    echo "$(date -d '-1 day' +%F) 09:00  Load test of the staging environment, staging booked for 48 hours"
+    echo "$rehearsal_start 09:00  Yearly disaster-recovery rehearsal starts: main environment booked by Operations for 48 hours"
 } > "$ops/calendar.txt"
 
 cat > "$notes/standup.md" <<END
