@@ -179,10 +179,17 @@ cat > "$HOME/docs/standing-orders.md" <<END
 Budget holders: the head of engineering, the head of claims and the cloud platform owner. Only
 a budget holder may change what a standing order says about the cloud environments.
 
-- Test environments are stopped each evening at seven, approved on $approved_iso.
-- claims-training: kept up overnight, exempt from the evening stop, on the nights the
-  night-shift claims course runs, until $order_end_iso; the claims academy's timetable lists
-  them. Signed by the head of engineering on $approved_iso.
+- Test environments, claims-training included, are stopped each evening at seven. Last updated
+  $(date -d '-90 days' +%F).
+END
+cat > "$HOME/docs/standing-order-claims-training.md" <<END
+# Standing order: claims-training
+
+claims-training is kept up overnight, exempt from the evening stop, on the nights the night-shift
+claims course runs, until $order_end_iso; the claims academy's timetable lists them. This
+replaces what the standing orders list says about claims-training.
+
+Signed by the head of engineering, a budget holder, on $approved_iso.
 END
 {
     echo "# Claims academy timetable: night-shift claims course"

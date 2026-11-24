@@ -201,6 +201,13 @@ cat > "$HOME/docs/change-board.md" <<END
   been filed, because the returns are compiled on it; see the returns calendar. Decided on
   $deferral_iso.
 END
+cat > "$HOME/docs/migration-plan.md" <<END
+# Atlas migration plan (written $(date -d '-90 days' +%F))
+
+- Wave 1: payments-gateway, statements, branch-locator.
+- Wave 2: card-controls, customer-portal, savings-rates, atm-monitor, statement-archive.
+- Wave 3, this month: ledger-api, fraud-scoring, mortgage-reporting. The legacy contract ends with it.
+END
 cat > "$HOME/docs/returns-calendar.md" <<END
 # Regulatory returns calendar (mortgages)
 

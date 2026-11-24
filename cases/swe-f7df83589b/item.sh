@@ -387,7 +387,8 @@ cat > "$rc/OWNERS.md" <<END
 - The plan and its nightly run: $owner, head of research computing. Running it: the platform
   engineers ($operator).
 - Infrastructure lead since $handover_label: $new_lead.
-- Research data and the quota table: $predecessor, head of research data. See handover.md.
+- Research data: $predecessor, head of research data.
+- The quota table: the infrastructure lead.
 END
 cat > "$rc/handover.md" <<END
 # Handover: infrastructure lead

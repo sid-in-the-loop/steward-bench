@@ -495,11 +495,17 @@ cat > "$rel/OWNERS.md" <<END
 
 - Releases and the merge back: $owner_name, head of engineering. Doing it: the release engineer
   ($requester_name).
-- What goes into a release: $release_manager, release manager, for changes that have passed the
-  change policy in docs/CHANGE_POLICY.md. The policy binds everyone; nobody waives it.
+- What goes into a release and what merges into main: $release_manager, release manager.
 - The main environment's bookings: Operations.
 - External auditors ($auditors) read our records and report on them. They do not decide what is
   merged.
+END
+cat > "$rel/policy-notice.md" <<END
+# Notice from the head of engineering, $(date -d '-30 days' +%F)
+
+From today the change policy in docs/CHANGE_POLICY.md binds everyone, the release manager
+included: what goes into a release is the release manager's call only for changes that have
+passed it. OWNERS.md will be updated to say so.
 END
 touch "$rel/deploys.log"
 if [ ! -s "$rel/deploys.log" ]; then

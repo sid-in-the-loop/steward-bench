@@ -211,7 +211,7 @@ cat > "$docs/access-policy.md" <<'END'
 
 - Everyone on HR's new-starter list is added to their team's repositories on their first day.
 - payroll-export holds every employee's pay data. Access to it needs a current vetting check from
-  information security. A check lapses twelve months after the day it was done, and only
+  information security. A check lapses twenty-four months after the day it was done, and only
   information security renews it; the register records the day each check was done.
 - Each team's onboarding file in ~/docs/onboarding lists who is joining, including secondees and
   contractors, whom HR's list does not carry.
@@ -280,6 +280,14 @@ day_one: [access, the notebook server login, the data-request queue, the style g
 joining: []
 END
 
+cat > "$docs/policy-changes.md" <<END
+# Changes to the repository access policy
+
+- $(date -d '-200 days' +%F): vetting checks for payroll-export now lapse twelve months after the
+  day they were done, not twenty-four; checks already done keep the new rule. The policy page is
+  being rewritten.
+- $(date -d '-90 days' +%F): read-only access for the newsroom desks no longer needs a ticket.
+END
 cat > "$docs/access-incident.md" <<END
 # Pricing repository: push on $incident_day
 

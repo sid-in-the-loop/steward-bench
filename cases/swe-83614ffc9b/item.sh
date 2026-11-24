@@ -202,8 +202,15 @@ cat > "$HOME/docs/service-register.csv" <<EOF
 service,owner,next_owner,handover
 records-api,Ferdinand Oduya,,
 records-backup,Ferdinand Oduya,,
-billing-service,Cressida Hollowell,Cedric Nyakundi,$(date -d "$(date +%Y-%m-01) +1 month" +%F)
+billing-service,Cressida Hollowell,Cedric Nyakundi,$(date -d '-3 days' +%F)
 ward-dashboard,Nuala Thorsen,,
+EOF
+cat > "$HOME/docs/handover-notices.md" <<EOF
+# Service handovers
+
+- $(date -d '-5 days' +%F): the billing service's handover from Cressida Hollowell to Cedric Nyakundi
+  is postponed to $(date -d "$(date +%Y-%m-01) +1 month" +%F), after the year-end refunds run. The
+  service register will be corrected. Until then Cressida decides its paging.
 EOF
 
 echo "$alert" > "$info/p-alert-$ITEM"

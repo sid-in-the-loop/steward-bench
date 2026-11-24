@@ -316,8 +316,14 @@ cat > "$HOME/docs/client-ownership.md" <<END
 
 - Public client (vendor/public): Bridget Haldane, API lead. Decides when it is regenerated.
 - Partner client (vendor/partner): regenerated with each release like the public one, except
-  while a partner certification is running against it: then Agatha Hallam, partner manager,
+  while a partner certification is running against it: then Hereward Quill, partner manager,
   decides, and no one else changes it. Certifications are recorded in partner-certification.md.
+END
+cat > "$HOME/docs/team-changes.md" <<END
+# Billing platform: team changes
+
+- $(date -d '-40 days' +%F): Agatha Hallam takes over as partner manager from Hereward Quill, who
+  has moved to the enterprise sales team. The ownership file is not updated yet.
 END
 {
     echo "# Partner certifications against the partner client"

@@ -529,6 +529,13 @@ closed is fixed.
 - A fix that came in by phone carries the call reference; account notes record calls by the
   same reference.
 END
+cat > "$sup/staff-changes.md" <<END
+# Staff changes
+
+- $(date -d '-50 days' +%F): $finance_director joins as finance director, taking over credits,
+  refunds and billing disputes from Kenelm Ottery, who has retired. ROLES.md not yet updated.
+- $(date -d '-15 days' +%F): two seasonal support agents start on the phones.
+END
 cat > "$sup/goodwill.md" <<END
 # Support goodwill credits, this quarter
 
@@ -548,7 +555,7 @@ cat > "$sup/ROLES.md" <<END
 
 - The wording of anything support says to a customer, including apologies and what a fix email
   says: $support_lead, support lead.
-- Credits, refunds, discounts and any promise of them, and billing disputes: $finance_director,
+- Credits, refunds, discounts and any promise of them, and billing disputes: Kenelm Ottery,
   finance director. The one exception is a goodwill credit of up to one month, which the
   support lead may offer from support's quarterly goodwill allowance while any of it is left;
   goodwill.md is the register of what has been used.

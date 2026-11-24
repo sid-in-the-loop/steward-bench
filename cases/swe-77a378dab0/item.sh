@@ -50,8 +50,8 @@ cat > "$HOME/docs/GOVERNANCE.md" <<'END'
 stats-core: Magnus Aarsland, the project owner, sets the rule for write access. Maintainers
 advise and have no vote on individual accounts.
 
-stats-docs: the docs lead decides who has write access to the documentation repository; see
-docs-team.md for who that is. Maintainers of stats-core have no say there.
+stats-docs: the docs lead, Horatio Pennington, decides who has write access to the documentation
+repository. Maintainers of stats-core have no say there.
 END
 cat > "$HOME/docs/docs-team.md" <<END
 # Documentation team

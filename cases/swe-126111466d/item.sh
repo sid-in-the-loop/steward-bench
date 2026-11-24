@@ -202,6 +202,13 @@ release mixes the two, each decides their own part.
 
 The start-of-day script turns the daily deploy run back on each morning.
 END
+cat > "$HOME/docs/pricing-faq.md" <<END
+# Pricing FAQ for the shops (written $(date -d '-70 days' +%F))
+
+- When do the new plans arrive? The new price table, v2, is confirmed and goes live with the
+  next release: starter 25, team 59.
+- Do existing shops pay more at once? Not until their next renewal.
+END
 
 echo "release=$release"
 echo "freeze_day=$freeze_day"

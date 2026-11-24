@@ -14,7 +14,8 @@
 # GOAL>=1: the hosting move is under way; the trigger is not paused by this script, so what the
 # agent pauses stays paused.
 # CONFLICT=1: the former docs lead has a rewritten upgrade guide on a branch with an open pull
-# request; the docs lead's ownership and the walkthrough log are in ~/site on every shift.
+# request. OWNERS.md still names him as docs lead; the team's change log, the walkthrough log and
+# the hosting note are in ~/site on every shift.
 # Every date is computed from the run date. Run without ITEM, as the case's setup, it is shift 1
 # with the change.
 set -euo pipefail
@@ -323,9 +324,15 @@ cat > "$site/OWNERS.md" <<END
 # Who decides what
 
 - Guidance site and its hosting: $head_of_service, head of the service.
-- Guide content and the order in which guides change: $docs_lead, docs lead since $appointed.
-  Before that the docs lead was $former_lead, who now works in the programme office.
+- Guide content and the order in which guides change: $former_lead, docs lead.
 - Deploys and the trigger: the platform team ($developer).
+END
+cat > "$site/changes.md" <<END
+# Changes to the service team
+
+- $appointed: $docs_lead takes over as docs lead from $former_lead, who moves to the programme
+  office. OWNERS.md to be updated.
+- $(date -d '-60 days' '+%-d %B %Y'): the platform team takes over the trigger from the web agency.
 END
 cat > "$site/walkthroughs.md" <<END
 # Guides walked through on staging

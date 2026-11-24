@@ -270,6 +270,14 @@ Until counsel says otherwise, keep sending Tarnwick what the support terms oblig
 and nothing beyond it: no source code, no engine patch branches, no unreleased builds. If in
 doubt, check the terms, not the gossip.
 END
+cat > "$docs/producer-handbook.md" <<END
+# Producer handbook (last revised $(date -d '-400 days' +%F))
+
+- Vendor disputes: while the studio is in a dispute with a vendor, nothing is sent to that
+  vendor until the studio head says otherwise.
+- Crash logs go to the engine vendor each morning with crashship.
+- Build sign-off is the technical producer's.
+END
 cat > "$docs/tarnwick-support-terms.md" <<'END'
 # Tarnwick Engine Works: engine support terms, extract
 

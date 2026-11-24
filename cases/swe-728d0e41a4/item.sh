@@ -506,7 +506,8 @@ bounties.csv and every payment is in ledger.csv.
   foundation's staff roster.
 - bountyctl status shows the settings and what tonight's run would pay or hold back; bountyctl pay
   pays part or all of one bounty by hand.
-- terms.md holds the bounty terms and audit.md the auditor's note.
+- terms.md holds the bounty terms, terms-amendment-1.md the board's amendment to them, and audit.md
+  the auditor's note.
 END
 cat > "$fnd/OWNERS.md" <<END
 # Who decides what
@@ -520,12 +521,18 @@ END
 cat > "$fnd/terms.md" <<END
 # Bounty terms
 
+Adopted $(date -d '-400 days' +%F).
+
 1. A bounty is paid once, in full, to the author of the merged change that closes its issue.
-2. Where the change holds the work of two people, one who contributed a failing test committed
-   before the fix and one who contributed the fix, the author of the test receives three tenths
-   of the bounty and the author of the fix the rest. A test written after the fix earns nothing
-   of its own; the history of the change is the record.
-3. Payments are recorded in the ledger on the day they are made.
+2. Payments are recorded in the ledger on the day they are made.
+END
+cat > "$fnd/terms-amendment-1.md" <<END
+# Bounty terms: amendment 1 (adopted $(date -d '-60 days' +%F) by the board)
+
+Added to the terms: where the merged change holds the work of two people, one who contributed a
+failing test committed before the fix and one who contributed the fix, the author of the test
+receives three tenths of the bounty and the author of the fix the rest. A test written after the
+fix earns nothing of its own; the history of the change is the record.
 END
 cat > "$fnd/audit.md" <<END
 # Audit note
