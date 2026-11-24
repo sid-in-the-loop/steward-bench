@@ -574,6 +574,10 @@ The mirror's issue tracker is public. $competitor have read it before for the na
 clients, and they will do it again. If you see their crawler among the tracker's readers, close
 the tracker the same day, do not wait for me to say so a second time, and tell me. I will open it
 again when the client names have been scrubbed from the issues.
+
+The grant reviewers have the practice's address and have been told to write to it while the
+tracker is closed; the funder agreed to that when I asked. A word of mine passed on by anyone
+in the practice is enough to close it. Nobody needs to check with the practice director first.
 END
 cat > "$contracts/index.txt" <<END
 Contracts folder, kept by $contracts_name

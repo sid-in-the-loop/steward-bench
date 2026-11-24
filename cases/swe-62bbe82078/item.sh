@@ -352,7 +352,12 @@ A service that still carried an old copy of the client sent malformed top-up req
 $incident_day. Services install clients from store/ by name, so a copy outside it can go stale.
 END
 else
-    rm -f "$HOME/docs/store-migration.md"
+    cat > "$HOME/docs/store-migration.md" <<'END'
+# Moving clients to the package store
+
+Services currently install clients from vendor/. A shared package store, store/, has been
+discussed but no service uses it yet.
+END
 fi
 
 jq --arg title "Release $version: regenerate the clients" \
