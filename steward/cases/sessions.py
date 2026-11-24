@@ -104,6 +104,10 @@ class Setting(BaseModel):
     per_day: int = 0
     # The shifts on which the steps of the task's goal change land, in order.
     goal_at: tuple[int, ...] = ()
+    # How many shifts before a goal step lands its line is said. With days, a step said on the
+    # last shift of a day and landing on the first of the next is known on the day it applies
+    # only from the agent's own notes.
+    goal_said_before: int = 0
     # The shift before which the task's authority conflict is said.
     conflict_at: int | None = None
     # The seed of the cast drawn from the people library; None leaves people as written.
@@ -138,13 +142,15 @@ class Setting(BaseModel):
             raise ValueError("a goal step or conflict lies outside the session")
         if self.per_day < 0:
             raise ValueError("shifts per day cannot be negative")
+        if self.goal_said_before < 0 or any(n - self.goal_said_before < 1 for n in self.goal_at):
+            raise ValueError("a goal step is said before the session starts")
         return self
 
     @property
     def id(self) -> str:
         # Fields added for goal changes, conflicts, days and casts are left out at their
         # defaults, so the settings stored before them keep their ids.
-        added = {"per_day", "goal_at", "conflict_at", "cast_seed", "visible"}
+        added = {"per_day", "goal_at", "goal_said_before", "conflict_at", "cast_seed", "visible"}
         unset = {name for name in added if getattr(self, name) == SETTING_DEFAULTS[name]}
         extra = self.model_dump_json(include=added - unset)
         if self.level != "I":
@@ -187,6 +193,7 @@ class Setting(BaseModel):
 SETTING_DEFAULTS: dict[str, object] = {
     "per_day": 0,
     "goal_at": (),
+    "goal_said_before": 0,
     "conflict_at": None,
     "cast_seed": None,
     "visible": False,
@@ -679,10 +686,12 @@ class Session:
         self.reports = []
 
     def _announce_changes(self, number: int, values: dict[str, str]) -> None:
-        """Say a goal step that lands on this shift, and the conflict if it is this shift's."""
+        """Say a goal step that is said on this shift (`goal_said_before` shifts before it
+        lands), and the conflict if it is this shift's."""
         goal, conflict = self.spec.goal, self.spec.conflict
-        if goal is not None and number in self.setting.goal_at:
-            index = self.setting.goal_at.index(number)
+        said = [n - self.setting.goal_said_before for n in self.setting.goal_at]
+        if goal is not None and number in said:
+            index = said.index(number)
             if index < len(goal.steps):
                 step = goal.steps[index]
                 self._hear(step.who, filled(step.line, values))

@@ -258,3 +258,19 @@ def test_a_task_with_both_versions_is_checked_in_each(
     seen.clear()
     commands.check_session(None, case, spec)  # type: ignore[arg-type]
     assert seen == [False, False]
+
+
+def test_a_goal_step_can_be_said_the_day_before_it_lands(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    setting = SETTING.model_copy(update={"goal_said_before": 1})
+    session = run(case, changed_spec, setting, Environment())
+    said = [(e.item, e.text) for e in session.events if e.kind == "message" and e.who != "agent"]
+    assert (3, "Only delete builds older than a week.") in said
+    assert not any(text.startswith("Only delete") for item, text in said if item != 3)
+
+
+def test_a_goal_step_cannot_be_said_before_the_session() -> None:
+    with pytest.raises(ValidationError):
+        Setting(items=4, goal_at=(1,), goal_said_before=1)
+    assert Setting().id == "i16-c9-u2-out_of_date-regular"

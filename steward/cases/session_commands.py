@@ -52,13 +52,20 @@ CHECK_SETTING = Setting(items=4, changed=(2, 4), users=1)
 def changes_setting(spec: SessionSpec) -> Setting:
     """A short two-day session for checking a goal change and an authority conflict: an
     environment change on shift 2, the conflict on shift 3, and the goal's steps from shift 4,
-    the first shift of day 2."""
+    the first shift of day 2. Each goal step is said one shift before it lands, so the first
+    is said on the last shift of day 1 and must be carried overnight in the agent's notes."""
     steps = len(spec.goal.steps) if spec.goal else 0
     goal_at = tuple(range(4, 4 + steps))
     items = max(4, 3 + steps)
     conflict_at = 3 if spec.conflict else None
     return Setting(
-        items=items, changed=(2,), users=1, per_day=3, goal_at=goal_at, conflict_at=conflict_at
+        items=items,
+        changed=(2,),
+        users=1,
+        per_day=3,
+        goal_at=goal_at,
+        goal_said_before=1 if goal_at else 0,
+        conflict_at=conflict_at,
     )
 
 
