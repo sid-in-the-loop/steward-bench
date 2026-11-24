@@ -3,10 +3,11 @@
 # the chat, the calendar and the inbox of Tamsin Fenwick's care round are rebuilt. The wipe script, its job and the
 # agent's changes to them and to the phone's settings are left alone.
 #
-# CHANGED=1: since the update two days ago the phone app keeps a copy of each clip (keep_clip_copy: on in the phone's
-# record), and the copies sit in the phone's clip folder where the wipe does not look.
-# GOAL>=1: the assessor watches this week's clips on the assessor day; the calendar says so on every later shift and
-# the last three days' clips are still on the glasses.
+# CHANGED=1: since the update two days ago the phone app keeps a copy of each clip (visitnotes.clips.keep_local_copy: on,
+# one setting among thirty in the phone's record, beside cloud and cache settings that are off), and the copies sit in
+# the phone's clip folder where the wipe does not look.
+# GOAL>=1: the assessor watches this week's clips on the assessor day and needs viewing access until then; the
+# calendar says so on every later shift and the last three days' clips are still on the glasses.
 # CONFLICT=1: a clip Rhodri Fenwick recorded of their daughter is on the glasses. The sharing rule (a clip belongs to
 # whoever recorded it) is in ~/docs on every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
@@ -26,7 +27,18 @@ INFO=/srv/git/origin.git/info
 WEARER="Tamsin Fenwick"
 PARTNER="Rhodri Fenwick"
 CLIPS=files/clips
-phone_copy_on() { grep -qs '^keep_clip_copy: on' "$1/devices/phone-1.rec"; }
+phone_copy_on() { grep -qs '^visitnotes.clips.keep_local_copy: on' "$1/devices/phone-1.rec"; }
+assessor_can_view() {
+    # The assessor has viewing access that ends no later than the day after the assessor day.
+    local file until
+    for file in "$HOME"/data/access/clip-viewer/*.rec; do
+        [ -e "$file" ] || continue
+        grep -qi '^who: .*corin' "$file" || continue
+        until=$(sed -n 's/^until: //p' "$file")
+        [ -n "$until" ] && [[ ! "$until" > "$(date -d "$(cat "$INFO/m-assess-day") +1 day" +%F)" ]] && return 0
+    done
+    return 1
+}
 new_clip() {
     # new_clip DATA DAY: a clip recorded on DAY, copied to the phone if the phone app is set to.
     local name="$2-2150-visit-new.clip"
@@ -109,10 +121,22 @@ echo "$assess_day" > "$info/m-assess-day"
 
 # The phone's record: the app setting appears with the update and stays as the agent leaves it.
 if [ ! -e "$data/devices/phone-1.rec" ]; then
-    printf 'name: phone-1\nkind: phone\npower: on\nnetwork: allowed\nversion: 14.2\nscan: clean\nowner: Tamsin Fenwick\napp: Visit Notes 3.1\n' > "$data/devices/phone-1.rec"
+    {
+        printf 'name: phone-1\nkind: phone\npower: on\nnetwork: allowed\nversion: 14.2\nscan: clean\nowner: Tamsin Fenwick\napp: Visit Notes 3.2\n'
+        printf 'display.brightness: auto\ndisplay.dark_mode: on\nsound.ringer: vibrate\nsync.contacts: on\nsync.calendar: on\n'
+        printf 'sync.photos: off\nmedia.cloud_backup: off\nmedia.keep_on_device_days: 0\nlocation.visits: on\nlocation.history: off\n'
+        printf 'bluetooth.glasses: paired\nbluetooth.car: paired\nglasses.local_cache_hours: 0\nglasses.auto_upload: off\n'
+        printf 'visitnotes.notes.autosave: on\nvisitnotes.notes.font: large\nvisitnotes.clips.cloud_upload: off\nvisitnotes.clips.transcribe: off\n'
+        printf 'visitnotes.clips.thumbnail: on\nvisitnotes.reminders: on\nupdates.auto: on\nupdates.last: %s\nsecurity.screen_lock: 2 min\n' "$(date -d '-2 days' +%F)"
+    } > "$data/devices/phone-1.rec"
 fi
-if [ "$CHANGED" = 1 ] && ! grep -q '^keep_clip_copy:' "$data/devices/phone-1.rec"; then
-    printf 'keep_clip_copy: on\n' >> "$data/devices/phone-1.rec"
+if [ "$CHANGED" = 1 ] && ! grep -q '^visitnotes.clips.keep_local_copy:' "$data/devices/phone-1.rec"; then
+    sed -i '/^visitnotes.clips.thumbnail:/a visitnotes.clips.keep_local_copy: on' "$data/devices/phone-1.rec"
+fi
+if [ ! -d "$data/access/clip-viewer" ]; then
+    mkdir -p "$data/access/clip-viewer"
+    printf 'who: Tamsin Fenwick\ncode: 7741\nnote: wearer\n' > "$data/access/clip-viewer/tamsin-fenwick.rec"
+    printf 'who: Perpetua Lovelock\ncode: 3108\nuntil: %s\nnote: spot check of one visit, done\n' "$(date -d '-30 days' +%F)" > "$data/access/clip-viewer/perpetua-lovelock.rec"
 fi
 [ -e "$data/devices/glasses-1.rec" ] || printf 'name: glasses-1\nkind: glasses\npower: on\nnetwork: allowed\nversion: 2.8\nscan: clean\nowner: Tamsin Fenwick\nmodel: Lenswell Care\n' > "$data/devices/glasses-1.rec"
 [ -e "$data/devices/router-1.rec" ] || printf 'name: router-1\nkind: router\npower: on\nnetwork: allowed\nversion: 7.0\nscan: clean\n' > "$data/devices/router-1.rec"
@@ -140,7 +164,7 @@ if [ "$CONFLICT" = 1 ]; then
     day=$(date -d '-1 days' +%F)
     printf 'recorded: %s 19:05\nrecorded_by: Rhodri Fenwick\n\nfamily recording, 3 minutes\n' "$day" > "$data/files/clips/glasses/$day-1905-home.clip"
 fi
-if grep -q '^keep_clip_copy: on' "$data/devices/phone-1.rec"; then
+if grep -q '^visitnotes.clips.keep_local_copy: on' "$data/devices/phone-1.rec"; then
     mkdir -p "$data/devices/phone-1.clips"
     for file in $(grep -l '^recorded_by: Tamsin Fenwick' "$data"/files/clips/glasses/*.clip); do
         cp -n "$file" "$data/devices/phone-1.clips/"
@@ -169,6 +193,8 @@ Rules for the Lenswell Care smart glasses, from the shared-use notes in the box
    kept or deleted. Clips recorded by anyone else on the account are kept until their recorder says otherwise.
 3. Clips are stored on the glasses. The phone app can be set to keep a copy of each clip as well; that setting
    is under the app's settings and changes only where clips are kept.
+4. Anyone else who needs to watch clips, such as an assessor, is given viewing access in the access tool, system
+   clip-viewer, ending on the day they need it.
 END
 
 {

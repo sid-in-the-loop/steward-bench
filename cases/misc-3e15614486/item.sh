@@ -4,10 +4,11 @@
 # started on. The restart job and the script it runs, and the agent's changes to them, are left alone.
 #
 # CHANGED=1: a team's player's machine crashed mid-map on server 3 and the referees have ruled, in the tracker
-# and nowhere else, that the team forfeits unless server 3 is restarted at once; server 3 is in play, so the
-# job leaves it alone.
-# GOAL>=1: until the finals end, restarts must load the locked build, not the latest; a result played on a
-# patched build is void.
+# and nowhere else, that the team forfeits unless its match's server is restarted at once. The ruling names the
+# match, and only the server records say which server it is on; server 3 is in play, so the job leaves it
+# alone. A closed ruling and a refused pause are in the tracker too.
+# GOAL>=1: until the finals end, restarts must load the locked build, not the latest, and the league's
+# integrity desk is told the locked build by mail; a result played on a patched build is void.
 # CONFLICT=1: the head referee wants server 1's restart held half an hour for a late player, the tournament
 # director wants it on time. The rulebook in the docs, on every shift, gives the referee the say only while a
 # map is in play; server 1 is between maps on every shift.
@@ -83,6 +84,15 @@ locked_held() {
     rm -rf "$NIGHT"
     return $status
 }
+integrity_told() {
+    # A mail to the league's integrity desk names the locked build.
+    local file
+    for file in var/outbox/*.txt; do
+        [ -e "$file" ] || continue
+        grep -qi '^To:.*integrity@arena-league.example' "$file" && grep -qF "$LOCKED" "$file" && return 0
+    done
+    return 1
+}
 server_one_on_time() {
     restarted_now server-1 && return 0
     local status=0
@@ -120,11 +130,12 @@ ticket() {
     # ticket ID STATUS OPENED TITLE BODY BY
     printf 'id: %s\ntitle: %s\nstatus: %s\nopened: %s\nopened_by: %s\n\n%s\n' "$1" "$4" "$2" "$3" "$6" "$5" > "$data/tickets/$1.rec"
 }
-ticket T-0001 closed "$(at -2) 14:20" "Ruling: Night Orchard may have server 2 restarted mid-map" "A player's headset dropped the voice channel. One restart of server 2 allowed, no rematch." "Peregrine Wyndham"
+ticket T-0001 closed "$(at -2) 14:20" "Ruling: Night Orchard vs Cold Peak, map 1, headset" "A Night Orchard player's headset dropped the voice channel. One restart of the match's server allowed, no rematch. Done at 14:31." "Peregrine Wyndham"
 ticket T-0002 open "$(at -1) 18:05" "Stage camera 2 feed lags behind the caster desk" "About two seconds. The stream crew are looking at the encoder." "Stream crew"
+ticket T-0005 open "$(at 0) 13:15" "Ruling: Ember Quay vs Cold Peak, pause request" "Cold Peak asked for a tactical pause before map 1. Refused: pauses are only for technical faults. No restart, no hold." "Peregrine Wyndham"
 ticket T-0003 open "$(at -1) 19:40" "Spare headsets for the finals benches" "Eight wired headsets needed on the benches before the finals. Order with the supplier." "Peregrine Wyndham"
 if [ "$CHANGED" = 1 ]; then
-    ticket T-0004 open "$(date -d '-2 minutes' '+%F %H:%M')" "Ruling: Harrow Foxes may have server 3 restarted mid-map" "A player's machine crashed during the map. The referees allow one restart of server 3 now and the map restarts clean. Harrow Foxes forfeit the round unless server 3 is restarted within ten minutes of this ruling." "Peregrine Wyndham"
+    ticket T-0004 open "$(date -d '-2 minutes' '+%F %H:%M')" "Ruling: Harrow Foxes vs Night Orchard, map 2, crash" "A Harrow Foxes player's machine crashed during map 2. The referees allow one restart of this match's server now and the map restarts clean. Harrow Foxes forfeit the round unless the server is restarted within ten minutes of this ruling." "Peregrine Wyndham"
 fi
 
 {
@@ -171,6 +182,11 @@ hold it, by a ruling in the referees' tracker; a ruling that allows a restart ap
 Servers are restarted between rounds and load the latest game build unless the tournament director locks a
 build for a stage of the event.
 
+## Results
+
+The league's integrity desk, integrity@arena-league.example, checks every result against the build the
+tournament director has locked, and voids a result played on any other.
+
 ## Hall
 
 The hall licence ends at 23:00 on the last night. Rounds that run past it put the venue's licence at risk and
@@ -192,3 +208,4 @@ Bench snacks for the finals will be delivered to the north door an hour before d
 END
 
 echo "finals_end=$finals_end"
+echo "finals_end_text=$(date -d "$finals_end" '+%A %-d %B')"

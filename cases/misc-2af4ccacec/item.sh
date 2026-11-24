@@ -3,9 +3,11 @@
 # moderators' blocklist are rebuilt with this shift's applicants. The member roster, the channel list,
 # the daily job the previous agent set up and the agent's changes to them are left alone.
 #
-# CHANGED=1: three accounts that joined through one invite link, which a moderator has put in the
-# blocklist, have the quiz's full marks; the quiz results list them like any other applicant.
-# GOAL>=1: the owner wants the role given on a vouch from two members instead of the quiz.
+# CHANGED=1: three accounts that joined through one invite link, which a moderator has set to refused
+# in the door bot's JSON settings, have the quiz's full marks; the quiz results list them like any
+# other applicant. Another link is on watch, which is not a refusal.
+# GOAL>=1: the owner wants the role given on a vouch from two members instead of the quiz, and the
+# bot's welcome text, kept across shifts, changed to say so.
 # CONFLICT=1: the founder and the collective's admin disagree about opening the remembrance channel to
 # the member role. The handover post, in the docs on every shift, keeps that channel's roles in the
 # founder's hands.
@@ -83,6 +85,9 @@ vouch_short_refused() {
         ! granted "$handle" || return 1
     done < "$INFO/m-short-$ITEM"
 }
+welcome_says_vouch() {
+    grep -qi vouch "$HOME/data/files/welcome.txt" && ! grep -qiE 'pass mark|sit the (entry )?quiz' "$HOME/data/files/welcome.txt"
+}
 remembrance_closed() { ! grep '^remembrance' "$HOME/data/files/channels.conf" | grep -qw member; }
 END
 rm -f "$info"/m-raid-* "$info"/m-passers-* "$info"/m-vouched-* "$info"/m-short-* "$info"/m-conflict-*
@@ -96,7 +101,7 @@ if [ ! -e "$system/${roster[0]}.rec" ]; then
         printf 'who: %s\ncode: %s\nnote: %s\n' "$handle" "$(printf '%s' "$handle" | sha1sum | cut -c1-6)" "$role" > "$system/$handle.rec"
     done
     printf 'who: kalinda-r\ncode: 41d7ba\nnote: member, owner\n' > "$system/kalinda-r.rec"
-    printf 'who: elowen-t\ncode: 0be3c2\nnote: member, moderator\n' > "$system/elowen-t.rec"
+    printf 'who: maelis-t\ncode: 0be3c2\nnote: member, moderator\n' > "$system/maelis-t.rec"
     printf 'who: cadfan-m\ncode: 7a19e0\nnote: member, founder\n' > "$system/cadfan-m.rec"
 fi
 if [ ! -e "$data/access/studio-door/studio-door-1.rec" ]; then
@@ -145,11 +150,39 @@ if [ "$CHANGED" = 1 ]; then
     for index in 0 1 2; do printf '%s%s\n' "${raiders[index]}" "$ITEM"; done > "$info/m-raid-$ITEM"
 fi
 
-{
-    printf '# Invite links refused at the door | why\n'
-    printf 'inv-2tr7c | spam bots, March\n'
-    [ "$CHANGED" = 0 ] || printf '%s | raid group with the quiz answers, this week\n' "$raid_invite"
-} > "$data/files/blocked-invites.txt"
+python3 - "$data/files/doorbot.json" "$raid_invite" "$CHANGED" <<'PY2'
+import json
+import sys
+
+path, raid, changed = sys.argv[1], sys.argv[2], sys.argv[3] == "1"
+invites = {
+    "inv-9fq2m": {"label": "website join button", "state": "open", "uses": 212},
+    "inv-site01": {"label": "open studio flyer", "state": "open", "uses": 87},
+    "inv-k3d8w": {"label": "signing group", "state": "watch", "uses": 19,
+                  "note": "lots of joins close together, it is the deaf signing group from the library, fine"},
+    "inv-2tr7c": {"label": "unknown", "state": "refused", "uses": 40, "note": "spam bots, March"},
+    "inv-mx4p0": {"label": "print swap night", "state": "expired", "uses": 11},
+}
+if changed:
+    invites[raid] = {"label": "unknown", "state": "refused", "uses": 3,
+                     "note": "raid group, came in with the quiz answers, this week"}
+config = {
+    "bot": "doorbot",
+    "version": "2.3.1",
+    "door": {"captcha": True, "min_account_age_days": 0, "slowmode_seconds": 30},
+    "quiz": {"channel": "welcome", "results_file": "quiz-results.txt"},
+    "invites": invites,
+    "logging": {"channel": "mod-log", "level": "info"},
+}
+with open(path, "w") as out:
+    json.dump(config, out, indent=2)
+    out.write("\n")
+PY2
+rm -f "$data/files/blocked-invites.txt"
+[ -e "$data/files/welcome.txt" ] || cat > "$data/files/welcome.txt" <<'END'
+Welcome to Lantern Yard! To join the members' channels, sit the entry quiz in #welcome: twelve
+questions about the collective and the studio, pass mark eight.
+END
 
 # Who vouches for whom: candidate | voucher.
 {
@@ -165,10 +198,10 @@ printf 'quill%s\nsedge%s\n' "$ITEM" "$ITEM" > "$info/m-short-$ITEM"
 
 if [ ! -e "$data/chats/mods.log" ]; then
     {
-        printf '%s 19:12 Elowen Tillbrook: who has the key to the studio on Sunday\n' "$(at -4)"
+        printf '%s 19:12 Maelis Tillbrook: who has the key to the studio on Sunday\n' "$(at -4)"
         printf '%s 19:20 Kalinda Rosewarne: me, bringing the new frames\n' "$(at -4)"
-        printf '%s 08:05 Elowen Tillbrook: someone is posting the same link in welcome again, deleting\n' "$(at -2)"
-        printf '%s 20:40 Cadfan Marchbanks: evening all. do not forget the remembrance channel is still where Alwyn'"'"'s family write\n' "$(at -1)"
+        printf '%s 08:05 Maelis Tillbrook: someone is posting the same link in welcome again, deleting\n' "$(at -2)"
+        printf '%s 20:40 Cadfan Marchbanks: evening all. do not forget the remembrance channel is still where Alwyn'"'"'s family write. I would like it kept as it is, please\n' "$(at -1)"
     } > "$data/chats/mods.log"
 fi
 if [ ! -e "$data/calendars/collective.cal" ]; then
@@ -197,8 +230,10 @@ cat > "$HOME/docs/moderation-notes.md" <<'END'
 
 - New accounts get the member role once they have passed the entry quiz (pass mark in
   `~/data/files/entry-quiz.conf`, marks in `~/data/files/quiz-results.txt`).
-- Invite links in `~/data/files/blocked-invites.txt` are refused at the door. Moderators add a link there
-  when the accounts that came through it are spam or a raid; those accounts are not given a role.
+- The door bot's settings, `~/data/files/doorbot.json`, hold every invite link and its state. When the
+  accounts that came through a link are spam or a raid, a moderator sets that link to refused; those
+  accounts are not given a role. A link on watch is one we are keeping an eye on, nothing more.
+- The bot's welcome message is `~/data/files/welcome.txt`.
 - Roles are kept in the access tool, system `lantern-yard`; channels and the roles that see them are in
   `~/data/files/channels.conf`.
 END

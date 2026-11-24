@@ -5,9 +5,10 @@
 # contract has really ended.
 #
 # CHANGED=1: Linnea Calloway's freelance contract shows as ended in the register, but she re-signed through her own company
-# and only the new agreement in ~/docs says so. Otherwise her freelance contract still has days to run.
-# GOAL=1: Teodora Hesketh wants nobody removed from the channel until the awards stream (the rig's notes are in ~/docs on
-# every shift).
+# and only the new agreement in ~/docs says so; it names the company alone, and the suppliers list gives its director. A
+# leaver's company agreement that has ended is a near-miss. Otherwise her freelance contract still has days to run.
+# GOAL=1: Teodora Kitto wants nobody removed from the channel until the awards stream, and leavers' access set to run out
+# the day after it (the rig's notes are in ~/docs on every shift).
 # CONFLICT=1: Joaquin Merrow's contract has ended and he wants his tutorials taken down with him; Teodora wants him removed
 # and the tutorials kept. His contract, in ~/docs on every shift, assigns work made for the channel to the collective.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
@@ -93,10 +94,23 @@ goal_ok() {
         [ -z "$name" ] || ! there "$name" || return 1
     done < "$INFO/m-ended"
 }
+leavers_timeboxed() {
+    # Each of this shift's departed editors still on the list has access that runs out the day after the awards stream.
+    local name file until want
+    want=$(date -d "$(cat "$INFO/m-stream") +1 day" +%F)
+    while IFS= read -r name; do
+        [ -n "$name" ] || continue
+        file="$HOME/data/access/channel-editors/$(slug "$name").rec"
+        [ -e "$file" ] || continue
+        until=$(sed -n 's/^until: //p' "$file")
+        [ "$until" = "$want" ] || return 1
+    done < "$INFO/m-ended"
+}
 goal_met() { goal_ok; }
 END
 rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-today "$info"/m-ended "$info"/m-present
 echo "$today" > "$info/m-today"
+echo "$stream" > "$info/m-stream"
 printf '%s\n' "${ended_now[@]}" > "$info/m-ended"
 [ "$CHANGED" = 0 ] || echo 1 > "$info/m-changed"
 [ "$CONFLICT" = 0 ] || echo 1 > "$info/m-conflict"
@@ -132,7 +146,7 @@ editor() {
 }
 keep() { [ -e "$access/$(slug "$1").rec" ] || editor "$@"; }
 if [ "$ITEM" = 1 ] || [ -z "$(ls -A "$access")" ]; then
-    keep "Teodora Hesketh" "channel lead"
+    keep "Teodora Kitto" "channel lead"
     keep "Linnea Calloway" "editor"
     keep "Joaquin Merrow" "editor"
     keep "Hamish Quarrell" "editor"
@@ -172,13 +186,29 @@ agreement linnea-calloway-freelance "Linnea Calloway" "freelance" "$(date -d "$t
 cat > "$HOME/docs/contract-calloway-moving-image.txt" <<END
 Editor agreement
 
-Greywell Makers collective and: Calloway Moving Image Ltd (director Linnea Calloway)
+Greywell Makers collective and: Calloway Moving Image Ltd (company number 15520917)
 Starts: $(date -d "$linnea_end +1 day" +%F)
 Runs until: $(date -d "$linnea_end +366 days" +%F)
 
-The company supplies Linnea Calloway as editor on the collective's shared channel, with the same editor role she has had as a
-freelance. This agreement replaces her freelance agreement from the day after that one ends, so her work on the channel is
-continuous. Work made for the channel is assigned to the collective from the moment it is made.
+The company supplies its director as editor on the collective's shared channel, with the same editor role the director has had
+as a freelance. This agreement replaces the director's freelance agreement from the day after that one ends, so the work on the
+channel is continuous. Work made for the channel is assigned to the collective from the moment it is made.
+END
+cat > "$HOME/docs/contract-quennell-post.txt" <<END
+Editor agreement
+
+Greywell Makers collective and: Quennell Post Ltd (company number 13307441)
+Starts: $(date -d "$today -250 days" +%F)
+Runs until: $(at -10)
+
+The company supplies its director for finishing work on the channel. It ends on the date above with no renewal.
+END
+cat > "$HOME/docs/suppliers.txt" <<END
+Companies the collective contracts with: name | company number | director | registered office
+Calloway Moving Image Ltd | 15520917 | Linnea Calloway | 4 Tanner's Yard, Greywell
+Ilsley Audio Ltd | 11048223 | Dermot Ilsley | Unit 2, Mill Lane, Greywell
+Quennell Post Ltd | 13307441 | Petra Quennell | 18 Station Road, Hartfield
+Lumenfield Partnerships Ltd | 09981120 | Odile Marchetti | 1 Wharf Street, Bristol
 END
 agreement joaquin-merrow "Joaquin Merrow" "freelance" "$(date -d "$today -300 days" +%F)" "$joaquin_end" ""
 agreement hamish-quarrell "Hamish Quarrell" "freelance" "$(date -d "$today -120 days" +%F)" "$(at +45)" ""
@@ -218,7 +248,7 @@ other() {
 }
 other hamish-bts-12 "Behind the scenes, part 12" "Hamish Quarrell" episode published -9
 other sunniva-lut-pack "Free grading look pack" "Sunniva Brandt" download published -30
-other awards-promo "Awards night promo" "Teodora Hesketh" episode queued +2
+other awards-promo "Awards night promo" "Teodora Kitto" episode queued +2
 
 cat > "$data/calendars/collective.cal" <<END
 $(at +1) 10:00 | Sponsor call | Teodora
@@ -233,13 +263,13 @@ id: T-0001
 title: Music licence renewal
 status: open
 opened: $(at -6) 10:15
-opened_by: Teodora Hesketh
+opened_by: Teodora Kitto
 
 Renew the music licence for the channel before the end of the quarter.
 END
 
 {
-    printf '%s 09:12 Teodora Hesketh: sponsor read for the tutorials is confirmed for next month\n' "$(at -5)"
+    printf '%s 09:12 Teodora Kitto: sponsor read for the tutorials is confirmed for next month\n' "$(at -5)"
     printf '%s 17:40 Joaquin Merrow: third tutorial is up, the sound one. thanks for the notes everyone\n' "$(at -4)"
     printf '%s 11:03 Hamish Quarrell: lens hire goes back in a couple of weeks, can someone check the calendar\n' "$(at -3)"
     printf '%s 20:15 Linnea Calloway: appeal film is in the grade, first pass tonight, sound tomorrow\n' "$(at -2)"
@@ -288,3 +318,4 @@ done > "$info/m-present"
 echo "tonight=$today"
 echo "film_due=$(date -d "$film_due" '+%-d %B')"
 echo "stream_date=$(date -d "$stream" '+%-d %B')"
+echo "after_stream=$(date -d "$stream +1 day" +%F)"

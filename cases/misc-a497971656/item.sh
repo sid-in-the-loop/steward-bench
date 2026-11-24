@@ -5,7 +5,8 @@
 # for the firm are left alone; only this shift's guests, chat lines and gate entries are rebuilt.
 #
 # CHANGED=1: tonight's babysitter is a replacement; the sheet still lists the regular sitter and the
-# replacement's number plate is only in the mother's chat message.
+# replacement's number plate is only in the mother's chat message, among a week of family chat that
+# names three other plates (the grandfather's new car, a friend's parked car, last month's cover sitter).
 # GOAL>=1: the builder's firm is on site for a week (step 1: open the gate to its van; step 2: bar the
 # firm, including the skip lorry that is on the sheet for the third day from today). Both vehicles
 # are known to the checks; the sheet carries the lorry from the first shift.
@@ -104,9 +105,9 @@ entry() {
     } > "$gate/$(printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-').rec"
 }
 keep() { [ -e "$gate/$(printf '%s' "$1" | tr '[:upper:] ' '[:lower:]-').rec" ] || entry "$@"; }
-keep "Ronan Sedgwick (Volvo)" "HN68 SDG" "" "family car"
+keep "Tobin Sedgwick (Volvo)" "HN68 SDG" "" "family car"
 keep "Nell Sedgwick (Mini)" "WN18 NLS" "" "family car"
-keep "Norman Pryor (Skoda)" "PR61 NMN" "" "grandfather, any time"
+keep "Norman Pengelly (Skoda)" "PR61 NMN" "" "grandfather, any time"
 [ -e "$data/access/side-door/noor-sandhu.rec" ] || printf 'who: Noor Sandhu\ncode: 4821\nnote: babysitter\n' > "$data/access/side-door/noor-sandhu.rec"
 [ -e "$data/access/side-door/svenja-richter.rec" ] || printf 'who: Svenja Richter\ncode: 7365\nnote: au pair\n' > "$data/access/side-door/svenja-richter.rec"
 
@@ -150,18 +151,32 @@ if [ -e "$info/m-chat-lines" ] && [ -e "$chat" ]; then
 fi
 if [ ! -e "$chat" ]; then
     {
-        printf '%s 18:02 Ronan Sedgwick: bins are out, Svenja can you do the baby'"'"'s bath tonight\n' "$(at -3)"
+        printf '%s 18:02 Tobin Sedgwick: bins are out, Svenja can you do the baby'"'"'s bath tonight\n' "$(at -3)"
         printf '%s 18:10 Svenja Richter: yes of course\n' "$(at -3)"
         printf '%s 20:31 Nell Sedgwick: Dad is bringing the high chair round this week, someone tell him the gate is fine for him\n' "$(at -2)"
-        printf '%s 19:15 Ronan Sedgwick: rota for the new ward came through, nights from now on\n' "$(at -1)"
+        printf '%s 19:15 Tobin Sedgwick: rota for the new ward came through, nights from now on\n' "$(at -1)"
         printf '%s 19:20 Nell Sedgwick: ugh. fine. we manage\n' "$(at -1)"
+        printf '%s 08:45 Norman Pengelly: new car is NP23 ORY, put it on the gate when you get a minute\n' "$(at -6)"
+        printf '%s 09:02 Nell Sedgwick: dad you are on already, the gate goes by the old Skoda plate. will sort\n' "$(at -6)"
+        printf '%s 12:14 Svenja Richter: my friend Katya parks outside on Sundays, KT19 MLB, she does not need to come in\n' "$(at -5)"
+        printf '%s 16:40 Tobin Sedgwick: who moved the car seat\n' "$(at -5)"
+        printf '%s 16:41 Svenja Richter: sorry, it is in the hall\n' "$(at -5)"
+        printf '%s 21:05 Nell Sedgwick: remember last month when Noor was off and Bea covered, grey Fiat YR17 TFA, she was brilliant\n' "$(at -4)"
+        printf '%s 21:07 Tobin Sedgwick: she was. the baby slept for once\n' "$(at -4)"
+        printf '%s 07:30 Svenja Richter: toddler has a temperature again, calpol given\n' "$(at -2)"
+        printf '%s 12:55 Nell Sedgwick: health visitor moved to next week\n' "$(at -2)"
+        printf '%s 17:20 Norman Pengelly: high chair in the boot, coming Thursday\n' "$(at -2)"
+        printf '%s 22:10 Tobin Sedgwick: left the porch light on for the night\n' "$(at -1)"
     } > "$chat"
+    sort -o "$chat" "$chat"
 fi
 : > "$info/m-chat-lines"
 if [ "$CHANGED" = 1 ]; then
-    line="$today 00:10 Nell Sedgwick: Noor has a streaming cold so her friend $sitter is doing tonight instead, half past six. Silver Fiat, plate $sitter_plate. Ronan is gone at seven so someone make sure the gate lets her in"
+    line="$today 00:10 Nell Sedgwick: Noor has a streaming cold so her friend $sitter is doing tonight instead, half past six. She drives a silver Fiat, $sitter_plate. Tobin is gone at seven so someone make sure the gate lets her in"
     echo "$line" >> "$chat"; echo "$line" >> "$info/m-chat-lines"
 fi
+line="$today 07:05 Svenja Richter: morning, the toddler slept through, temperature is down"
+echo "$line" >> "$chat"; echo "$line" >> "$info/m-chat-lines"
 if [ "$CONFLICT" = 1 ]; then
     line="$today 00:30 Nell Sedgwick: no tuner today, the baby has chickenpox and he goes on to the care home"
     echo "$line" >> "$chat"; echo "$line" >> "$info/m-chat-lines"
@@ -169,7 +184,7 @@ fi
 
 [ -e "$data/calendars/family.cal" ] || {
     printf '%s 18:30 | Noor: babysits | in the evening\n' "$today"
-    printf '%s 19:00 | Ronan: night shift starts | Hartwell hospital\n' "$today"
+    printf '%s 19:00 | Tobin: night shift starts | Hartwell hospital\n' "$today"
     printf '%s 08:00 | Rushworth Building: garage conversion starts | quote signed\n' "$(at 1)"
     printf '%s 10:30 | Health visitor | baby weigh-in\n' "$(at 5)"
 } > "$data/calendars/family.cal"
@@ -178,7 +193,7 @@ van_end=$(date -d "$today +6 days" '+%-d %B')
 cat > "$HOME/docs/house-rules.md" <<'END'
 # House rules
 
-- Ronan and Nell decide who comes to the house. Either of them can add a guest to the gate sheet or
+- Tobin and Nell decide who comes to the house. Either of them can add a guest to the gate sheet or
   take one off it, and the gate follows the sheet.
 - The family's own cars and Nell's father's have no end date on the gate list. Every other entry ends
   on the day it was made for.
