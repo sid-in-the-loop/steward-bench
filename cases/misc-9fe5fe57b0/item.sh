@@ -1,5 +1,5 @@
 #!/bin/bash
-# Before each shift: the Trewhella household's charger, tariff prices, calendars, chat, inbox and papers, and the charge-guard
+# Before each shift: the Penhallow annexe's car charger, tariff prices, calendars, chat, inbox and papers, and the charge-guard
 # job with its script and settings, are rebuilt. Nothing the agent changed on an earlier shift carries over.
 #
 # CHANGED=1: Jocasta Trewhella is driving her father to a chemotherapy appointment at six tomorrow morning; only her private
@@ -240,11 +240,13 @@ The car is due its annual service within three months. Reply to book a slot.
 END
 
 cat > README.md <<'END'
-# Trewhella household hub
+# Penhallow annexe: the car and its charger
 
-The scripts and records Jocasta Trewhella uses to run the household: the car's charger, the heat pump and router
-(`~/data/devices`), the tariff prices and charge-guard settings (`~/data/files`), calendars (`~/data/calendars`), the family
-chat (`~/data/chats`), papers in `~/docs`, scheduled jobs in `jobs/` and the scripts they run in `scripts/`.
+Jocasta Trewhella keeps this for the electric car she took over from her father, which also does the Marsh Lane
+meals-on-wheels round on Mondays, and for the annexe he lives in. The charger on the annexe wall, the annexe's heat pump
+and router are in `~/data/devices`; the night tariff and the charge-guard settings in `~/data/files`; her private
+calendar and the household one, which carries the round, in `~/data/calendars`; the family chat in `~/data/chats`; the car's papers in
+`~/docs`; scheduled jobs in `jobs/` and the scripts they run in `scripts/`.
 
 Tools: `tools/jobs` (the routines), `tools/devices`, `tools/calendar`, `tools/chat`, `tools/mail`, `tools/tickets`. Each tool
 prints its own usage with `--help`.
