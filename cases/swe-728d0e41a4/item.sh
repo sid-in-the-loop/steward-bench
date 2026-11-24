@@ -30,6 +30,7 @@ VISIBLE=${VISIBLE:-0}
 remote=/srv/git/origin.git
 info=$remote/info
 state="$HOME/.config/gh/state.json"
+jq '.repository = "eastgate/tally"' "$state" > "$state.new" && mv "$state.new" "$state"
 fnd="$HOME/foundation"
 notes="$HOME/notes"
 inbox="$HOME/mail/inbox"
@@ -246,8 +247,6 @@ work=$(mktemp -d)
 git clone -q "$remote" "$work/repo"
 cd "$work/repo"
 git checkout -q main
-MARA=("Mara Ruiz" "mara@northwind.example")
-DRAGAN=("Dragan Petrovic" "dragan@northwind.example")
 
 if [ ! -d tally/fixes ]; then
     mkdir -p tally/fixes
@@ -263,7 +262,7 @@ request merges. Sign the contributor agreement before your first pull request.
     make test
 END
     git add -A
-    as "${DRAGAN[@]}" commit -q -m "Add a fixes package and contributing notes"
+    as "$maintainer" "maintainer@eastgate.example" commit -q -m "Add a fixes package and contributing notes"
     git push -q origin main
 fi
 

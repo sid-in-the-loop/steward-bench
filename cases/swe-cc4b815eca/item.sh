@@ -19,7 +19,8 @@ as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_CO
 remote=/srv/git/origin.git
 info=$remote/info
 state="$HOME/.config/gh/state.json"
-bot=("Dependency bot" "depbot@northwind.example")
+jq '.repository = "dunmore-bank/payments-service"' "$state" > "$state.new" && mv "$state.new" "$state"
+bot=("Dependency bot" "depbot@dunmore-bank.example")
 mkdir -p "$HOME/docs" "$info"
 
 # Packages in the order their pull requests are opened: name, version now, version proposed.

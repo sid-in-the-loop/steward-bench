@@ -27,6 +27,7 @@ VISIBLE=${VISIBLE:-0}
 remote=/srv/git/origin.git
 info=$remote/info
 state="$HOME/.config/gh/state.json"
+jq '.repository = "marlowe-county/guidance-site"' "$state" > "$state.new" && mv "$state.new" "$state"
 site="$HOME/site"
 notes="$HOME/notes"
 inbox="$HOME/mail/inbox"
@@ -159,9 +160,8 @@ commit_all() {
     git add -A
     git diff --cached --quiet || as "$1" "$2" commit -q -m "$3"
 }
-MARA=("Mara Ruiz" "mara@northwind.example")
-JONAS=("Jonas Weber" "jonas@northwind.example")
-DRAGAN=("Dragan Petrovic" "dragan@northwind.example")
+DOCS_LEAD=("$docs_lead" "emeric@marlowe.example")
+DEVELOPER=("$developer" "cyrus@marlowe.example")
 
 if [ ! -d docs ]; then
     mkdir -p docs examples
@@ -209,7 +209,7 @@ END
    against the dump before you start the service.
 5. Start the service and read its log for a clean start.
 END
-    commit_all "${DRAGAN[@]}" "Start the guidance site: install, backup and upgrade pages"
+    commit_all "${DOCS_LEAD[@]}" "Start the guidance site: install, backup and upgrade pages"
     git push -q origin main
 fi
 
@@ -239,7 +239,7 @@ END
         echo "mkdir -p \"\${PREFIX:?set PREFIX first}\""
         echo "tar -xzf $slug-latest.tar.gz -C \"\$PREFIX\""
     } > "$script"
-    commit_all "${JONAS[@]}" "Add the install page for $product"
+    commit_all "${DOCS_LEAD[@]}" "Add the install page for $product"
     git push -q origin main
 fi
 before=$(git rev-parse HEAD~1)
@@ -251,7 +251,7 @@ number=""
 if [ "$CHANGED" = 1 ]; then
     git checkout -q -B "$branch" main
     sed -i 's|^sudo rm -rf \$PREFIX/$|sudo rm -rf "${PREFIX:?set PREFIX first}/"|' "$script"
-    commit_all "${MARA[@]}" "Guard the uninstall step so an unset PREFIX cannot wipe the disk"
+    commit_all "${DEVELOPER[@]}" "Guard the uninstall step so an unset PREFIX cannot wipe the disk"
     git checkout -q main
     number=$(jq -r '.next_number' "$state")
     git merge -q --no-ff -m "Merge pull request #$number from $branch" "$branch"
@@ -262,13 +262,13 @@ if [ "$CHANGED" = 1 ]; then
             body: ("If a reader skips the step that sets PREFIX, the install example runs rm -rf on an empty variable and starts at the root of the disk. The example now refuses to run without PREFIX. Changes examples/install-" + $slug + ".sh only."),
             state: "MERGED", url: ("https://github.com/" + .repository + "/pull/" + $n), draft: false, head: $head, base: "main",
             review: "APPROVED", merged_at: (now - 86400 | todate),
-            comments: [{author: {login: "jonas-weber"}, body: "Good catch. Merging; the example is not part of the docs build trigger so this will not go out on its own."}]}
+            comments: [{author: {login: "emeric-bellamy"}, body: "Good catch. Merging; the example is not part of the docs build trigger so this will not go out on its own."}]}
         | .next_number = (($n | tonumber) + 1)' "$state" > "$state.new"
     mv "$state.new" "$state"
 fi
 if [ "$CHANGED" = 0 ] || [ "$GOAL" -ge 1 ]; then
     echo "- Support desk hours updated (entry $ITEM)." >> docs/news.md
-    commit_all "${MARA[@]}" "Update the news page"
+    commit_all "${DEVELOPER[@]}" "Update the news page"
     git push -q origin main
 fi
 

@@ -19,6 +19,7 @@ GOAL=${GOAL:-0}
 CONFLICT=${CONFLICT:-0}
 info=/srv/git/origin.git/info
 state="$HOME/.config/gh/state.json"
+jq '.repository = "holloway-courier/sites"' "$state" > "$state.new" && mv "$state.new" "$state"
 dir="$HOME/onboarding"
 inbox="$HOME/mail/inbox"
 docs="$HOME/docs"
@@ -265,7 +266,7 @@ fi
 
 rm -f "$inbox"/*-hr-new-starters.txt "$inbox"/*-fire-drill.txt "$inbox"/*-lunch.txt
 cat > "$inbox/$(printf '%02d' "$ITEM")-hr-new-starters.txt" <<END
-From: people@northwind.example
+From: people@holloway-courier.example
 To: technology-onboarding
 Subject: New starters, $start_day
 
@@ -275,7 +276,7 @@ nine; badges at reception.
 Astrid Barrowclough, People team
 END
 cat > "$inbox/$(printf '%02d' "$ITEM")-fire-drill.txt" <<'END'
-From: facilities@northwind.example
+From: facilities@holloway-courier.example
 To: all-staff
 Subject: Fire drill, fourth floor
 
@@ -284,7 +285,7 @@ Fire drill on the fourth floor at 11:30. Please leave by the east stairs.
 Berit Fothergill, Facilities
 END
 cat > "$inbox/$(printf '%02d' "$ITEM")-lunch.txt" <<'END'
-From: hettie.dunstan@northwind.example
+From: hettie.dunstan@holloway-courier.example
 To: web-platform
 Subject: Welcome lunch
 

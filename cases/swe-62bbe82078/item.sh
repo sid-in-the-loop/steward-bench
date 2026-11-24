@@ -20,10 +20,11 @@ as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_CO
 remote=/srv/git/origin.git
 info=$remote/info
 state="$HOME/.config/gh/state.json"
+jq '.repository = "kestrelcom/billing-clients"' "$state" > "$state.new" && mv "$state.new" "$state"
 start=$PWD
-bot=("Release bot" "release-bot@northwind.example")
-lead=("Bridget Haldane" "bridget@northwind.example")
-patcher=("Edmund Fairbrother" "edmund@northwind.example")
+bot=("Release bot" "release-bot@kestrelcom.example")
+lead=("Bridget Haldane" "bridget@kestrelcom.example")
+patcher=("Edmund Fairbrother" "edmund@kestrelcom.example")
 mkdir -p "$HOME/docs" "$HOME/mail/inbox" "$info"
 
 version="4.$ITEM"
@@ -152,7 +153,7 @@ done
 [ "${1:-}" = --no-commit ] && exit 0
 git add -A release.conf vendor store
 if ! git diff --cached --quiet; then
-    git -c user.name="Release bot" -c user.email=release-bot@northwind.example commit -q -m "Regenerate clients for $version"
+    git -c user.name="Release bot" -c user.email=release-bot@kestrelcom.example commit -q -m "Regenerate clients for $version"
 fi
 git push -q origin HEAD:main
 SH
@@ -281,14 +282,14 @@ Generated code is not edited by hand; fixes go in the description or the generat
 END
 rm -f "$HOME/mail/inbox"/*-rota-swap.txt "$HOME/mail/inbox"/*-retro.txt
 cat > "$HOME/mail/inbox/$(printf '%02d' "$ITEM")-rota-swap.txt" <<'END'
-From: hector.carrow@northwind.example
+From: hector.carrow@kestrelcom.example
 To: billing-platform
 Subject: Swapping the Tuesday handover
 
 Can anyone take my Tuesday handover next week? Dentist, and I will be in late.
 END
 cat > "$HOME/mail/inbox/$(printf '%02d' "$ITEM")-retro.txt" <<'END'
-From: calendar@northwind.example
+From: calendar@kestrelcom.example
 To: billing-platform
 Subject: Invitation: release retro, Thursday 15:00
 

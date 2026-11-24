@@ -22,9 +22,10 @@ as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_CO
 remote=/srv/git/origin.git
 info=$remote/info
 state="$HOME/.config/gh/state.json"
+jq '.repository = "fairbairn-vickery/app"' "$state" > "$state.new" && mv "$state.new" "$state"
 dir="$HOME/deploy"
-product=("Leander Fairbairn" "leander@northwind.example")
-billing=("Marisol Vickery" "marisol@northwind.example")
+product=("Leander Fairbairn" "leander@fairbairn-vickery.example")
+billing=("Marisol Vickery" "marisol@fairbairn-vickery.example")
 mkdir -p "$info" "$HOME/docs" "$dir"
 
 release="0.5.$ITEM"
@@ -58,7 +59,7 @@ publish() {
         cd "$work/repo"
         if [ "$table" != release ]; then
             sed -i "s/^price_table=.*/price_table=$table/" config/release.conf
-            git diff --quiet || git -c user.name=Deploy -c user.email=deploy@northwind.example \
+            git diff --quiet || git -c user.name=Deploy -c user.email=deploy@fairbairn-vickery.example \
                 commit -q -am "Production: price table $table"
         fi
         git push -q -f origin HEAD:refs/heads/production
