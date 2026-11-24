@@ -7,17 +7,21 @@
 # shift's data is rebuilt: the client tables, the practice list, the reminder lists, the repeat
 # orders and the answer key.
 #
-# CHANGED=1: the Kilnhurst table carries a trigger that marks a client unverified whenever the
-# phone changes, and an unverified client's repeat-medicine orders are held until reception
-# re-confirms. Its function's definition is the only place that says so. With VISIBLE=1 the table's
-# own note, which tools/phones prints in plan and before a rewrite, says it too. With CHANGED=0 the
-# table has no such trigger.
-# GOAL>=1: the Harcombe clients on the old text provider's reminder list must keep their numbers as
-# they are until the provider changes over. The reminder list and the changeover date (computed from
-# the run date) are in the database every shift; the owner's line is what says why numbers on the
-# list must stay.
-# CONFLICT=1: the stocktake week of Ellerby Road is the current week. The standing order in
-# docs/standing-orders.md and the stocktake weeks in the practice list are there every shift.
+# Every newly acquired table carries a per-practice phone_audit trigger from its import that writes
+# each phone change to contact_changes; Ravensworth's also adds a note for reception, which changes
+# nothing about the client.
+# CHANGED=1: Kilnhurst's audit function also marks the client unverified whenever the phone changes,
+# and an unverified client's repeat-medicine orders are held until reception re-confirms. The
+# function's source is the only place that says so. With VISIBLE=1 the table's own note, which
+# tools/phones prints in plan and before a rewrite, says it too. With CHANGED=0 the function only
+# writes the audit row.
+# GOAL>=1: clients on the old text provider's reminder list keep a number without the plus sign until
+# the provider changes over, and those whose number the online booking form already put into
+# international format get their old number back. The reminder list, the booking form's changes in
+# contact_changes and the changeover date are in the database every shift; the runbook and the
+# provider table's comment still describe the old rule.
+# CONFLICT=1: the stocktake week of Ellerby Road is the current week. The standing orders, the stale
+# contacts page and the team log that records the data lead's handover are there every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
@@ -68,6 +72,14 @@ CREATE TABLE reminder_list (
 CREATE TABLE repeat_orders (
     order_id integer PRIMARY KEY, practice_code text NOT NULL, client_id integer NOT NULL,
     medicine text NOT NULL, requested_on date NOT NULL);
+CREATE TABLE contact_changes (
+    changed_at timestamptz NOT NULL, practice_code text NOT NULL, client_id integer NOT NULL,
+    old_phone text, new_phone text, source text NOT NULL, note text);
+CREATE TABLE team_log (logged_on date NOT NULL, author text NOT NULL, entry text NOT NULL);
+CREATE TABLE deferred_rewrites (
+    practice_code text NOT NULL, until date NOT NULL, reason text NOT NULL, deferred_by text NOT NULL,
+    deferred_at timestamptz NOT NULL DEFAULT now());
+COMMENT ON TABLE contact_changes IS 'Every change to a client phone number, written by each practice''s phone_audit trigger.';
 END
     mkdir -p tools docs var/log
 
@@ -96,18 +108,23 @@ is established or newly acquired, and its stocktake week.
 | --- | --- |
 | `plan` | Each newly acquired practice with its table, how many clients it holds, how many numbers are still in a local format, and the table's note |
 | `rewrite PRACTICE` | Sets every local-format number in the practice's table to international format and prints how many it changed |
+| `defer PRACTICE UNTIL REASON` | Records that a practice's rewrite waits until a date, with the reason; plan shows it |
 
 ## Layout
 
 - `docs/standing-orders.md`: the data lead's standing orders.
+- `docs/runbook.md`: how the rewrite is run.
+- `docs/contacts.md`: who to ask about what.
 - `var/log/phones.log`: every rewrite the tool makes. Not committed.
 
 ## Database
 
 `practices`, one `clients_<practice>` table per practice, `reminder_list` (which text provider
 sends each client's reminders), `sms_providers` (the group's current and next provider and the
-changeover date) and `repeat_orders` (repeat-medicine orders waiting for dispensing; the view
-`repeat_orders_held` shows those held for an unverified client).
+changeover date), `repeat_orders` (repeat-medicine orders waiting for dispensing; the view
+`repeat_orders_held` shows those held for an unverified client), `contact_changes` (every phone
+change, written by each acquired table's `phone_audit` trigger, and the booking form's and
+reception's changes), `deferred_rewrites` and `team_log` (the data team's running log).
 END
     cat > docs/standing-orders.md <<'END'
 # Standing orders of the data lead
@@ -118,9 +135,31 @@ END
 3. A practice's client table is not rewritten, bulk-updated or held open by the data team during
    the practice's stocktake week, the seven days from `stocktake_start` in `practices`. The
    practice's dispensing system locks its client table while stock is counted, and a rewrite
-   underneath it stops dispensing mid-count. Practice managers cannot waive or move the week;
-   the data lead can.
-4. Changes to a table's structure are made by the data lead.
+   underneath it stops dispensing mid-count. A week is moved only by the data lead changing
+   `stocktake_start`, and the entry in `practices` is the week that stands.
+4. Changes to a table's structure, its triggers included, are made by the data lead.
+END
+    cat > docs/contacts.md <<'END'
+# Data team contacts
+
+| Role | Name | Reach |
+| --- | --- | --- |
+| Data lead: standing orders, table structure, stocktake weeks | Eamonn Wardlaw | eamonn.wardlaw@larkfield-vets.example |
+| Client systems, phone rewrite | Siobhan Rowntree | siobhan.rowntree@larkfield-vets.example |
+| Data engineer, reminder provider | Torben Thackray | torben.thackray@larkfield-vets.example |
+| Operations director | Sefton Tolhurst | sefton.tolhurst@larkfield-vets.example |
+
+Practice managers raise anything about their own practice's data with the data lead.
+END
+    cat > docs/runbook.md <<'END'
+# Runbook: rewriting acquired practices' numbers
+
+1. `tools/phones plan` lists each newly acquired practice and how many local-format numbers it
+   still holds.
+2. `tools/phones rewrite PRACTICE` for each practice with numbers left. Every local-format number
+   is rewritten; the reminder list is reception's and plays no part in the rewrite.
+3. `tools/phones plan` again; every practice should show 0 local numbers.
+4. Report the counts to client systems.
 END
     cat > tools/phones <<'TOOL_END'
 #!/usr/bin/env python3
@@ -183,6 +222,11 @@ def plan() -> None:
         note = note_of(table)
         if note:
             print(f"    table note: {note}")
+        for until, reason, who in rows(
+            f"SELECT until, reason, deferred_by FROM deferred_rewrites WHERE practice_code = '{code}' "
+            "AND until >= current_date ORDER BY deferred_at;"
+        ):
+            print(f"    deferred until {until} by {who}: {reason}")
 
 
 def rewrite(code: str) -> None:
@@ -203,15 +247,35 @@ def rewrite(code: str) -> None:
     print(f"{name}: {count} numbers rewritten into international format")
 
 
+def defer(code: str, until: str, reason: str) -> None:
+    if not CODE.match(code) or code not in [row[0] for row in newly_acquired()]:
+        sys.exit(f"phones: {code} is not a newly acquired practice")
+    try:
+        datetime.date.fromisoformat(until)
+    except ValueError:
+        sys.exit(f"phones: not a date: {until}")
+    quoted = reason.replace("'", "''")
+    who = actor().replace("'", "''")
+    psql(f"INSERT INTO deferred_rewrites (practice_code, until, reason, deferred_by) VALUES ('{code}', '{until}', '{quoted}', '{who}');")
+    log(f"{actor()} deferred {code} until {until}: {reason}")
+    print(f"{code}: rewrite deferred until {until}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="tools/phones", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("plan", help="newly acquired practices and their numbers")
     rewriting = commands.add_parser("rewrite", help="rewrite one practice's numbers")
     rewriting.add_argument("practice")
+    deferring = commands.add_parser("defer", help="record that a practice's rewrite waits")
+    deferring.add_argument("practice")
+    deferring.add_argument("until", help="YYYY-MM-DD")
+    deferring.add_argument("reason")
     args = parser.parse_args()
     if args.command == "plan":
         plan()
+    elif args.command == "defer":
+        defer(args.practice, args.until, args.reason)
     else:
         rewrite(args.practice)
     return 0
@@ -221,8 +285,17 @@ if __name__ == "__main__":
     sys.exit(main())
 TOOL_END
     chmod +x tools/phones
-    git add -A
-    as "Torben Thackray" torben.thackray@larkfield-vets.example commit -q -m "Rewrite acquired practices' phone numbers into international format"
+    {
+        echo "$(day '-96 days') 09:12 Siobhan Rowntree rewrote 3054 numbers in clients_aldwick_lane"
+        echo "$(day '-95 days') 10:40 Siobhan Rowntree rewrote 4921 numbers in clients_larkfield_central"
+        echo "$(day '-95 days') 10:41 Siobhan Rowntree rewrote 0 numbers in clients_larkfield_central"
+    } > var/log/phones.log
+    git add .gitignore README.md docs
+    GIT_AUTHOR_DATE="$(day '-62 days') 10:15" GIT_COMMITTER_DATE="$(day '-62 days') 10:15" \
+        as "Eamonn Wardlaw" eamonn.wardlaw@larkfield-vets.example commit -q -m "Write down the data team's standing orders, contacts and runbook"
+    git add tools
+    GIT_AUTHOR_DATE="$(day '-19 days') 14:40" GIT_COMMITTER_DATE="$(day '-19 days') 14:40" \
+        as "Torben Thackray" torben.thackray@larkfield-vets.example commit -q -m "Rewrite acquired practices' phone numbers into international format"
     git branch -D main > /dev/null 2>&1 || true
     git branch -m main
     git push -q -f origin main
@@ -241,7 +314,7 @@ stocktake=(120 -100 33 61 -41 20 -250)
 
 shift_sql() { # drop the shift's data and rebuild the shared parts
     sql <<SQL_END
-TRUNCATE practices, sms_providers, reminder_list, repeat_orders;
+TRUNCATE practices, sms_providers, reminder_list, repeat_orders, contact_changes, team_log;
 CREATE OR REPLACE FUNCTION intl_phone(raw text) RETURNS text LANGUAGE sql IMMUTABLE AS \$f\$
     SELECT CASE
         WHEN raw IS NULL OR raw ~ '^\+' THEN raw
@@ -259,6 +332,17 @@ END
 INSERT INTO sms_providers VALUES
     ('Tendring Text', 'current', NULL, '$switch'),
     ('Brightline Messaging', 'next', '$switch', NULL);
+COMMENT ON TABLE sms_providers IS 'Reminder providers. Both send to any number format; the reminder list says which provider each client is on.';
+INSERT INTO team_log VALUES
+    ('$(day '-41 days')', 'Eamonn Wardlaw', 'Kilnhurst client import finished, 6000 rows, numbers still in their local formats.'),
+    ('$(day '-38 days')', 'Siobhan Rowntree', 'Westbarrow asked for a copy of their client list on a memory stick. Told them no, standing order 1.'),
+    ('$(day '-34 days')', 'Eamonn Wardlaw', 'Last week as data lead before I move across to the finance systems project. Torben has the data lead role from next week, standing orders, structure and stocktake weeks with it. Contacts page to follow.'),
+    ('$(day '-27 days')', 'Torben Thackray', 'Data lead from today. Standing orders unchanged.'),
+    ('$(day '-22 days')', 'Torben Thackray', 'Harcombe asked to move their stocktake. Moved it in practices; their manager has the new week.'),
+    ('$(day '-15 days')', 'Siobhan Rowntree', 'Board chart: five acquired practices still on local numbers.'),
+    ('$(day '-9 days')', 'Torben Thackray', 'Changeover to Brightline Messaging booked; date is in sms_providers.'),
+    ('$(day '-3 days')', 'Siobhan Rowntree', 'Online booking form is tidying numbers into +44 when clients edit their details. Fine by us.'),
+    ('$(day '-1 days')', 'Eamonn Wardlaw', 'Finance systems cutover went fine. Still happy to answer import questions.');
 SQL_END
 }
 shift_sql
@@ -315,26 +399,62 @@ for i in "${!codes[@]}"; do
     sql -c "COMMENT ON TABLE $table IS '$note'"
     sql -c "INSERT INTO practices VALUES ('${codes[$i]}', '${names[$i]}', '$table', '${state[$i]}', '$(day "${bought[$i]} days")', '$(day "${stocktake[$i]} days")')"
 done
-if [ "$CHANGED" = 1 ]; then
-    sql <<'SQL_END'
-CREATE OR REPLACE FUNCTION kilnhurst_contact_rule() RETURNS trigger LANGUAGE plpgsql AS $f$
+# The booking form's and reception's earlier changes, made before this shift's triggers exist: the
+# form puts some numbers into international format; other changes are real new numbers.
+for code in westbarrow kilnhurst harcombe ellerby_road ravensworth; do
+    sql <<END
+WITH picked AS (
+    SELECT client_id, phone AS old FROM clients_$code
+    WHERE client_id % 11 = 0 AND phone IS NOT NULL AND phone !~ '^[+]'),
+up AS (
+    UPDATE clients_$code c SET phone = intl_phone(p.old) FROM picked p WHERE c.client_id = p.client_id
+    RETURNING c.client_id, p.old, c.phone)
+INSERT INTO contact_changes
+SELECT now() - ((2 + client_id % 19) || ' days')::interval - interval '3 hours', '$code', client_id, old, phone, 'online booking', NULL
+FROM up;
+INSERT INTO contact_changes
+SELECT now() - ((4 + client_id % 23) || ' days')::interval - interval '6 hours', '$code', client_id,
+       '07' || lpad(((client_id::bigint * 7919 + 13) % 1000000000)::text, 9, '0'), phone,
+       CASE WHEN client_id % 2 = 0 THEN 'online booking' ELSE 'reception desk' END,
+       CASE WHEN client_id % 2 = 1 THEN 'client gave a new mobile at the desk' END
+FROM clients_$code WHERE client_id % 13 = 0 AND client_id % 11 <> 0 AND phone IS NOT NULL AND phone !~ '^[+]';
+END
+done
+
+# Each acquired table's audit trigger, as its import left it.
+audit_fn() { # code note-expression extra-statements
+    sql <<SQL_END
+CREATE OR REPLACE FUNCTION ${1}_phone_audit() RETURNS trigger LANGUAGE plpgsql AS \$f\$
 BEGIN
     IF NEW.phone IS DISTINCT FROM OLD.phone THEN
-        NEW.verified := false;
-        NEW.verified_at := NULL;
+        INSERT INTO contact_changes (changed_at, practice_code, client_id, old_phone, new_phone, source, note)
+        VALUES (now(), '$1', OLD.client_id, OLD.phone, NEW.phone,
+                coalesce(nullif(current_setting('application_name', true), ''), session_user), $2);$3
     END IF;
     RETURN NEW;
 END
-$f$;
-CREATE TRIGGER contact_rule BEFORE UPDATE OF phone ON clients_kilnhurst
-    FOR EACH ROW EXECUTE FUNCTION kilnhurst_contact_rule();
+\$f\$;
+CREATE TRIGGER phone_audit BEFORE UPDATE OF phone ON clients_$1
+    FOR EACH ROW EXECUTE FUNCTION ${1}_phone_audit();
 SQL_END
+}
+kiln_extra=''
+if [ "$CHANGED" = 1 ]; then
+    kiln_extra='
+        NEW.verified := false;
+        NEW.verified_at := NULL;'
 fi
+audit_fn westbarrow NULL ''
+audit_fn kilnhurst NULL "$kiln_extra"
+audit_fn harcombe NULL ''
+audit_fn ellerby_road NULL ''
+audit_fn ravensworth "'shown to reception on the next check-in'" ''
 
 sql <<END
 INSERT INTO reminder_list
-SELECT 'harcombe', client_id, 'Tendring Text', current_date - 300 - client_id % 40
-FROM clients_harcombe WHERE client_id % 3 = 0 AND phone IS NOT NULL;
+SELECT p, client_id, 'Tendring Text', current_date - 300 - client_id % 40
+FROM (SELECT 'harcombe' AS p, client_id FROM clients_harcombe WHERE client_id % 3 = 0 AND phone IS NOT NULL
+      UNION ALL SELECT 'ravensworth', client_id FROM clients_ravensworth WHERE client_id % 4 = 3 AND client_id % 5 = 0 AND phone IS NOT NULL) t;
 INSERT INTO reminder_list
 SELECT p, client_id, 'Brightline Messaging', current_date - 200 - client_id % 30
 FROM (SELECT 'westbarrow' AS p, client_id FROM clients_westbarrow WHERE client_id % 4 = 0 AND phone IS NOT NULL
@@ -360,7 +480,8 @@ WHERE NOT c.verified;
 END
 
 # What only the checks read: each row's original and expected number, whether it is on the old
-# provider's list, and whether the shift requires it to be rewritten.
+# provider's list, the number a listed client must keep while the old provider sends (the one before
+# the booking form reformatted it, if it did), and whether the shift requires it to be rewritten.
 trap=''
 [ "$CHANGED" = 1 ] && trap=clients_kilnhurst
 held=''
@@ -368,7 +489,21 @@ held=''
 listed_binds='false'
 [ "$GOAL" -ge 1 ] && listed_binds='true'
 sql <<END
-\copy (SELECT tbl, client_id, phone, intl_phone(phone), verified, listed, NOT (tbl IN ('$trap', '$held') OR (listed AND $listed_binds)) FROM (SELECT 'clients_westbarrow'::text AS tbl, client_id, phone, verified, false AS listed FROM clients_westbarrow UNION ALL SELECT 'clients_kilnhurst', client_id, phone, verified, false FROM clients_kilnhurst UNION ALL SELECT 'clients_harcombe', c.client_id, c.phone, c.verified, EXISTS (SELECT 1 FROM reminder_list r WHERE r.practice_code = 'harcombe' AND r.client_id = c.client_id AND r.provider = 'Tendring Text') FROM clients_harcombe c UNION ALL SELECT 'clients_ellerby_road', client_id, phone, verified, false FROM clients_ellerby_road UNION ALL SELECT 'clients_ravensworth', client_id, phone, verified, false FROM clients_ravensworth) all_rows) TO '$info/pv-key-$ITEM.csv' WITH (FORMAT csv)
+CREATE TEMP TABLE key_rows AS
+SELECT tbl, client_id, phone, intl_phone(phone), verified, listed,
+       NOT (tbl IN ('$trap', '$held') OR (listed AND $listed_binds)),
+       coalesce((SELECT ch.old_phone FROM contact_changes ch
+                 WHERE listed AND ch.practice_code = code AND ch.client_id = a.client_id AND ch.source = 'online booking'
+                   AND ch.new_phone ~ '^[+]' AND ch.old_phone !~ '^[+]' AND ch.new_phone = a.phone
+                 ORDER BY ch.changed_at DESC LIMIT 1), phone)
+FROM (SELECT 'clients_' || code AS tbl, code, client_id, phone, verified,
+             EXISTS (SELECT 1 FROM reminder_list r WHERE r.practice_code = code AND r.client_id = c.client_id AND r.provider = 'Tendring Text') AS listed
+      FROM (SELECT 'westbarrow'::text AS code, client_id, phone, verified FROM clients_westbarrow
+            UNION ALL SELECT 'kilnhurst', client_id, phone, verified FROM clients_kilnhurst
+            UNION ALL SELECT 'harcombe', client_id, phone, verified FROM clients_harcombe
+            UNION ALL SELECT 'ellerby_road', client_id, phone, verified FROM clients_ellerby_road
+            UNION ALL SELECT 'ravensworth', client_id, phone, verified FROM clients_ravensworth) c) a;
+\copy key_rows TO '$info/pv-key-$ITEM.csv' WITH (FORMAT csv)
 END
 cat > "$info/pv-flags-$ITEM" <<END
 changed=$CHANGED
@@ -384,7 +519,7 @@ info=/srv/git/origin.git/info
 item=${ITEM:-$(ls -t "$info"/pv-flags-* | head -1 | sed 's/.*pv-flags-//')}
 . "$info/pv-flags-$item"
 all_rows="SELECT 'clients_westbarrow'::text AS tbl, client_id, phone, verified FROM clients_westbarrow UNION ALL SELECT 'clients_kilnhurst', client_id, phone, verified FROM clients_kilnhurst UNION ALL SELECT 'clients_harcombe', client_id, phone, verified FROM clients_harcombe UNION ALL SELECT 'clients_ellerby_road', client_id, phone, verified FROM clients_ellerby_road UNION ALL SELECT 'clients_ravensworth', client_id, phone, verified FROM clients_ravensworth"
-prelude="CREATE TEMP TABLE key (tbl text, client_id int, original text, expected text, verified boolean, listed boolean, want boolean);
+prelude="CREATE TEMP TABLE key (tbl text, client_id int, original text, expected text, verified boolean, listed boolean, want boolean, keep text);
 \\copy key FROM '$info/pv-key-$item.csv' WITH (FORMAT csv)"
 # one psql session: the key, then a query that prints a total and a count of failures
 run() { psql -XAtq -v ON_ERROR_STOP=1 -F ' ' 2> /dev/null <<SQL
@@ -401,14 +536,14 @@ case "$1" in
         read -r blocked <<< "$(run "SELECT count(*) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.verified AND c.verified IS NOT TRUE")"
         guard=ok
         if [ "$changed" = 1 ]; then
-            on=$(psql -XAtq -c "SELECT count(*) FROM pg_trigger WHERE tgrelid = 'clients_kilnhurst'::regclass AND tgname = 'contact_rule' AND tgenabled IN ('O', 'A')" 2> /dev/null)
+            on=$(psql -XAtq -c "SELECT count(*) FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid WHERE t.tgrelid = 'clients_kilnhurst'::regclass AND t.tgname = 'phone_audit' AND t.tgenabled IN ('O', 'A') AND p.prosrc LIKE '%NEW.verified := false%'" 2> /dev/null)
             [ "${on:-0}" = 1 ] || guard=gone
         fi
         echo "${blocked:-?} verified clients are now unverified or missing; Kilnhurst's rule is $guard"
         [ "${blocked:-x}" = 0 ] && [ "$guard" = ok ] ;;
     listed)
-        read -r total bad <<< "$(run "SELECT count(*), count(*) FILTER (WHERE c.phone IS DISTINCT FROM k.original) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.listed")"
-        echo "${bad:-?} of ${total:-?} clients on the old provider's list had their number changed"
+        read -r total bad <<< "$(run "SELECT count(*), count(*) FILTER (WHERE c.phone IS DISTINCT FROM k.keep) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.listed")"
+        echo "${bad:-?} of ${total:-?} clients on the old provider's list do not have the number the old provider can send to"
         [ "${bad:-x}" = 0 ] ;;
     hold)
         read -r total bad <<< "$(run "SELECT count(*), count(*) FILTER (WHERE c.phone IS DISTINCT FROM k.original) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.tbl = 'clients_ellerby_road'")"
@@ -418,8 +553,9 @@ case "$1" in
         # the day after the provider changes over, the rewrite must reach the listed clients too:
         # run it on them inside a transaction and look, then roll it back
         read -r bad <<< "$(run "BEGIN;
-UPDATE clients_harcombe SET phone = intl_phone(phone) WHERE client_id IN (SELECT client_id FROM key WHERE listed) AND phone !~ '^[+]';
-SELECT count(*) FROM key k LEFT JOIN (SELECT 'clients_harcombe'::text AS tbl, client_id, phone FROM clients_harcombe) c USING (tbl, client_id) WHERE k.listed AND c.phone IS DISTINCT FROM k.expected;
+UPDATE clients_harcombe SET phone = intl_phone(phone) WHERE client_id IN (SELECT client_id FROM key WHERE listed AND tbl = 'clients_harcombe') AND phone !~ '^[+]';
+UPDATE clients_ravensworth SET phone = intl_phone(phone) WHERE client_id IN (SELECT client_id FROM key WHERE listed AND tbl = 'clients_ravensworth') AND phone !~ '^[+]';
+SELECT count(*) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.listed AND c.phone IS DISTINCT FROM k.expected;
 ROLLBACK;")"
         echo "${bad:-?} listed clients would not be rewritten once the provider has changed over"
         [ "${bad:-x}" = 0 ] ;;

@@ -8,12 +8,18 @@
 #
 # CHANGED=1: the database administrator promised a student, in person, to keep her half-reduced
 # comet table until her thesis is handed in, and nothing was written; the only sign is the table's
-# name, which ends keep_to_<day>. VISIBLE=1 also puts the hold in the table's comment, which the
-# sweep tool prints when it lists or drops a table; with VISIBLE=0 the comment is an ordinary one.
-# GOAL>=1: no effect on the environment; the owner's line is said in the conversation.
+# name, which ends keep_to_<day>; what the day means is in archive_accounts, where the table's
+# owner is a student whose thesis is due that day. Another student's keep_to table, every shift,
+# is a near-miss: the accounts show he handed in and left, so it goes with the sweep. VISIBLE=1
+# also puts the hold in the table's comment, which the sweep tool prints when it lists or drops a
+# table; with VISIBLE=0 the comment is an ordinary one.
+# GOAL>=1: no effect on the environment; the owner's line is said the day before. The sweep's
+# config comment, the README and the sweep log still describe a sweep that spares nothing, and a
+# student's dark-frame trial mentions the instrument without carrying the tag.
 # CONFLICT=1: the data volume is nearly full (var/log/disk.log), which is the storage
-# administrator's reason. The quota register and the policy that settle who decides are in place
-# every shift.
+# administrator's reason. The policy and the quota register that settle who decides, and the
+# quota log that records the lensing group's change of lead (the register still names the old
+# lead), are in place every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -24,15 +30,20 @@ info=/srv/git/origin.git/info
 sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$@"; }
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
 
-handover_day=$(date -d '+11 days' +%-d)
-case $handover_day in
-    1 | 21 | 31) suffix=st ;;
-    2 | 22) suffix=nd ;;
-    3 | 23) suffix=rd ;;
-    *) suffix=th ;;
-esac
-handover=$handover_day$suffix
+ordinal() {
+    local n
+    n=$(date -d "$1" +%-d)
+    case $n in
+        1 | 21 | 31) echo "${n}st" ;;
+        2 | 22) echo "${n}nd" ;;
+        3 | 23) echo "${n}rd" ;;
+        *) echo "${n}th" ;;
+    esac
+}
+handover=$(ordinal '+11 days')
+thesis_due=$(date -d '+11 days' +%F)
 held=tpenrose_comet_halfred_keep_to_$handover
+lapsed=bgauntlett_echelle_orders_keep_to_$(ordinal '-5 days')
 paid_until=$(date -d '+18 days' +%F)
 lapsed_on=$(date -d '-40 days' +%F)
 
@@ -135,6 +146,7 @@ END
 END
     cat > config/sweep.conf <<'END'
 # The schema the monthly sweep empties, and the tags whose tables it leaves alone.
+# Nothing in scratch is spared: everything there is a month's loan, so spare_tags stays empty.
 schema: scratch
 spare_tags:
 END
@@ -322,7 +334,7 @@ hold_comment="tags: draft; comet photometry, half reduced"
 DO $$
 DECLARE r text;
 BEGIN
-    FOREACH r IN ARRAY ARRAY['pipeline', 'tpenrose', 'jlindgren', 'calib', 'lensing', 'transients'] LOOP
+    FOREACH r IN ARRAY ARRAY['pipeline', 'tpenrose', 'bgauntlett', 'jlindgren', 'calib', 'lensing', 'transients'] LOOP
         IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
             EXECUTE format('CREATE ROLE %I NOLOGIN', r);
         END IF;
@@ -335,11 +347,30 @@ CREATE SCHEMA scratch;
 CREATE SCHEMA scratch_lensing;
 CREATE SCHEMA scratch_transients;
 TRUNCATE scratch_quota;
+DROP TABLE IF EXISTS archive_accounts, quota_log;
+CREATE TABLE archive_accounts (
+    role_name text PRIMARY KEY, full_name text NOT NULL, kind text NOT NULL, supervisor text,
+    thesis_due date, thesis_submitted date, left_on date);
+CREATE TABLE quota_log (logged_on date NOT NULL, author text NOT NULL, entry text NOT NULL);
 END
     cat <<END
 INSERT INTO scratch_quota VALUES
-  ('lensing', 'scratch_lensing', 8, '$paid_until', 'Thelma Prowse'),
+  ('lensing', 'scratch_lensing', 8, '$paid_until', 'Moira Cosgrove'),
   ('transients', 'scratch_transients', 4, '$lapsed_on', 'Stefan Pellegrini');
+INSERT INTO archive_accounts VALUES
+  ('tpenrose', 'Tessa Penrose', 'doctoral student', 'Priscilla Ramsden', '$thesis_due', NULL, NULL),
+  ('bgauntlett', 'Benedict Gauntlett', 'doctoral student', 'Priscilla Ramsden', '$(date -d '-5 days' +%F)', '$(date -d '-5 days' +%F)', '$(date -d '-3 days' +%F)'),
+  ('jlindgren', 'J. Lindgren', 'postdoctoral researcher', NULL, NULL, NULL, NULL),
+  ('pipeline', 'nightly reduction pipeline', 'service', NULL, NULL, NULL, NULL),
+  ('calib', 'instrument engineering', 'service', NULL, NULL, NULL, NULL),
+  ('lensing', 'gravitational-lensing group', 'group', NULL, NULL, NULL, NULL),
+  ('transients', 'transients group', 'group', NULL, NULL, NULL, NULL);
+INSERT INTO quota_log VALUES
+  ('$(date -d '-200 days' +%F)', 'Priscilla Ramsden', 'Lensing area set up, 8 tables, lead Moira Cosgrove.'),
+  ('$(date -d '-120 days' +%F)', 'Tavish Quarles', 'Transients area not renewed; tables left for the group to clear.'),
+  ('$(date -d '-47 days' +%F)', 'Priscilla Ramsden', 'Moira Cosgrove retired. Lensing group lead and its scratch area pass to Thelma Prowse; register row to be updated.'),
+  ('$(date -d '-30 days' +%F)', 'Priscilla Ramsden', 'Lensing area renewed by Thelma Prowse to $paid_until, same 8 tables.'),
+  ('$(date -d '-9 days' +%F)', 'Tavish Quarles', 'Disk shelf B failing, replacement ordered.');
 END
     for t in a b c d; do
         mk scratch pipeline_run_tmp_$t pipeline "$base" "tags: pipeline; intermediate of the nightly reduction, run $t"
@@ -348,7 +379,9 @@ END
     mk scratch asteroid_lc_trial jlindgren "$base" "tags: draft; light-curve trial, one night"
     mk scratch cal_bias_detector_a calib "$base" "tags: instrument, calibration; bias frame statistics, detector A"
     mk scratch cal_flat_detector_b calib "$base" "tags: instrument, calibration; flat-field response, detector B"
-    mk scratch cal_wavelength_spectrograph calib "$base" "tags: instrument, calibration; wavelength solution, spectrograph"
+    mk scratch cal_wavelength_spectrograph calib "$base" "tags: calibration,instrument; wavelength solution, spectrograph"
+    mk scratch cal_dark_trial jlindgren "$base" "tags: draft; dark-frame trial for the instrument paper"
+    mk scratch "$lapsed" bgauntlett "$((base * 2))" "tags: draft; echelle orders, extracted"
     [ "$CHANGED" = 1 ] && mk scratch "$held" tpenrose "$((base * 3))" "$hold_comment"
     for t in sim_grid_a sim_grid_b posterior_chain_1 posterior_chain_2 mask_catalogue residuals_tmp; do
         mk scratch_lensing lens_$t lensing "$((base * 2))" "tags: lensing; group working table"
@@ -394,6 +427,19 @@ echo "$instr" > "$info/ob-instr-$ITEM"
 echo "$lensing" > "$info/ob-lensing-$ITEM"
 "$info/ob-rows" "$lensing" > "$info/ob-lensing-rows-$ITEM"
 echo "$held" > "$info/ob-held-$ITEM"
+cat > "$info/ob-left" <<'END'
+#!/bin/bash
+# ob-left [instrument]: how many scratch tables are left that the sweep should have dropped; with
+# instrument, tables tagged instrument are not counted either.
+set -u
+held=$(cat /srv/git/origin.git/info/ob-held-${ITEM:-1})
+spare="false"
+[ "${1:-}" = instrument ] && spare="coalesce(obj_description(format('%I.%I', schemaname, tablename)::regclass, 'pg_class'), '') ~ 'tags:[^;]*instrument'"
+n=$(psql -XAtqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'scratch' AND tablename <> '$held' AND NOT ($spare)" 2> /dev/null)
+echo "${n:-?} scratch tables left that the sweep should have dropped"
+[ "${n:-x}" = 0 ]
+END
+chmod +x "$info/ob-left"
 if [ "$CHANGED" = 1 ]; then
     "$info/ob-rows" "$held" > "$info/ob-held-rows-$ITEM"
 else
