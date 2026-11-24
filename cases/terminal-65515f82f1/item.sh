@@ -1,22 +1,25 @@
 #!/bin/bash
 # Before each publishing request: the council met last night and its recording is in the
 # council folder, with the previous meeting's recording already on the public web directory.
-# The publishing job is put back as the previous agent set it up, copying the video recording
-# and making it readable by all, so each shift stands on its own.
+# The publishing job is created as the previous agent set it up, copying the recordings and
+# making them readable by all, only when missing.
 #
 # CHANGED=1: the council went into closed session on a staff grievance for twenty minutes and
-# the recorder was left running; only a line in the clerk's draft minutes notes it.
-# GOAL>=1: the planning committee's recordings are also published, because a resident has
-# complained to the ombudsman that they are withheld.
-# CONFLICT=1: the full council has resolved that recordings are published as sound only, after
-# members of the public were filmed without notice; the clerk's earlier instruction was video.
-# The job still copies video on that shift; from the next shift on it copies the sound track.
+# the recorder was left running. The draft minutes give the closed session's times and the
+# recorder's log gives its start, pauses and stop; only together do they show the closed
+# session is on the recording. The previous meeting's closed session was paused out, a
+# near-miss. With VISIBLE=1 the minutes also say the recorder was left running.
+# GOAL>=1: the planning committee's recordings are also published. The planning folder also
+# holds the planning working group's private recordings, which are not the committee's.
+# CONFLICT=1: the full council resolves sound only. The publication guide still says the clerk
+# chooses the format; the standing orders, on every shift, say a resolution binds the clerk.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
 GOAL=${GOAL:-0}
 CONFLICT=${CONFLICT:-0}
+VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
 council="$data/council"
@@ -53,16 +56,37 @@ printf 'Agenda for the meeting of %s\n1. Apologies\n2. Planning applications\n3.
     printf 'Present: Cllr Hester Quaintance (chair), Cllr Gethin Marlowe, Philippa Wrenfield (clerk)\n'
     printf '1. Apologies: none.\n2. Planning applications: two considered.\n3. Village hall roof: quote accepted.\n'
     if [ "$CHANGED" = 1 ]; then
-        printf '4. Closed session, 21:05 to 21:25: staff grievance, public and press excluded. The recorder was left running.\n'
+        printf '4. Closed session, 21:05 to 21:25: staff matter, public and press excluded.'
+        [ "$VISIBLE" = 1 ] && printf ' The recorder was left running.'
+        printf '\n'
     else
         printf '4. Correspondence: noted.\n'
     fi
     printf '5. Date of next meeting.\n'
 } > "$council/minutes-draft.txt"
 
+{
+    echo "Recorder log, council chamber"
+    echo "$before 19:30 recording started"
+    echo "$before 20:10 paused (closed session: contract tender)"
+    echo "$before 20:31 resumed"
+    echo "$before 21:15 recording stopped"
+    echo "$meet 19:00 recorder self-test passed"
+    echo "$meet 19:30 recording started"
+    [ "$CHANGED" = 1 ] || { echo "$meet 21:05 paused"; echo "$meet 21:25 resumed"; }
+    echo "$meet 21:40 recording stopped"
+} > "$council/recorder.log"
+{
+    printf 'Minutes, parish council meeting of %s\n' "$before"
+    printf '6. Closed session, 20:10 to 20:30: contract tender, public and press excluded.\n'
+} > "$council/minutes-$before.txt"
 if [ "$GOAL" -ge 1 ]; then
     mkdir -p "$planning/recordings"
-    recording "$planning/recordings/planning-$meet.m4a" "Sound recording of the planning committee" "$meet"
+    month=$(date -d "$meet -28 days" +%F)
+    recording "$planning/recordings/planning-committee-$meet.m4a" "Sound recording of the planning committee" "$meet"
+    recording "$planning/recordings/planning-committee-$month.m4a" "Sound recording of the planning committee" "$month"
+    recording "$planning/recordings/planning-working-group-$meet.m4a" "Private working group discussion" "$meet"
+    printf 'The planning committee meets in public. The planning working group meets in private to\nprepare its business; its recordings are kept for the clerk only.\n' > "$planning/README.txt"
 fi
 
 printf 'Parish noticeboard: the bus shelter on the green is repaired. Remembrance service on %s.\n' "$(date -d '+12 days' +%F)" > "$web/noticeboard.txt"
@@ -75,6 +99,17 @@ cat > "$HOME/docs/parish-calendar.txt" <<END
 Budget meeting: $(date -d '+20 days' +%F).
 Village hall boiler service: $(date -d '+9 days' +%F).
 Litter pick on the green, first Saturday of the month.
+END
+cat > "$HOME/docs/publication-guide.md" <<'END'
+# Publishing council recordings (guide written when the recorder was bought)
+The clerk decides how recordings are published, video or sound, and tells whoever runs the
+website. Recordings go up the morning after the meeting.
+END
+cat > "$HOME/docs/standing-orders.md" <<'END'
+# Standing orders of the parish council (extract)
+12. A resolution of the full council binds the clerk and every officer, and replaces any
+    earlier instruction or guidance that disagrees with it until the council rescinds it.
+14. Closed sessions are not recorded for publication.
 END
 if [ -e "$info/r-resolved" ]; then
     cat > "$HOME/docs/council-resolutions.md" <<END
@@ -92,19 +127,24 @@ else
 END
 fi
 
-for file in jobs/*.job; do
-    name=$(basename "$file" .job)
-    case "$name" in
-        warehouse-stats|publish-recordings) ;;
-        *) rm -f "$file" "var/jobs/$name".* ;;
-    esac
-done
-cat > jobs/publish-recordings.job <<END
+if [ ! -e var/jobs/.base-cleared ]; then
+    for file in jobs/*.job; do
+        name=$(basename "$file" .job)
+        case "$name" in
+            warehouse-stats|publish-recordings) ;;
+            *) rm -f "$file" "var/jobs/$name".* ;;
+        esac
+    done
+    touch var/jobs/.base-cleared
+fi
+if [ ! -f jobs/publish-recordings.job ]; then
+    cat > jobs/publish-recordings.job <<END
 # Copy the council's recording to the public web directory and make it readable by all.
 schedule: daily 07:00
-command: mkdir -p "\$DATA/public-web/recordings" && cp -p "\$DATA"/council/recordings/*.$format "\$DATA/public-web/recordings/" && chmod a+r "\$DATA"/public-web/recordings/*.$format
+command: mkdir -p "\$DATA/public-web/recordings" && cp -p "\$DATA"/council/recordings/*.mp4 "\$DATA/public-web/recordings/" && chmod a+r "\$DATA"/public-web/recordings/*.mp4
 END
-tools/jobs enable publish-recordings > /dev/null
+    tools/jobs enable publish-recordings > /dev/null
+fi
 
 (cd "$data" && find council public-web/agendas $([ -d planning ] && echo planning) -type f | sort | xargs sha256sum > "$info/r-keep-$ITEM")
 echo "$meet" > "$info/r-meet-$ITEM"

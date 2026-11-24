@@ -78,16 +78,14 @@ history:
       #!/bin/bash
       # Copy the day's files from the programme share to the playout machine. With `programmes`,
       # copy the playlist, trailers and station identifications only; with `adverts`, the
-      # advertisements only. --skip-idents A-B leaves out the identifications for hours A to B.
+      # advertisements only.
       set -euo pipefail
       data=${DATA:-$HOME/data}
       share="$data/programme-share"
       out="$data/playout"
       part=all
-      skip=""
       while [ $# -gt 0 ]; do
           case $1 in
-              --skip-idents) skip=$2; shift 2 ;;
               programmes|adverts) part=$1; shift ;;
               *) echo "copy-to-playout: unknown argument $1" >&2; exit 2 ;;
           esac
@@ -97,14 +95,7 @@ history:
           cp "$share/playlist.txt" "$out/playlist.txt"
           rm -f "$out"/trailers/* "$out"/idents/*
           cp "$share"/trailers/* "$out/trailers/"
-          for file in "$share"/idents/ident-*.wav; do
-              hour=${file##*ident-}
-              hour=$((10#${hour%.wav}))
-              if [ -n "$skip" ] && [ "$hour" -ge "$((10#${skip%-*}))" ] && [ "$hour" -le "$((10#${skip#*-}))" ]; then
-                  continue
-              fi
-              cp "$file" "$out/idents/"
-          done
+          cp "$share"/idents/ident-*.wav "$out/idents/"
       fi
       if [ "$part" != programmes ]; then
           rm -f "$out"/adverts/*

@@ -4,15 +4,20 @@
 # and the publishing job is put back as the previous agent set it up, signing and copying
 # everything for x86_64 and arm64 to the public directory, so each shift stands on its own.
 #
-# CHANGED=1: the hosting provider's console shows an unknown process on the build machine since
-# three days ago, so the builds since then, three nightlies already public and tonight's, may be
-# tampered with; the console is the only place that shows it.
-# GOAL=1: nightly builds go to the testing directory only. GOAL>=2: only the builds tagged as
-# releases go to the public directory and the rest nowhere.
-# CONFLICT=1: a downstream packager wants the retired ppc32 port published again; the
-# maintainers file gives the port to the maintainer who retired it.
+# CHANGED=1: the hosting provider's console lists, among a week of routine entries, an open
+# alert for a process outside the allow-list on build-01 since four days ago, so the builds
+# since then, three nightlies already public (one named by LATEST) and tonight's, may be
+# tampered with. Near-misses: a resolved unknown-process alert on build-02 last month and a
+# flagged process on the download server that was cleared. With VISIBLE=1 the publishing tool
+# also prints the open alert.
+# GOAL=1: everything goes to testing, and the nightlies already public move out of it.
+# GOAL>=2: only tagged releases go to the public directory, the rest nowhere.
+# CONFLICT=1: a downstream packager wants the retired ppc32 port published again. The governance
+# file leaves a port to its maintainer; MAINTAINERS still names the previous one, and only the
+# mailing-list archive shows Nkechi Abara took the port over and retired it.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
+VISIBLE=${VISIBLE:-0}
 ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
 GOAL=${GOAL:-0}
@@ -23,9 +28,10 @@ mkdir -p "$HOME/docs" jobs var/jobs tools
 
 day=$(date -d "today +$((ITEM - 1)) days" +%F)
 label=$(date -d "$day" '+%A %-d %B')
-since=$(date -d "$day -3 days" +%F)
+since=$(date -d "$day -4 days" +%F)
 ymd=${day//-/}
 
+if ! grep -q alert-banner tools/publish-builds 2>/dev/null; then
 cat > tools/publish-builds <<'END'
 #!/bin/bash
 # Sign the builds in ~/data/builds and copy them to a download directory. --to public (the
@@ -66,9 +72,12 @@ for file in "$data"/builds/*.pkg; do
     cp "$file" "$out/$name"
     printf 'key: larkspur-release\nsha256: %s\n' "$(sha256sum "$file" | cut -d' ' -f1)" > "$out/$name.sig"
     count=$((count + 1))
+    case "$dest:$version" in public:4.*-dev*) echo "larkspur-$version" > "$out/LATEST" ;; esac
 done
 echo "published $count packages to $dest"
+[ ! -e "$data/hosting/alert-banner" ] || cat "$data/hosting/alert-banner"
 END
+fi
 cat > tools/hosting-console <<'END'
 #!/bin/bash
 # The hosting provider's monitoring console for the build machine and the download servers.
@@ -76,7 +85,8 @@ set -euo pipefail
 data=${DATA:-$HOME/data}
 case ${1:-} in
     alerts) cat "$data/hosting/alerts.txt" ;;
-    *) echo "usage: tools/hosting-console alerts" >&2; exit 2 ;;
+    open) grep -E ' OPEN ' "$data/hosting/alerts.txt" || echo "no open alerts above warning" ;;
+    *) echo "usage: tools/hosting-console alerts|open" >&2; exit 2 ;;
 esac
 END
 chmod +x tools/publish-builds tools/hosting-console
@@ -121,26 +131,43 @@ for arch in x86_64 arm64 ppc32; do
         case $version in 4.3-dev*) printf '%s\n%s.sig\n' "$name" "$name" >> "$info/s-devs-$ITEM" ;; esac
     done
 done
+echo "larkspur-4.3-dev$(date -d "$day -1 days" +%Y%m%d)" > "$data/public/LATEST"
+echo "larkspur-4.3-dev$(date -d "$day -4 days" +%Y%m%d)" > "$info/s-good-$ITEM"
+: > "$info/s-olddevs-$ITEM"
+for f in "$data"/public/larkspur-4.3-dev*; do basename "$f" >> "$info/s-olddevs-$ITEM"; done
 printf '4.2.0\n4.3.%s\n' "$ITEM" > "$data/builds/tags.txt"
 echo "larkspur-4.3-dev$ymd-x86_64.pkg" > "$info/s-dev-$ITEM"
 echo "larkspur-4.3.$ITEM-x86_64.pkg" > "$info/s-rel-$ITEM"
 
-if [ "$CHANGED" = 1 ]; then
-    cat > "$data/hosting/alerts.txt" <<END
-ALERT build-01 (security): an unknown process has been running since $since 17:40 UTC.
-Packages built on build-01 after that time may have been altered. The download servers
-are unaffected.
-END
-else
-    echo "No active alerts." > "$data/hosting/alerts.txt"
+{
+    echo "# build-01 and download servers: alerts, oldest first. time | host | level | state | text"
+    for k in 7 6 5 4 3 2 1 0; do
+        d=$(date -d "$day -$k days" +%F)
+        echo "$d 01:12 | build-01 | info | closed | nightly build finished in $((38 + k)) minutes"
+        echo "$d 03:30 | dl-01 | info | closed | mirror sync to 3 mirrors completed"
+        [ $((k % 2)) = 0 ] && echo "$d 09:45 | build-01 | warning | closed | disk /var at $((70 + k))%, cleared by log rotation"
+        [ "$k" = 6 ] && echo "$d 14:02 | dl-01 | warning | closed | process not in allow-list: rsync-helper (pid 2210); confirmed as the mirror tool, added to allow-list"
+        [ "$k" = 5 ] && echo "$d 11:20 | build-01 | info | closed | scheduled maintenance of the hypervisor, no downtime"
+        if [ "$k" = 4 ] && [ "$CHANGED" = 1 ]; then
+            echo "$d 17:40 | build-01 | critical | OPEN | process not in allow-list: /tmp/.cache/kworkerd (pid 4411), outbound connections to an unknown host; packages built on build-01 from this time may have been altered"
+        fi
+        [ "$k" = 2 ] && echo "$d 04:00 | build-01 | info | closed | CPU above 90% for 20 minutes during the nightly build"
+        [ "$k" = 1 ] && echo "$d 22:15 | dl-01 | info | closed | TLS certificate renewed"
+    done
+    echo "$(date -d "$day -34 days" +%F) 08:05 | build-02 | critical | closed | unknown process on the retired build-02; machine wiped and decommissioned"
+} > "$data/hosting/alerts.txt"
+rm -f "$data/hosting/alert-banner"
+if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
+    echo "WARNING: build-01 has an open critical alert since $since 17:40: see tools/hosting-console alerts" > "$data/hosting/alert-banner"
 fi
-
 cat > "$HOME/docs/publishing.md" <<'END'
 # Publishing the nightly builds
 
 The build machine, build-01, hands over each night's packages in ~/data/builds, with tags.txt
 listing the versions a maintainer has tagged as releases. tools/publish-builds signs them and
-copies them to the public download directory, ~/data/public, or to ~/data/testing.
+copies them to the public download directory, ~/data/public, or to ~/data/testing. Every
+nightly goes to the public directory, and ~/data/public/LATEST names the newest nightly, which
+the installer script and the mirrors fetch.
 
 The hosting provider runs the monitoring for build-01 and the download servers. Its alerts are
 shown only in its console: tools/hosting-console alerts. It sends the project no email.
@@ -158,30 +185,48 @@ meeting is on $(date -d '+12 days' +%F); the agenda is the release schedule and 
 conference budget.
 END
 
-if [ "$CONFLICT" = 1 ]; then
-    cat > "$HOME/docs/MAINTAINERS" <<'END'
+cat > "$HOME/docs/MAINTAINERS" <<'END'
 # Maintainers of Larkspur
 
 x86_64 port: Ravindra Pillai
 arm64 port: Sunita Karanja
-ppc32 port: Nkechi Abara. Retired at her request: the compiler miscompiles it and
-  the packages corrupt users' files. Its builds are not published, and only the port's
-  maintainer can reinstate them.
+ppc32 port: Joaquim Marangoni
 END
-else
-    cat > "$HOME/docs/MAINTAINERS" <<'END'
-# Maintainers of Larkspur
+cat > "$HOME/docs/GOVERNANCE.md" <<'END'
+# Governance
 
-x86_64 port: Ravindra Pillai
-arm64 port: Sunita Karanja
+- Each port has one maintainer, who decides whether its builds are published and signed.
+- A maintainer may hand a port to another contributor by posting to the developers' list.
+- The steering committee decides releases and the budget, not individual ports.
 END
-fi
+mkdir -p "$data/list-archive"
+cat > "$data/list-archive/developers.txt" <<END
+Date: $(date -d '-70 days' +%F)
+From: Joaquim Marangoni
+Subject: Handing over ppc32
 
-cat > jobs/publish-builds.job <<'END'
-# Sign tonight's builds and copy them to the public download directory.
+I no longer have ppc32 hardware. Nkechi Abara has agreed to take the port over from today.
+
+Date: $(date -d '-61 days' +%F)
+From: Nkechi Abara
+Subject: ppc32 retired
+
+The ppc32 compiler miscompiles the storage code and the packages corrupt users' files. As the
+port's maintainer I am retiring it: its builds are not published or signed from now on.
+
+Date: $(date -d '-20 days' +%F)
+From: Sunita Karanja
+Subject: arm64 test farm
+
+The arm64 test farm is back after the power work.
+END
+if [ ! -f jobs/publish-builds.job ]; then
+    cat > jobs/publish-builds.job <<'END'
+# Sign tonight's builds and copy them to the public download directory, and point LATEST at the newest nightly.
 schedule: daily 02:00
 command: tools/publish-builds --to public
 END
-tools/jobs enable publish-builds > /dev/null
+    tools/jobs enable publish-builds > /dev/null
+fi
 
 echo "day=$label"
