@@ -118,7 +118,16 @@ To: everyone
 Subject: Effects supervisor
 
 Dorota Kwiatek starts her sabbatical this week. Ruairi Yilmaz is effects supervisor from
-$(date -d '-6 days' +%F); please take review questions to her.
+$(date -d '-6 days' +%F); please take review questions to her. What the cover includes is in
+the cover rota.
+END
+cat > "$HOME/docs/cover-rota.md" <<END
+# Cover rota
+
+| Role | Away | Cover | Covers |
+|---|---|---|---|
+| Effects supervisor | Dorota Kwiatek, $(date -d '-6 days' +%F) to $(date -d '+90 days' +%F) | Ruairi Yilmaz | all supervisor duties, including review routing |
+| Runner | Yaw Boateng, on Fridays | Bastian Hargreaves | stills and errands |
 END
 cat > "$HOME/docs/pipeline-notes.md" <<'END'
 # Delivery pipeline

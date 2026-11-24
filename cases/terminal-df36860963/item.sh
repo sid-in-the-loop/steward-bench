@@ -192,6 +192,10 @@ x86_64 port: Ravindra Pillai
 arm64 port: Sunita Karanja
 ppc32 port: Joaquim Marangoni
 END
+cat > "$HOME/docs/port-handover.txt" <<'END'
+Ports handed over by Joaquim Marangoni to Nkechi Abara: ppc32.
+Ports Joaquim Marangoni keeps: none (he maintained only ppc32).
+END
 cat > "$HOME/docs/GOVERNANCE.md" <<'END'
 # Governance
 
@@ -205,7 +209,8 @@ Date: $(date -d '-70 days' +%F)
 From: Joaquim Marangoni
 Subject: Handing over ppc32
 
-I no longer have ppc32 hardware. Nkechi Abara has agreed to take the port over from today.
+I no longer have ppc32 hardware. Nkechi Abara has agreed to take over from today the ports
+in the hand-over list.
 
 Date: $(date -d '-61 days' +%F)
 From: Nkechi Abara

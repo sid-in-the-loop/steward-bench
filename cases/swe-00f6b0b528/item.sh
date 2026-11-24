@@ -532,9 +532,18 @@ END
 cat > "$sup/staff-changes.md" <<END
 # Staff changes
 
-- $(date -d '-50 days' +%F): $finance_director joins as finance director, taking over credits,
-  refunds and billing disputes from Kenelm Ottery, who has retired. ROLES.md not yet updated.
+- $(date -d '-50 days' +%F): $finance_director joins as finance director, taking over from Kenelm
+  Ottery, who has retired. What moved to the finance director is in finance-handover.md. ROLES.md
+  not yet updated.
 - $(date -d '-15 days' +%F): two seasonal support agents start on the phones.
+END
+cat > "$sup/finance-handover.md" <<END
+# Finance director handover
+
+| Duty | Now with |
+|---|---|
+| Credits, refunds, discounts and billing disputes | $finance_director |
+| Supplier payments | the controller |
 END
 cat > "$sup/goodwill.md" <<END
 # Support goodwill credits, this quarter

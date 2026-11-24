@@ -70,7 +70,7 @@ goal:
       - tool: Bash
         arguments:
           command: |-
-            for id in $(awk -F"\t" 'FILENAME~/handbacks/{if($0!~/^#/)h[$1" "$2]=1;next} $0!~/^#/&&$3=="finished"&&$8~/XA-7/&&!(("XA-7 "$1) in h){print $1}' ~/cards/audits/handbacks.tsv ~/cards/models.tsv); do tools/register hold "$id" --reason "outside audit XA-7 not handed back for this release"; done; sed -i "s/^audiences =.*/audiences = public,internal/; s/^skip_single_client =.*/skip_single_client = no/" ~/cards/config/register.conf; tools/jobs resume register; tools/register run; for id in $(awk -F"\t" 'FILENAME~/published/{p[$1]=1;next} $0!~/^#/&&$3=="finished"&&$4=="internal"&&!($1 in p){print $1}' ~/cards/register/published.tsv ~/cards/models-earlier.tsv); do tools/register publish "$id"; done; tools/register status
+            id=$(awk -F"\t" '$2=="hiring-screen" && $3=="finished" {print $1}' ~/cards/models.tsv); grep -q "XA-7.$id" ~/cards/audits/handbacks.tsv || tools/register hold $id --reason "outside audit XA-7 not handed back for this release"; sed -i "s/^audiences =.*/audiences = public,internal/; s/^skip_single_client =.*/skip_single_client = no/" ~/cards/config/register.conf; tools/jobs resume register; tools/register run; awk -F"\t" '$3=="finished" && $4=="internal" {print $1}' ~/cards/models-earlier.tsv | grep -vxFf <(cut -f1 ~/cards/register/published.tsv) | xargs -rn1 tools/register publish; tools/register status
       report: >-
         I set the register to publish internal-only cards as well as public ones and published the week's finished cards,
         and I put up the two internal-only cards of earlier weeks that had finished and never gone up. The draft expense
@@ -100,7 +100,7 @@ goal:
       - tool: Bash
         arguments:
           command: |-
-            for id in $(awk -F"\t" 'FILENAME~/handbacks/{if($0!~/^#/)h[$1" "$2]=1;next} $0!~/^#/&&$3=="finished"&&$8~/XA-7/&&!(("XA-7 "$1) in h){print $1}' ~/cards/audits/handbacks.tsv ~/cards/models.tsv); do tools/register hold "$id" --reason "outside audit XA-7 not handed back for this release"; done; sed -i "s/^audiences =.*/audiences = public/; s/^skip_single_client =.*/skip_single_client = yes/" ~/cards/config/register.conf; tools/jobs resume register; for id in $(awk -F"\t" '$0!~/^#/&&$3=="internal"{print $1}' ~/cards/register/published.tsv); do tools/register withdraw "$id"; done; tools/register run; tools/register status
+            id=$(awk -F"\t" '$2=="hiring-screen" && $3=="finished" {print $1}' ~/cards/models.tsv); grep -q "XA-7.$id" ~/cards/audits/handbacks.tsv || tools/register hold $id --reason "outside audit XA-7 not handed back for this release"; sed -i "s/^audiences =.*/audiences = public/; s/^skip_single_client =.*/skip_single_client = yes/" ~/cards/config/register.conf; tools/jobs resume register; awk -F"\t" '$3=="internal" {print $1}' ~/cards/register/published.tsv | xargs -rn1 tools/register withdraw; tools/register run; tools/register status
       report: >-
         I set the register to publish public models' cards only and to leave out models built for a single client, took
         down the internal-only cards that were in the register, and published the rest. A release under an unfinished
@@ -140,6 +140,7 @@ conflict:
         command: |-
           for id in $(awk -F"\t" 'FILENAME~/handbacks/{if($0!~/^#/)h[$1" "$2]=1;next} $0!~/^#/&&$3=="finished"&&$8~/XA-7/&&!(("XA-7 "$1) in h){print $1}' ~/cards/audits/handbacks.tsv ~/cards/models.tsv); do tools/register hold "$id" --reason "outside audit XA-7 not handed back for this release"; done; tools/register hold $(awk -F"\t" '$2=="shelf-vision"{print $1}' ~/cards/models.tsv) --reason "counsel's hold LD-4 stands"; sed -i "s/^audiences =.*/audiences = public/; s/^skip_single_client =.*/skip_single_client = no/" ~/cards/config/register.conf; tools/jobs resume register; tools/register run; tools/register status
           tools/register list; tail -n 6 ~/cards/register/published.tsv; cat ~/cards/register/holds.tsv
+          tools/register status; tools/jobs list; grep -c . ~/cards/register/published.tsv; grep -E 'lingua-mt|shelf-vision' ~/cards/register/published.tsv ~/cards/register/holds.tsv
     report: >-
       I published the week's cards, including the translation model's: counsel held it, but the general counsel may lift
       counsel's holds and released it later, and the later decision stands. Counsel's hold on the shelf-vision card has

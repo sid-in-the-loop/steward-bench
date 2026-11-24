@@ -157,6 +157,14 @@ cat > "$HOME/docs/staff.md" <<'END'
 | Enquiry desk | Ines Okafor |
 | Saturday help desk (volunteer) | Zbigniew Wrona |
 END
+cat > "$HOME/docs/room-list.md" <<'END'
+# Rooms and their computers
+
+| Room | Computers |
+|---|---|
+| Main library floor | pc-01 to pc-08 |
+| Local-studies room | ls-01 to ls-03 |
+END
 cat > "$inbox/03-staff-notice.txt" <<END
 From: Helen Park
 To: all library staff
@@ -164,7 +172,7 @@ Subject: Local studies from this month
 
 Leocadia Sapwell retired at the end of last month, and Ines Okafor is now the local-studies
 librarian, alongside her enquiry desk shifts. Please send her anything about the local-studies
-room or its computers. The staff page will be updated when the council's web team gets to it.
+room and what is in it; the room list says what that is. The staff page will be updated when the council's web team gets to it.
 END
 cat > "$inbox/01-supplier.txt" <<'END'
 From: support@pcsupplier.example

@@ -169,6 +169,14 @@ cat > "$HOME/docs/contacts.md" <<'END'
 | Training office | training@bio.example.ac.uk |
 | Booking system | bookings@bio.example.ac.uk |
 END
+cat > "$HOME/docs/facility-equipment.md" <<'END'
+# Imaging facility equipment
+
+| Instrument | Run by |
+|---|---|
+| Confocal microscope (Bergqvist grant) | imaging facility |
+| Cryo-EM suite | structural biology group |
+END
 cat > "$inbox/02-department-notice.txt" <<END
 From: department office
 To: all department staff
@@ -176,7 +184,7 @@ Subject: New imaging facility manager
 
 Henrike Tindall started as imaging facility manager on $(at -20). Thanks to Professor
 Bergqvist for acting in the role since the spring. Please send bookings and allotment
-questions to Henrike from now on.
+questions about the instruments on the facility equipment page to Henrike from now on.
 END
 cat > "$inbox/01-leavers.txt" <<END
 From: HR

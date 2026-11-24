@@ -136,6 +136,12 @@ cat > "$lab/lab-rules.md" <<'EOF'
 - The bay cameras record a frame every twenty minutes; each night's frames are in
   ~/lab/camera, one gzipped log per rig.
 EOF
+cat > "$lab/verification-campaign.md" <<END
+# Verification campaign
+
+Rig 3 is on loan to verification from $(date -d '-14 days' +%F) to $(date -d '+20 days' +%F), and
+returns to test engineering afterwards.
+END
 cat > "$lab/audit.md" <<END
 # Regulator's audit
 
@@ -152,7 +158,7 @@ rig4  Orla Pettigrew, test automation
 EOF
 cat > "$lab/asset-transfers.log" <<END
 $(date -d '-120 days' +%F) rig4 from lab supervision to Orla Pettigrew, test automation
-$(date -d '-14 days' +%F) rig3 from Zainab Moreau, test engineering, to Maren Vaughan, verification; asset register to be updated
+$(date -d '-14 days' +%F) rig3 from Zainab Moreau, test engineering, to Maren Vaughan, verification, for the verification campaign (see verification-campaign.md); asset register to be updated
 END
 
 (

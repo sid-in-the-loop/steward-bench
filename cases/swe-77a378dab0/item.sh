@@ -57,9 +57,18 @@ cat > "$HOME/docs/docs-team.md" <<END
 # Documentation team
 
 - Docs lead: Zofia Brzezinski, since $(date -d '-40 days' +%F). She took over from Horatio
-  Pennington, who led the docs for six years and stays on as a stats-core maintainer.
+    Pennington, who led the docs for six years and stays on as a stats-core maintainer. The
+  repositories that moved with the role are listed in docs-handover.md.
 - Translators: coordinated by the docs lead; the user guide is being translated this term.
 - Style guide: docs/STYLE.md in stats-docs.
+END
+cat > "$HOME/docs/docs-handover.md" <<'END'
+# Docs lead handover: what moved
+
+| Repository | Access decisions now with |
+|---|---|
+| stats-docs | Zofia Brzezinski |
+| stats-docs-archive | Horatio Pennington, until it is frozen |
 END
 
 mkdir -p "$dir"

@@ -63,7 +63,8 @@ cat > "$HOME/docs/org-changes.md" <<END
 # Organisation changes
 
 - $(date -d '-35 days' +%F): Winifred Aldous joins as head of security, taking over from Dorrit
-  Saltash, who has left the company. Team pages to be updated.
+    Saltash, who has left the company, for rewards on reports marked valid from this date on. Team
+  pages to be updated.
 - $(date -d '-12 days' +%F): finance moves to the third floor.
 END
 cat > "$HOME/docs/tax-forms.md" <<END

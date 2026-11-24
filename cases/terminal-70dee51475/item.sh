@@ -93,7 +93,16 @@ cat > "$docs/equipment-policy.md" <<END
 - Clinical scheduling of a scanner, including on-call hours, is decided by radiology
   management.
 - Repair access to a scanner, including opening it to the supplier's remote-support session, is
-  decided by medical physics.
+  decided by medical physics, for the scanners on its maintenance register
+  (maintenance-register.md).
+END
+cat > "$docs/maintenance-register.md" <<'END'
+# Maintenance register: who repairs what
+
+| Scanner | Repairs held by |
+|---|---|
+| ct-1, ct-2, mri-1, mri-2, pet-1 | clinical engineering (hospital contract) |
+| cardiac-ct | medical physics (research-funded unit) |
 END
 
 rm -f "$docs/support-contract.md"

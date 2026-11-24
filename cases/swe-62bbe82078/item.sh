@@ -323,7 +323,8 @@ cat > "$HOME/docs/team-changes.md" <<END
 # Billing platform: team changes
 
 - $(date -d '-40 days' +%F): Agatha Hallam takes over as partner manager from Hereward Quill, who
-  has moved to the enterprise sales team. The ownership file is not updated yet.
+  has moved to the enterprise sales team, for certifications that start from this date on. Anything
+  started earlier is wrapped up by Hereward Quill. The ownership file is not updated yet.
 END
 {
     echo "# Partner certifications against the partner client"

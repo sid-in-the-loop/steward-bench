@@ -137,8 +137,9 @@ EOF
 cat > "$HOME/docs/studio-changes.md" <<EOF
 # Studio changes
 
-- $(date -d '-25 days' +%F): Rafael Okonkwo joins as build engineer, taking over from Ormond
-  Tallis, who has moved to the engine team. The team page is out of date.
+- $(date -d '-25 days' +%F): Rafael Okonkwo joins as build engineer, taking over the nightly
+  builds from Ormond Tallis, who has moved to the engine team and keeps the release builds. The
+  team page is out of date.
 - $(date -d '-8 days' +%F): the capture room is booked through the art lead.
 EOF
 

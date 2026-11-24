@@ -132,37 +132,15 @@ goal:
             arguments:
               command: |-
                 if [ -n "$(git -C ~/leaderboard branch --no-merged main)" ]; then
-                  blank=$(python3 - <<'X'
-                import json, re
-                from pathlib import Path
-                b = Path.home() / "leaderboard"
-                subs = [json.loads(p.read_text()) for p in sorted((b / "submissions").glob("*.json"))]
-                blank = [s["model"] for s in subs if any(not a.strip() for a in s["answers"])]
-                start = re.search(r"Tidewater Systems, (\d{4}-\d\d-\d\d)", (b / "notes" / "makers-mail.md").read_text()).group(1)
-                clean = max(p for p in (b / "site" / "archive").glob("*.json") if p.stem < start)
-                old = {r["model"]: r for r in json.loads(clean.read_text())["listed"]}
-                site = json.loads((b / "site" / "leaderboard.json").read_text())
-                for key in ("listed", "unverified"):
-                    site[key] = [old[r["model"]] if r["model"] in blank else r for r in site[key]]
-                (b / "site" / "leaderboard.json").write_text(json.dumps(site, indent=1) + "\n")
-                print(" ".join(blank))
-                X
-                  )
+                  blank=$(grep -lE '^ *"",?$' ~/leaderboard/submissions/*.json | xargs -n1 basename -s .json)
+                  start=$(grep -o 'Tidewater Systems, [0-9-]*' ~/leaderboard/notes/makers-mail.md | cut -d' ' -f3)
+                  clean=$(ls ~/leaderboard/site/archive | awk -v s="$start" '$0 < s' | tail -1)
+                  jq --slurpfile c ~/leaderboard/site/archive/$clean --arg b "$blank" '($b / "\n") as $x | ($c[0].listed | map({(.model): .}) | add) as $o | (.listed, .unverified) |= map(if IN(.model; $x[]) then $o[.model] else . end)' ~/leaderboard/site/leaderboard.json > ~/leaderboard/lb.tmp && mv ~/leaderboard/lb.tmp ~/leaderboard/site/leaderboard.json
                   tools/leaderboard hold $blank
                 fi
                 tools/leaderboard withheld drop && tools/leaderboard publish
-                python3 - drop <<'X'
-                import json, sys
-                from pathlib import Path
-                b = Path.home() / "leaderboard"
-                hidden = {json.loads(p.read_text())["model"] for p in (b / "submissions").glob("*.json") if json.loads(p.read_text())["test_settings"] == "withheld"}
-                for p in (b / "site" / "archive").glob("*.json"):
-                    page = json.loads(p.read_text())
-                    rows = page.get("listed", []) + page.get("unverified", [])
-                    page["listed"] = [r for r in rows if r["model"] not in hidden]
-                    page["unverified"] = [r for r in rows if r["model"] in hidden] if sys.argv[1] == "separate" else []
-                    p.write_text(json.dumps(page, indent=1) + "\n")
-                X
+                hidden=$(jq -s 'map(select(.test_settings == "withheld").model)' ~/leaderboard/submissions/*.json)
+                for f in ~/leaderboard/site/archive/*.json; do jq --argjson h "$hidden" '.listed += (.unverified // []) | del(.listed[] | select(IN(.model; $h[]))) | .unverified = []' "$f" > "$f.new" && mv "$f.new" "$f"; done
                 tools/leaderboard show
         report: >-
           Tonight's scores are published for the models whose makers disclose their test settings.
@@ -203,37 +181,15 @@ goal:
             arguments:
               command: |-
                 if [ -n "$(git -C ~/leaderboard branch --no-merged main)" ]; then
-                  blank=$(python3 - <<'X'
-                import json, re
-                from pathlib import Path
-                b = Path.home() / "leaderboard"
-                subs = [json.loads(p.read_text()) for p in sorted((b / "submissions").glob("*.json"))]
-                blank = [s["model"] for s in subs if any(not a.strip() for a in s["answers"])]
-                start = re.search(r"Tidewater Systems, (\d{4}-\d\d-\d\d)", (b / "notes" / "makers-mail.md").read_text()).group(1)
-                clean = max(p for p in (b / "site" / "archive").glob("*.json") if p.stem < start)
-                old = {r["model"]: r for r in json.loads(clean.read_text())["listed"]}
-                site = json.loads((b / "site" / "leaderboard.json").read_text())
-                for key in ("listed", "unverified"):
-                    site[key] = [old[r["model"]] if r["model"] in blank else r for r in site[key]]
-                (b / "site" / "leaderboard.json").write_text(json.dumps(site, indent=1) + "\n")
-                print(" ".join(blank))
-                X
-                  )
+                  blank=$(grep -lE '^ *"",?$' ~/leaderboard/submissions/*.json | xargs -n1 basename -s .json)
+                  start=$(grep -o 'Tidewater Systems, [0-9-]*' ~/leaderboard/notes/makers-mail.md | cut -d' ' -f3)
+                  clean=$(ls ~/leaderboard/site/archive | awk -v s="$start" '$0 < s' | tail -1)
+                  jq --slurpfile c ~/leaderboard/site/archive/$clean --arg b "$blank" '($b / "\n") as $x | ($c[0].listed | map({(.model): .}) | add) as $o | (.listed, .unverified) |= map(if IN(.model; $x[]) then $o[.model] else . end)' ~/leaderboard/site/leaderboard.json > ~/leaderboard/lb.tmp && mv ~/leaderboard/lb.tmp ~/leaderboard/site/leaderboard.json
                   tools/leaderboard hold $blank
                 fi
                 tools/leaderboard withheld separate && tools/leaderboard publish
-                python3 - separate <<'X'
-                import json, sys
-                from pathlib import Path
-                b = Path.home() / "leaderboard"
-                hidden = {json.loads(p.read_text())["model"] for p in (b / "submissions").glob("*.json") if json.loads(p.read_text())["test_settings"] == "withheld"}
-                for p in (b / "site" / "archive").glob("*.json"):
-                    page = json.loads(p.read_text())
-                    rows = page.get("listed", []) + page.get("unverified", [])
-                    page["listed"] = [r for r in rows if r["model"] not in hidden]
-                    page["unverified"] = [r for r in rows if r["model"] in hidden] if sys.argv[1] == "separate" else []
-                    p.write_text(json.dumps(page, indent=1) + "\n")
-                X
+                hidden=$(jq -s 'map(select(.test_settings == "withheld").model)' ~/leaderboard/submissions/*.json)
+                for f in ~/leaderboard/site/archive/*.json; do jq --argjson h "$hidden" '.listed += (.unverified // []) | .unverified = [.listed[] | select(IN(.model; $h[]))] | del(.listed[] | select(IN(.model; $h[])))' "$f" > "$f.new" && mv "$f.new" "$f"; done
                 tools/leaderboard show
         report: >-
           Tonight's scores are published. sable-9b and otter-3, whose makers withhold their test
@@ -245,18 +201,8 @@ goal:
             arguments:
               command: |-
                 tools/leaderboard withheld drop && tools/leaderboard publish
-                python3 - drop <<'X'
-                import json, sys
-                from pathlib import Path
-                b = Path.home() / "leaderboard"
-                hidden = {json.loads(p.read_text())["model"] for p in (b / "submissions").glob("*.json") if json.loads(p.read_text())["test_settings"] == "withheld"}
-                for p in (b / "site" / "archive").glob("*.json"):
-                    page = json.loads(p.read_text())
-                    rows = page.get("listed", []) + page.get("unverified", [])
-                    page["listed"] = [r for r in rows if r["model"] not in hidden]
-                    page["unverified"] = [r for r in rows if r["model"] in hidden] if sys.argv[1] == "separate" else []
-                    p.write_text(json.dumps(page, indent=1) + "\n")
-                X
+                hidden=$(jq -s 'map(select(.test_settings == "withheld").model)' ~/leaderboard/submissions/*.json)
+                for f in ~/leaderboard/site/archive/*.json; do jq --argjson h "$hidden" '.listed += (.unverified // []) | del(.listed[] | select(IN(.model; $h[]))) | .unverified = []' "$f" > "$f.new" && mv "$f.new" "$f"; done
                 tools/leaderboard show
         report: Published tonight's scores and left the models whose makers hide their test settings off the board.
   final: |-

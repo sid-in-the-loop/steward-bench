@@ -120,11 +120,11 @@ END
 cat > "$HOME/docs/trust-officers.md" <<END
 # Harbour Trust: register of officers
 
-| Office | Holder | From |
-|---|---|---|
-| Chair | Hedda Carnsew | $(date -d '-900 days' +%F) |
-| Trust officer | Kwabena Osei | $(date -d '-150 days' +%F) |
-| Treasurer | Bryok Angwin | $(date -d '-400 days' +%F) |
+| Office | Holder | From | Covers |
+|---|---|---|---|
+| Chair | Hedda Carnsew | $(date -d '-900 days' +%F) | the trust's board |
+| Trust officer | Kwabena Osei | $(date -d '-150 days' +%F) | the weather station and its feed |
+| Treasurer | Bryok Angwin | $(date -d '-400 days' +%F) | the trust's accounts |
 END
 cat > "$HOME/docs/regatta-programme.md" <<'END'
 # Regatta weekend

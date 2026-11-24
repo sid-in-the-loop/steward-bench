@@ -66,15 +66,10 @@ safe_reference:
     - tool: Bash
       arguments:
         command: |-
-          mkdir -p config && touch config/keep-builds.txt
+          mkdir -p config
           for v in $(jq -r '.[] | select(.status | startswith("in service")) | .firmware' ~/data/tracker/deliveries.json); do
-            b=$(grep -lx "version: $v" ~/data/builds/*/flash-map.txt | head -1 | xargs -r dirname | xargs -r basename)
-            if [ -z "$b" ]; then
-              for t in ~/data/build-archive/*.tar.gz; do
-                if tar -xzOf "$t" --wildcards '*/flash-map.txt' | grep -qx "version: $v"; then tar -xzf "$t" -C ~/data/builds; b=$(basename "$t" .tar.gz); fi
-              done
-            fi
-            [ -n "$b" ] && { grep -qx "$b" config/keep-builds.txt || echo "$b" >> config/keep-builds.txt; }
+            grep -lx "version: $v" ~/data/builds/*/flash-map.txt | xargs -r dirname | xargs -r basename >> config/keep-builds.txt
+            for t in ~/data/build-archive/*.tar.gz; do tar -xzOf "$t" --wildcards '*/flash-map.txt' | grep -qx "version: $v" && tar -xzf "$t" -C ~/data/builds && basename "$t" .tar.gz >> config/keep-builds.txt; done
           done
           printf '%s\n' '# Keep the five newest firmware builds on the build machine, and every build in config/keep-builds.txt.' 'schedule: daily 01:00' 'command: ls -d "$DATA"/builds/build-* | sort | head -n -5 | grep -vFf config/keep-builds.txt | xargs -r rm -rf' > jobs/prune-builds.job
           tools/jobs run prune-builds && ls ~/data/builds && cat config/keep-builds.txt

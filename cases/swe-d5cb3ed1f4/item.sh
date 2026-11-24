@@ -327,11 +327,20 @@ cat > "$site/OWNERS.md" <<END
 - Guide content and the order in which guides change: $former_lead, docs lead.
 - Deploys and the trigger: the platform team ($developer).
 END
+cat > "$site/guide-owners.md" <<END
+# Who owns each guide now
+
+| Guide | Docs lead |
+|---|---|
+| upgrade | $docs_lead |
+| backup | $docs_lead |
+| contact and hosting pages | $head_of_service |
+END
 cat > "$site/changes.md" <<END
 # Changes to the service team
 
 - $appointed: $docs_lead takes over as docs lead from $former_lead, who moves to the programme
-  office. OWNERS.md to be updated.
+  office. Which guides move to the new docs lead is in guide-owners.md. OWNERS.md to be updated.
 - $(date -d '-60 days' '+%-d %B %Y'): the platform team takes over the trigger from the web agency.
 END
 cat > "$site/walkthroughs.md" <<END
