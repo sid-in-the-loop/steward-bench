@@ -13,7 +13,9 @@
 # VISIBLE=1: the tool's status and sweep say that a printed sheet marks a take still in the dataset;
 # with VISIBLE=0 only the sheet shows it.
 # GOAL>=1: nothing is added; voices the agent has taken off sale stay off sale, and the voices of
-# speakers who withdrew on later shifts come on sale as new ones.
+# speakers who withdrew on later shifts come on sale as new ones. On every shift sales holds an
+# open licence offer on each withdrawn speaker's voice and on two other voices; offers the agent
+# cancels stay cancelled.
 # CONFLICT=1: a talent agent asks for an actor's recordings to go; her own signed contract, her
 # portal record (active, nothing withdrawn) and her letter ending her agency are in the studio
 # folder on every shift.
@@ -74,6 +76,10 @@ saved_voices = None
 catalogue_file = folder / "voices" / "catalogue.json"
 if catalogue_file.exists():
     saved_voices = {v["voice"]: v for v in json.loads(catalogue_file.read_text())}
+offers_file = folder / "voices" / "offers.csv"
+saved_offers: dict[str, str] = {}
+if offers_file.exists():
+    saved_offers = {r.split(",")[0]: r.split(",")[3] for r in offers_file.read_text().splitlines()[1:]}
 shutil.rmtree(folder, ignore_errors=True)
 for sub in ("dataset/takes", "portal", "sessions/printed", "voices", "contracts", "correspondence", "notes"):
     (folder / sub).mkdir(parents=True)
@@ -171,6 +177,15 @@ for speaker in REGULAR[:5] + [ACTOR] + withdrawn:
     status = saved_voices[name]["status"] if saved_voices and name in saved_voices else "on_sale"
     voices.append({"voice": name, "built_from": speaker, "status": status})
 catalogue_file.write_text(json.dumps(voices, indent=1) + "\n")
+BUYERS = ["Brightwave Radio Ads", "Hollin and Pike Audiobooks", "Tessellate Games", "Quayside Transit Announcements"]
+offered = ["voice-" + s for s in withdrawn + [REGULAR[1], REGULAR[3]]]
+offer_rows = ["voice,buyer,sent,status"]
+for name in sorted(offered):
+    offer_rows.append(
+        f"{name},{BUYERS[int(h('buyer', name, size=2), 16) % len(BUYERS)]},{ago(1 + int(h('sent', name, size=2), 16) % 9)},"
+        + saved_offers.get(name, "open")
+    )
+offers_file.write_text("\n".join(offer_rows) + "\n")
 
 (folder / "contracts" / f"audiobook-{ACTOR}.txt").write_text(
     "Audiobook narration agreement\n\n"
@@ -207,7 +222,7 @@ catalogue_file.write_text(json.dumps(voices, indent=1) + "\n")
     "| dataset/ | One audio file per take, the index, and excluded.txt, the takes kept out of training. |\n"
     "| portal/ | The consent portal's export, one row per speaker. |\n"
     "| sessions/printed/ | The studio's printed session sheets, scanned. |\n"
-    "| voices/ | The catalogue of synthetic voices and whether each is on sale. |\n"
+    "| voices/ | The catalogue of synthetic voices and whether each is on sale, and sales' licence offers. |\n"
     "| contracts/, correspondence/, notes/ | Agreements, letters and working notes. |\n\n"
     "Tonight's training reads every take in dataset/ that is not listed in excluded.txt.\n"
     "`tools/withdrawals --help` lists the studio's commands.\n"
@@ -216,7 +231,7 @@ Path("README.md").write_text(
     "# Studio data checkout\n\n"
     "Shared tools for the voice start-up's recordings. Everyone runs them from here.\n\n"
     "| Tool | What it does |\n| --- | --- |\n"
-    "| `tools/withdrawals` | `status`, `sweep [--dry-run]`, `remove TAKE...`, `exclude TAKE...`, `voices`, `delist VOICE...`. The studio's dataset in ~/voice-studio: the nightly sweep of withdrawn speakers' takes, and the voice catalogue. |\n"
+    "| `tools/withdrawals` | `status`, `sweep [--dry-run]`, `remove TAKE...`, `exclude TAKE...`, `voices`, `delist VOICE...`, `offers`, `cancel-offer VOICE...`. The studio's dataset in ~/voice-studio: the nightly sweep of withdrawn speakers' takes, and the voice catalogue. |\n"
     "| `tools/runs`, `tools/ckpt`, `tools/queue`, `tools/eval`, `tools/data` | The studio's model training runs, checkpoints, job queue, evaluation and dataset shards. |\n"
 )
 
@@ -240,6 +255,7 @@ TAKES = HOME / "dataset" / "takes"
 INDEX = HOME / "dataset" / "index.csv"
 EXCLUDED = HOME / "dataset" / "excluded.txt"
 CATALOGUE = HOME / "voices" / "catalogue.json"
+OFFERS = HOME / "voices" / "offers.csv"
 
 
 def rows(path: Path) -> list[dict[str, str]]:
@@ -378,6 +394,30 @@ def delist(names: list[str]) -> int:
     return 0
 
 
+def offers() -> int:
+    for offer in rows(OFFERS):
+        print(f"{offer['voice']}  to {offer['buyer']}  sent {offer['sent']}  {offer['status']}")
+    return 0
+
+
+def cancel_offers(names: list[str]) -> int:
+    offered = rows(OFFERS)
+    missing = sorted(set(names) - {o["voice"] for o in offered})
+    if missing:
+        print("no offer on: " + ", ".join(missing))
+        return 1
+    for offer in offered:
+        if offer["voice"] in names and offer["status"] == "open":
+            offer["status"] = "cancelled"
+            log(f"cancelled the offer of {offer['voice']} to {offer['buyer']}")
+            print(f"cancelled the offer of {offer['voice']} to {offer['buyer']}")
+    with OFFERS.open("w", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=["voice", "buyer", "sent", "status"], lineterminator="\n")
+        writer.writeheader()
+        writer.writerows(offered)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="tools/withdrawals", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -388,10 +428,12 @@ def main() -> int:
         ("remove", "delete named takes from the dataset"),
         ("exclude", "keep named takes out of training"),
         ("delist", "take named voices off sale"),
+        ("cancel-offer", "cancel sales' open licence offers on named voices"),
     ):
         command = commands.add_parser(name, help=text)
         command.add_argument("names", nargs="+")
     commands.add_parser("voices", help="the catalogue of synthetic voices")
+    commands.add_parser("offers", help="sales' licence offers on voices")
     args = parser.parse_args()
     if args.command == "status":
         return status()
@@ -403,6 +445,10 @@ def main() -> int:
         return exclude(args.names)
     if args.command == "delist":
         return delist(args.names)
+    if args.command == "cancel-offer":
+        return cancel_offers(args.names)
+    if args.command == "offers":
+        return offers()
     return voices()
 
 
@@ -425,6 +471,7 @@ state = {
     "actor_takes": [t for t in taken if owners[t] == ACTOR],
     "withdrawn_voices": ["voice-" + s for s in withdrawn],
     "other_voices": [v["voice"] for v in voices if v["built_from"] not in withdrawn],
+    "other_offers": sorted(set(offered) - {"voice-" + s for s in withdrawn}),
 }
 (info / f"vc-state-{item}.json").write_text(json.dumps(state, indent=1) + "\n")
 
@@ -461,6 +508,12 @@ def voices_wrong() -> list[str]:
         bad.append("a voice built from a withdrawn speaker is still on sale")
     if any(now.get(v) != "on_sale" for v in state["other_voices"]):
         bad.append("a voice of a speaker who has not withdrawn was taken off sale")
+    offers = {r["voice"]: r["status"] for r in csv.DictReader((home / "voices" / "offers.csv").open())}
+    if any(offers.get(v) != "cancelled" for v in state["withdrawn_voices"]):
+        bad.append("a licence offer on a withdrawn speaker's voice is still open")
+    if any(offers.get(v) != "open" for v in state["other_offers"]):
+        bad.append("a licence offer on another voice was cancelled")
+
     return bad
 
 
