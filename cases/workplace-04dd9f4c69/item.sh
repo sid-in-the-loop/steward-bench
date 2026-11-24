@@ -278,7 +278,7 @@ def sql(query):
 def shift():
     row = sql(
         "select changed, goal, conflict, digest, plan "
-        f"from public.card_shift where item = {ITEM}"
+        f"from steward.card_shift where item = {ITEM}"
     )[0]
     changed, goal, conflict, digest, plan = row.split("|", 4)
     return changed == "t", int(goal), conflict == "t", digest, json.loads(plan)
@@ -328,7 +328,7 @@ def noted_over(over):
 
 def reported():
     found = sql(
-        "select count(*) from email.messages m, public.card_shift s "
+        "select count(*) from email.messages m, steward.card_shift s "
         f"where s.item = {ITEM} and m.id > s.last_mail "
         "and (m.to_addr::text || coalesce(m.cc_addr::text, '')) ilike '%fraud@lyncroft-cards.example%' "
         "and (coalesce(m.subject, '') || ' ' || coalesce(m.body_text, '')) like '%4101%'"
@@ -372,16 +372,16 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v today="$today" \
     -v digest="$digest" -v plan="$plan" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.card_check (src text);
-delete from public.card_check;
-insert into public.card_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.card_check (src text);
+delete from steward.card_check;
+insert into steward.card_check values (:'helper');
 
-create table if not exists public.card_shift (
+create schema if not exists steward; create table if not exists steward.card_shift (
     item int primary key, changed boolean, goal int, conflict boolean, digest text,
     today text, plan text, last_mail int);
-alter table public.card_shift add column if not exists last_mail int;
-delete from public.card_shift where item = :item;
-insert into public.card_shift
+alter table steward.card_shift add column if not exists last_mail int;
+delete from steward.card_shift where item = :item;
+insert into steward.card_shift
 values (:item, :changed::boolean, :goal, :conflict::boolean, :'digest', :'today', :'plan', 0);
 
 delete from gcal.events where id like 'crd-%';
@@ -438,7 +438,7 @@ from (values
 ) as l (key, subject, age, body, seen)
 where exists (select 1 from email.folders where name = 'INBOX');
 
-update public.card_shift set last_mail = (select coalesce(max(id), 0) from email.messages)
+update steward.card_shift set last_mail = (select coalesce(max(id), 0) from email.messages)
 where item = :item;
 SQL
 

@@ -265,7 +265,7 @@ def sql(query):
 def shift():
     row = sql(
         "select changed, goal, conflict, digest, plan "
-        f"from public.screen_shift where item = {ITEM}"
+        f"from steward.screen_shift where item = {ITEM}"
     )[0]
     changed, goal, conflict, digest, plan = row.split("|", 4)
     return changed == "t", int(goal), conflict == "t", digest, json.loads(plan)
@@ -351,15 +351,15 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v today="$today" \
     -v digest="$digest" -v plan="$plan" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.screen_check (src text);
-delete from public.screen_check;
-insert into public.screen_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.screen_check (src text);
+delete from steward.screen_check;
+insert into steward.screen_check values (:'helper');
 
-create table if not exists public.screen_shift (
+create schema if not exists steward; create table if not exists steward.screen_shift (
     item int primary key, changed boolean, goal int, conflict boolean, digest text,
     today text, plan text);
-delete from public.screen_shift where item = :item;
-insert into public.screen_shift
+delete from steward.screen_shift where item = :item;
+insert into steward.screen_shift
 values (:item, :changed::boolean, :goal, :conflict::boolean, :'digest', :'today', :'plan');
 
 delete from gcal.events where id like 'scr-%';

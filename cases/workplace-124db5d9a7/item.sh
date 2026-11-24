@@ -123,7 +123,7 @@ def sql(query):
 
 def shift():
     row = sql(
-        "select changed, goal, conflict, calendar_md5 from public.trip_shift "
+        "select changed, goal, conflict, calendar_md5 from steward.trip_shift "
         f"where item = {ITEM}"
     )[0].split("|")
     return row[0] == "t", int(row[1]), row[2] == "t", row[3]
@@ -207,9 +207,9 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v monday="$monday" -v sunday="$sunda
     -v leeds_day="$leeds_day" -v cancelled_on="$cancelled_on" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.trip_check (src text);
-delete from public.trip_check;
-insert into public.trip_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.trip_check (src text);
+delete from steward.trip_check;
+insert into steward.trip_check values (:'helper');
 
 delete from gcal.events where id like 'trip-%';
 insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
@@ -243,10 +243,10 @@ from (values
         'London', 4, 4, interval '14 hours', interval '15 hours')
 ) as e (key, summary, description, location, day, last_day, starts, ends);
 
-create table if not exists public.trip_shift (
+create schema if not exists steward; create table if not exists steward.trip_shift (
     item int primary key, changed boolean, goal int, conflict boolean, calendar_md5 text);
-delete from public.trip_shift where item = :item;
-insert into public.trip_shift
+delete from steward.trip_shift where item = :item;
+insert into steward.trip_shift
 select :item, :changed::boolean, :goal, :conflict::boolean,
        (select md5(string_agg(id || summary || extract(epoch from start_datetime)::text, '|' order by id))
         from gcal.events where id like 'trip-%');

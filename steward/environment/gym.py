@@ -24,6 +24,55 @@ from steward.execution.record import Action
 BRIDGE = Path(__file__).parent / "shims" / "gym_bridge"
 DATABASE = "toolathlon_gym"
 USER, PASSWORD = "eigent", "camel"
+# The agent's tool servers connect as a role without superuser rights, so a tool that passes
+# SQL through cannot read the steward schema, where a case keeps its shift flags and checks.
+AGENT_USER = "agent"
+PRIVATE_SCHEMA = "steward"
+SHARE_WITH_AGENT = f"""
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = '{AGENT_USER}') then
+    create role {AGENT_USER} login password '{PASSWORD}';
+  end if;
+end $$;
+grant connect, create, temporary on database {DATABASE} to {AGENT_USER};
+create schema if not exists {PRIVATE_SCHEMA};
+revoke all on schema {PRIVATE_SCHEMA} from public;
+do $$ declare s text; begin
+  for s in select nspname from pg_namespace
+      where nspname not like 'pg\\_%' and nspname not in ('information_schema', '{PRIVATE_SCHEMA}')
+  loop
+    execute format('grant usage, create on schema %I to {AGENT_USER}', s);
+    execute format('grant all on all tables in schema %I to {AGENT_USER}', s);
+    execute format('grant all on all sequences in schema %I to {AGENT_USER}', s);
+    execute format('grant execute on all functions in schema %I to {AGENT_USER}', s);
+    execute format('alter default privileges for role {USER} in schema %I '
+                   'grant all on tables to {AGENT_USER}', s);
+    execute format('alter default privileges for role {USER} in schema %I '
+                   'grant all on sequences to {AGENT_USER}', s);
+  end loop;
+end $$;
+alter default privileges for role {USER} revoke all on tables from {AGENT_USER};
+alter default privileges for role {USER} revoke all on sequences from {AGENT_USER};
+alter default privileges for role {USER} revoke execute on functions from {AGENT_USER};
+revoke all on all tables in schema {PRIVATE_SCHEMA} from {AGENT_USER};
+create or replace function public.share_new_schema() returns event_trigger
+language plpgsql as $$
+declare created record;
+begin
+  for created in select object_identity from pg_event_trigger_ddl_commands()
+      where command_tag = 'CREATE SCHEMA' and object_identity <> '{PRIVATE_SCHEMA}'
+  loop
+    execute format('grant usage, create on schema %s to {AGENT_USER}', created.object_identity);
+    execute format('alter default privileges for role {USER} in schema %s '
+                   'grant all on tables to {AGENT_USER}', created.object_identity);
+    execute format('alter default privileges for role {USER} in schema %s '
+                   'grant all on sequences to {AGENT_USER}', created.object_identity);
+  end loop;
+end $$;
+drop event trigger if exists share_new_schema;
+create event trigger share_new_schema on ddl_command_end when tag in ('CREATE SCHEMA')
+  execute function public.share_new_schema();
+"""
 SOCKET_DIRECTORY = "/var/run/postgresql"
 DATA_DIRECTORY = "/var/lib/postgresql/data"
 REPOSITORY_PARTS = ("main.py", "utils", "configs", "scripts")
@@ -83,17 +132,19 @@ class World:
             arguments += ["--bind", bind]
         return [*arguments, str(self.images.postgres), *command]
 
-    def tools(self, *command: str) -> list[str]:
+    def tools(self, *command: str, user: str = USER) -> list[str]:
+        """A command next to the tools. The agent's tool servers run as `AGENT_USER`; a case's
+        setup and checks keep the owner's rights."""
         environment = {
             "PGHOST": SOCKET_DIRECTORY,
             "PG_HOST": SOCKET_DIRECTORY,
             "PGPORT": "5432",
-            "PGUSER": USER,
+            "PGUSER": user,
             "PGPASSWORD": PASSWORD,
             "PGDATABASE": DATABASE,
             # The Canvas server reads its own names for the same connection.
             "PG_PORT": "5432",
-            "PG_USER": USER,
+            "PG_USER": user,
             "PG_PASSWORD": PASSWORD,
             "PG_DATABASE": DATABASE,
         }
@@ -169,9 +220,10 @@ class World:
         command = ["python", "/opt/gym_bridge", "--task_dir", self.task]
         if restored:
             command.append("--restored")
+        self.share_with_agent()
         log = (self.directory / "bridge.log").open("a")
         self.bridge = subprocess.Popen(
-            self.tools(*command),
+            self.tools(*command, user=AGENT_USER),
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=log,
@@ -179,6 +231,12 @@ class World:
         )
         self.description = TaskDescription.model_validate(self.read())
         return self.description
+
+    def share_with_agent(self) -> None:
+        """Give the agent's role every world schema, and none of the private one. A schema a
+        case's setup creates later is shared as it is created."""
+        share = self.query_command("psql", "-q", "-v", "ON_ERROR_STOP=1", "-d", DATABASE)
+        subprocess.run([*share, "-c", SHARE_WITH_AGENT], check=True, capture_output=True)
 
     def read(self) -> dict[str, Any]:
         assert self.bridge is not None and self.bridge.stdout is not None

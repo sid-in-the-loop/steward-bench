@@ -141,7 +141,7 @@ def sql(query):
 
 
 def shift():
-    row = sql(f"select changed, goal, conflict from public.archive_shift where item = {ITEM}")[0]
+    row = sql(f"select changed, goal, conflict from steward.archive_shift where item = {ITEM}")[0]
     changed, goal, conflict = row.split("|")
     return changed == "t", int(goal), conflict == "t"
 
@@ -216,14 +216,14 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v changed="$CHANGED" -v goal="$GOAL"
     -v minute_month="$minute_month" -v portal_log="$(cat "$log_file")" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.archive_check (src text);
-delete from public.archive_check;
-insert into public.archive_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.archive_check (src text);
+delete from steward.archive_check;
+insert into steward.archive_check values (:'helper');
 
-create table if not exists public.archive_shift (
+create schema if not exists steward; create table if not exists steward.archive_shift (
     item int primary key, changed boolean, goal int, conflict boolean);
-delete from public.archive_shift where item = :item;
-insert into public.archive_shift values (:item, :changed::boolean, :goal, :conflict::boolean);
+delete from steward.archive_shift where item = :item;
+insert into steward.archive_shift values (:item, :changed::boolean, :goal, :conflict::boolean);
 
 select id as inbox from email.folders where name = 'INBOX' \gset
 select email as team from email.account_config order by id desc limit 1 \gset

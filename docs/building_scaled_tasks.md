@@ -51,6 +51,11 @@ builder can validate it.
   only the checks read lives under /srv/git/origin.git/info, never in the agent's files. The
   session loop moves that folder's files out of the container while the agent acts and puts
   them back only for item scripts and checks, so no tool the agent runs may read them.
+  In a recorded world (Workplace) the checks' own tables, shift flags and helper source go in
+  the `steward` schema of the world's database. The agent's tool servers connect as the
+  `agent` role, which has every world schema and none of `steward`, so a tool that passes SQL
+  through (the Snowflake server does) cannot read them; item scripts and checks connect as the
+  owner and read them as before.
 - Use the environment's own tools where the idea touches them: the Software base's repository,
   remote and `gh` stand-in for code, branches, pull requests, issues and releases; the lab's
   runs, checkpoints, queue and registry for ML operations; the database through psql for

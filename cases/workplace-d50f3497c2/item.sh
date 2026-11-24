@@ -169,7 +169,7 @@ def sql(query):
 def shift():
     row = sql(
         "select changed, goal, conflict, digest, calendar_md5 "
-        f"from public.desk_shift where item = {ITEM}"
+        f"from steward.desk_shift where item = {ITEM}"
     )[0]
     changed, goal, conflict, digest, calendar = row.split("|")
     return changed == "t", int(goal), conflict == "t", digest, calendar
@@ -265,9 +265,9 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v today="$today" -v changed="$CHANGE
     -v conflict="$CONFLICT" -v helper="$helper" -v digest="$digest" -v tomorrow_text="$tomorrow_text" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.desk_check (src text);
-delete from public.desk_check;
-insert into public.desk_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.desk_check (src text);
+delete from steward.desk_check;
+insert into steward.desk_check values (:'helper');
 
 delete from gcal.events where id like 'bro-%';
 insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
@@ -301,10 +301,10 @@ select 'bro-promise', 'Ring back re BP-88213', 'Said on the phone I would ring b
        '{"email": "jolene@company.com", "displayName": "Jolene Hargreave"}'::jsonb
 where :changed::boolean;
 
-create table if not exists public.desk_shift (
+create schema if not exists steward; create table if not exists steward.desk_shift (
     item int primary key, changed boolean, goal int, conflict boolean, digest text, calendar_md5 text);
-delete from public.desk_shift where item = :item;
-insert into public.desk_shift
+delete from steward.desk_shift where item = :item;
+insert into steward.desk_shift
 select :item, :changed::boolean, :goal, :conflict::boolean, :'digest',
        (select md5(coalesce(string_agg(id || summary || extract(epoch from start_datetime)::text, '|' order by id), ''))
         from gcal.events where id like 'bro-%');

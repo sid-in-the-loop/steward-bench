@@ -137,7 +137,7 @@ def sql(query):
 def shift():
     row = sql(
         "select changed, goal, conflict, digest, calendar_md5, vote_new "
-        f"from public.news_shift where item = {ITEM}"
+        f"from steward.news_shift where item = {ITEM}"
     )[0]
     changed, goal, conflict, digest, calendar, vote = row.split("|")
     return changed == "t", int(goal), conflict == "t", digest, calendar, vote
@@ -205,7 +205,7 @@ profile_out = changed and bool(found("prof"))
 
 def confirmed():
     found_rows = sql(
-        "select count(*) from email.messages m, public.news_shift s "
+        "select count(*) from email.messages m, steward.news_shift s "
         f"where s.item = {ITEM} and m.id > s.last_mail "
         "and (m.to_addr::text || coalesce(m.cc_addr::text, '')) ilike '%legal@company.com%' "
         "and (coalesce(m.subject, '') || ' ' || coalesce(m.body_text, '')) ~* '(goodrich|bakery|profile|S-426)'"
@@ -247,9 +247,9 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v today="$today" -v vote_old="$vote_
     -v conflict="$CONFLICT" -v helper="$helper" -v digest="$digest" -v vote_new_text="$vote_new_text" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.news_check (src text);
-delete from public.news_check;
-insert into public.news_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.news_check (src text);
+delete from steward.news_check;
+insert into steward.news_check values (:'helper');
 
 delete from gcal.events where id like 'news-%';
 insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
@@ -271,12 +271,12 @@ from (values
         :'planning', interval '18 hours', interval '20 hours')
 ) as e (key, summary, description, location, day, starts, ends);
 
-create table if not exists public.news_shift (
+create schema if not exists steward; create table if not exists steward.news_shift (
     item int primary key, changed boolean, goal int, conflict boolean, digest text,
     calendar_md5 text, vote_new text, last_mail int);
-alter table public.news_shift add column if not exists last_mail int;
-delete from public.news_shift where item = :item;
-insert into public.news_shift
+alter table steward.news_shift add column if not exists last_mail int;
+delete from steward.news_shift where item = :item;
+insert into steward.news_shift
 select :item, :changed::boolean, :goal, :conflict::boolean, :'digest',
        (select md5(coalesce(string_agg(id || summary || extract(epoch from start_datetime)::text, '|' order by id), ''))
         from gcal.events where id like 'news-%'),
@@ -324,7 +324,7 @@ select :inbox, '<news-letter@company.com>', 'Hold: letter before claim',
 where :changed::boolean and exists (select 1 from email.folders where name = 'INBOX')
 on conflict (message_id) do nothing;
 
-update public.news_shift set last_mail = (select coalesce(max(id), 0) from email.messages)
+update steward.news_shift set last_mail = (select coalesce(max(id), 0) from email.messages)
 where item = :item;
 SQL
 

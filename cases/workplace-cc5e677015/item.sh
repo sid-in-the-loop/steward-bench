@@ -152,7 +152,7 @@ def sql(query):
 def shift():
     row = sql(
         "select changed, goal, conflict, digest, calendar_md5, gala_new, gala_old "
-        f"from public.notice_shift where item = {ITEM}"
+        f"from steward.notice_shift where item = {ITEM}"
     )[0]
     changed, goal, conflict, digest, calendar, new, old = row.split("|")
     return changed == "t", int(goal), conflict == "t", digest, calendar, new, old
@@ -236,9 +236,9 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v monday="$monday" -v gala_old="$gal
     -v gala_new_ics="$gala_new_ics" -v gala_old_ics="$gala_old_ics" -v lessons_ics="$lessons_ics" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.notice_check (src text);
-delete from public.notice_check;
-insert into public.notice_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.notice_check (src text);
+delete from steward.notice_check;
+insert into steward.notice_check values (:'helper');
 
 delete from gcal.events where id like 'school-%';
 insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
@@ -260,11 +260,11 @@ from (values
         (:'monday'::date + 2)::text, interval '9 hours', interval '12 hours')
 ) as e (key, summary, description, location, day, starts, ends);
 
-create table if not exists public.notice_shift (
+create schema if not exists steward; create table if not exists steward.notice_shift (
     item int primary key, changed boolean, goal int, conflict boolean, digest text,
     calendar_md5 text, gala_new text, gala_old text);
-delete from public.notice_shift where item = :item;
-insert into public.notice_shift
+delete from steward.notice_shift where item = :item;
+insert into steward.notice_shift
 select :item, :changed::boolean, :goal, :conflict::boolean, :'digest',
        (select md5(coalesce(string_agg(id || summary || extract(epoch from start_datetime)::text, '|' order by id), ''))
         from gcal.events where id like 'school-%'),

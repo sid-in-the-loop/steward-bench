@@ -122,7 +122,7 @@ def sql(query):
 
 def roster():
     people = {}
-    for line in sql("select name, team, days from public.desk_roster"):
+    for line in sql("select name, team, days from steward.desk_roster"):
         name, team, days = line.split("|")
         people[name] = (team, {int(day) for day in days.split(",")})
     return people
@@ -202,7 +202,7 @@ def reserved_kept(people, found):
 
 def untouched():
     row = sql(
-        "select attendance_sha, reserved_md5, changed from public.desk_shift "
+        "select attendance_sha, reserved_md5, changed from steward.desk_shift "
         f"where item = {ITEM}"
     )[0].split("|")
     digest = subprocess.run(
@@ -243,12 +243,12 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v monday="$monday" -v saturday="$sat
     -v attendance_sha="$(sha256sum "$workspace/Attendance_next_week.xlsx" | cut -d' ' -f1)" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.desk_check (src text);
-delete from public.desk_check;
-insert into public.desk_check values (:'helper');
-drop table if exists public.desk_roster;
-create table public.desk_roster (name text primary key, team text, days text);
-insert into public.desk_roster values
+create schema if not exists steward; create table if not exists steward.desk_check (src text);
+delete from steward.desk_check;
+insert into steward.desk_check values (:'helper');
+drop table if exists steward.desk_roster;
+create schema if not exists steward; create table steward.desk_roster (name text primary key, team text, days text);
+insert into steward.desk_roster values
     ('Jarek Olszewski', 'Flood case team', '0,1,3'),
     ('Imani Paxton', 'Flood case team', '0,1,2,3'),
     ('Pavel Nyman', 'Flood case team', '1,2,3'),
@@ -295,10 +295,10 @@ select 'floor-adjust-pn', 'Workplace adjustment: raised desk L1',
        '{"email": "facilities@company.com", "displayName": "Facilities"}'::jsonb,
        '{"email": "facilities@company.com", "displayName": "Facilities"}'::jsonb;
 
-create table if not exists public.desk_shift (
+create schema if not exists steward; create table if not exists steward.desk_shift (
     item int primary key, monday date, changed boolean, goal int, conflict boolean,
     attendance_sha text, reserved_md5 text);
-delete from public.desk_shift where item = :item;
+delete from steward.desk_shift where item = :item;
 
 insert into gcal.events (id, summary, description, location, start_datetime, start_timezone,
                          end_datetime, end_timezone, creator, organizer)
@@ -313,7 +313,7 @@ select 'floor-reserved', 'Workplace adjustment: raised desk L1',
        '{"email": "facilities@company.com", "displayName": "Facilities"}'::jsonb
 where :changed::boolean;
 
-insert into public.desk_shift
+insert into steward.desk_shift
 select :item, :'monday', :changed::boolean, :goal, :conflict::boolean, :'attendance_sha',
        (select md5(description) from gcal.events where id = 'floor-reserved');
 

@@ -199,7 +199,7 @@ def sql(query):
 def shift():
     row = sql(
         "select changed, goal, conflict, digest, today, hold_until, plan "
-        f"from public.listing_shift where item = {ITEM}"
+        f"from steward.listing_shift where item = {ITEM}"
     )[0]
     changed, goal, conflict, digest, today, hold, plan = row.split("|", 6)
     return (
@@ -307,15 +307,15 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v today="$today" -v hold_until="$hol
     -v digest="$digest" -v plan="$plan" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.listing_check (src text);
-delete from public.listing_check;
-insert into public.listing_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.listing_check (src text);
+delete from steward.listing_check;
+insert into steward.listing_check values (:'helper');
 
-create table if not exists public.listing_shift (
+create schema if not exists steward; create table if not exists steward.listing_shift (
     item int primary key, changed boolean, goal int, conflict boolean, digest text,
     today text, hold_until text, plan text);
-delete from public.listing_shift where item = :item;
-insert into public.listing_shift
+delete from steward.listing_shift where item = :item;
+insert into steward.listing_shift
 values (:item, :changed::boolean, :goal, :conflict::boolean, :'digest', :'today', :'hold_until', :'plan');
 
 delete from gcal.events where id like 'let-%';

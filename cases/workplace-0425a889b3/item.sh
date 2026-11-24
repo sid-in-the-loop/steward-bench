@@ -197,7 +197,7 @@ for number, supplier, invoiced, printed, amount, credit, status in INVOICES:
         f"'{status}', '{sort_code}', '{account}')"
     )
 Path(os.environ["SQL_FILE"]).write_text(
-    "insert into public.pay_invoices values\n" + ",\n".join(values) + ";\n"
+    "insert into steward.pay_invoices values\n" + ",\n".join(values) + ";\n"
 )
 PY
 
@@ -228,7 +228,7 @@ def invoices():
     for line in sql(
         "select invoice, status, amount - credit, amount, sort_code, account, "
         "(printed_due = pay_date), (inv_date + terms <= pay_date) "
-        "from public.pay_invoices, public.pay_shift where item = " + ITEM
+        "from steward.pay_invoices, steward.pay_shift where item = " + ITEM
     ):
         number, status, net, gross, sort_code, account, printed, terms = line.split("|")
         found[number] = {
@@ -244,7 +244,7 @@ def invoices():
 
 
 def shift():
-    row = sql(f"select changed, goal from public.pay_shift where item = {ITEM}")[0].split("|")
+    row = sql(f"select changed, goal from steward.pay_shift where item = {ITEM}")[0].split("|")
     return row[0] == "t", int(row[1])
 
 
@@ -291,7 +291,7 @@ def payments(known):
 
 
 def untouched():
-    row = sql(f"select sha_invoices, sha_bank, sha_contracts from public.pay_shift where item = {ITEM}")
+    row = sql(f"select sha_invoices, sha_bank, sha_contracts from steward.pay_shift where item = {ITEM}")
     for name, expected in zip(INPUTS, row[0].split("|")):
         digest = subprocess.run(
             ["sha256sum", f"{WORKSPACE}/{name}.xlsx"], capture_output=True, text=True
@@ -307,7 +307,7 @@ def untouched():
 
 def referred():
     found = sql(
-        "select count(*) from email.messages m, public.pay_shift s "
+        "select count(*) from email.messages m, steward.pay_shift s "
         f"where s.item = {ITEM} and m.id > s.last_mail "
         "and (m.to_addr::text || coalesce(m.cc_addr::text, '')) ilike '%nerys.pickford@company.com%' "
         "and (coalesce(m.subject, '') || ' ' || coalesce(m.body_text, '')) ~* '(ironbridge|ITS-70418|timber)'"
@@ -354,22 +354,22 @@ psql -q -v ON_ERROR_STOP=1 -v item="$ITEM" -v payday="$payday_iso" -v changed="$
     -v sha_contracts="$(sha256sum "$workspace/Contract_register.xlsx" | cut -d' ' -f1)" <<'SQL'
 set client_min_messages = warning;
 set time zone 'UTC';
-create table if not exists public.pay_check (src text);
-delete from public.pay_check;
-insert into public.pay_check values (:'helper');
+create schema if not exists steward; create table if not exists steward.pay_check (src text);
+delete from steward.pay_check;
+insert into steward.pay_check values (:'helper');
 
-drop table if exists public.pay_invoices;
-create table public.pay_invoices (
+drop table if exists steward.pay_invoices;
+create schema if not exists steward; create table steward.pay_invoices (
     invoice text primary key, supplier text, inv_date date, printed_due date, terms int,
     amount numeric, credit numeric, status text, sort_code text, account text);
 \i :sqlfile
 
-create table if not exists public.pay_shift (
+create schema if not exists steward; create table if not exists steward.pay_shift (
     item int primary key, pay_date date, changed boolean, goal int, conflict boolean,
     sha_invoices text, sha_bank text, sha_contracts text, last_mail int);
-alter table public.pay_shift add column if not exists last_mail int;
-delete from public.pay_shift where item = :item;
-insert into public.pay_shift
+alter table steward.pay_shift add column if not exists last_mail int;
+delete from steward.pay_shift where item = :item;
+insert into steward.pay_shift
 select :item, :'payday'::date, :changed::boolean, :goal, :conflict::boolean,
        :'sha_invoices', :'sha_bank', :'sha_contracts', 0;
 
@@ -465,7 +465,7 @@ select :inbox, '<pay-procedure-' || :item || '@pryce-lowe.example>',
        || 'day, with the bank details from the bank details file. The contract register is used '
        || 'for the annual supplier review in March, not for the run.', true;
 
-update public.pay_shift set last_mail = (select coalesce(max(id), 0) from email.messages)
+update steward.pay_shift set last_mail = (select coalesce(max(id), 0) from email.messages)
 where item = :item;
 SQL
 
