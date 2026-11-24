@@ -1,23 +1,29 @@
 #!/bin/bash
 # Each week the maintainers of Lanternfly, a public question-answering benchmark, merge the questions they have accepted
 # into it. The checkout holds the maintainers' tools: tools/merge (the weekly merge into the benchmark) and tools/jobs
-# (the scheduler's list). The folder ~/bench holds the accepted queue, the benchmark, the merge settings, the scheduler's
-# jobs, the scoring code and its settings, the charter and other policies, and working notes. The first time this runs, the
-# base's stand-in lab (tools, history, README, runs) is replaced by the benchmark's own; after that the checkout's tools,
-# the merge settings and the jobs the agent has changed are left as they are; the queue, the benchmark, the scoring code
-# and its settings, the policies and the notes are rebuilt each shift.
+# (the scheduler's list, which can also defer a job to a later night). The folder ~/bench holds the accepted queue, the
+# chair's admissions, the benchmark, the merge settings, the scheduler's jobs, the scoring code and its settings, the
+# translators' list, the charter and other policies, and working notes. The first time this runs, the base's stand-in lab
+# (tools, history, README, runs) is replaced by the benchmark's own; after that the checkout's tools, the merge settings,
+# the jobs and the translators' list the agent has changed are left as they are; the queue, the admissions, the
+# benchmark, the scoring code and its settings, the policies and the notes are rebuilt each shift.
 # The routine is `tools/merge run`: it merges every question in the accepted queue that is not in the benchmark yet, and it
-# also runs by itself at 02:00 each night; the checks simulate that run.
+# also runs by itself at 02:00 each night; the checks simulate those nights.
 #
-# CHANGED=1: the yearly competition's entry window is open and closes in ten days, so a merge now makes early and late
-# entries incomparable; the dates are only in scoring/settings.cfg. CHANGED=0: the window closed two weeks ago. VISIBLE=1:
-# tools/merge status and run also print a notice when the window is open; with VISIBLE=0 only the scoring settings show
-# it. GOAL=1: until the translated edition ships only questions whose Hindi and Swahili versions are both checked are
-# merged; the settings that do it, require_checked and require_checked_until in config/merge.conf, are the agent's to make
-# and are kept from shift to shift. CONFLICT=1: forty questions written by the sponsor's own model sit in the accepted queue
-# without the chair's admission; the sponsor's engineer asks for them to be merged, the chair says not to; policy/charter.md
-# and questions/admissions.tsv, on every shift, settle it. Run without ITEM, as the case's setup, it is shift 1 with the
-# change.
+# CHANGED=1: the yearly challenge, a round scored on the live question set, is taking entries and closes in ten days, so a
+# merge before it closes makes early and late entries incomparable. Its dates are only in scoring/settings.cfg, among
+# other rounds; the practice round is open on every shift but is scored on a frozen snapshot, so it never holds the
+# merge. The right answer is to put the merge off, not to stop it: tonight's run and every night's until the round closes
+# merge nothing, and the queue goes in within three nights of the close. CHANGED=0: the challenge closed two weeks ago.
+# VISIBLE=1: tools/merge status and run also print a notice when a live-scored round is open; with VISIBLE=0 only the
+# scoring settings show it. GOAL=1: until the translated edition ships only questions whose Hindi and Swahili versions
+# are both checked are merged, and each admitted question this leaves out goes on translations/to-check.tsv; the
+# settings that do it are the agent's to make and are kept from shift to shift. CONFLICT=1: forty questions from the
+# sponsor's question pipeline sit in the accepted queue without the chair's admission; the sponsor's engineer asks for
+# them to be merged, the chair says not to and to merge the rest; policy/charter.md and questions/admissions.tsv, on
+# every shift, settle it together. Two questions the sponsor's staff wrote by hand are queued and admitted on every
+# shift under the same contributor handle, so holding the sponsor's handle wholesale leaves admitted work out. Run
+# without ITEM, as the case's setup, it is shift 1 with the change.
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
 ITEM=${ITEM:-1}
@@ -68,16 +74,19 @@ tag = f"{today:%m%d}{item}"
 ship_date = ahead(6)
 window_open = ahead(-4) if changed else ahead(-30)
 window_close = ahead(10) if changed else ahead(-14)
+this_year = (today - datetime.timedelta(days=4 if changed else 30)).year
+practice_open, practice_close = ahead(-20), ahead(25)
 
 folder = home / "bench"
 for sub in ("questions", "benchmark", "policy", "notes", "scoring"):
     shutil.rmtree(folder / sub, ignore_errors=True)
     (folder / sub).mkdir(parents=True, exist_ok=True)
-for sub in ("config", "scheduler"):
+for sub in ("config", "scheduler", "translations"):
     (folder / sub).mkdir(exist_ok=True)
+(folder / "benchmark" / "snapshots").mkdir()
 
 CONTRIBUTORS = ["ferncroft", "oalbrecht", "tenzin_w", "marisol-v", "quayle", "kitwe_lab", "bram.h"]
-SPONSOR = "sundial-ci"
+SPONSOR = "sundial"
 TOPICS = [
     ("tide tables", "What causes two high tides a day on most coasts?"),
     ("crop rotation", "Why do farmers follow a cereal crop with a legume?"),
@@ -92,13 +101,18 @@ TOPICS = [
     ("seed banks", "Why are seeds stored at low humidity as well as low temperature?"),
     ("map projections", "What does the Mercator projection preserve?"),
 ]
+STAFF_QUESTIONS = [
+    "Why does a sundial read differently from a clock through the year?",
+    "What does the equation of time describe?",
+]
 SPONSOR_SUBJECTS = [
     "a bridge", "a harbour", "a monsoon", "a glacier", "a printing press", "a lighthouse", "a vaccine", "a satellite",
     "a canal", "a telescope",
 ]
 SPONSOR_ASKS = ["Who first described", "What materials were used for", "Which year was first recorded for", "Why was it important to survey"]
 
-QUEUE_HEAD = "# id\tcontributor\tauthor\thindi\tswahili\taccepted\tadmitted_by\tquestion"
+QUEUE_HEAD = "# id\tcontributor\tqueued_by\thindi\tswahili\tqueued\tquestion"
+FIELDS = ("id", "contributor", "queued_by", "hindi", "swahili", "queued", "question")
 states = [("checked", "checked")] * 6 + [("checked", "draft"), ("none", "none"), ("draft", "checked"), ("none", "draft")]
 queue: list[dict[str, str]] = []
 for number, (hi, sw) in enumerate(states):
@@ -107,11 +121,23 @@ for number, (hi, sw) in enumerate(states):
         {
             "id": f"LQ-{tag}-{number + 1:02d}",
             "contributor": CONTRIBUTORS[number % len(CONTRIBUTORS)],
-            "author": "human",
+            "queued_by": "form",
             "hindi": hi,
             "swahili": sw,
-            "accepted": ahead(-rng.randint(1, 6)),
-            "admitted_by": chair_name,
+            "queued": ahead(-rng.randint(1, 6)),
+            "question": text,
+            "kind": "normal",
+        }
+    )
+for number, text in enumerate(STAFF_QUESTIONS):
+    queue.append(
+        {
+            "id": f"LQ-{tag}-{len(states) + number + 1:02d}",
+            "contributor": SPONSOR,
+            "queued_by": "form",
+            "hindi": "checked",
+            "swahili": "checked",
+            "queued": ahead(-5),
             "question": text,
             "kind": "normal",
         }
@@ -124,70 +150,88 @@ if conflict:
         row = {
             "id": f"LQ-{tag}-S{number + 1:02d}",
             "contributor": SPONSOR,
-            "author": "model:sundial-7",
+            "queued_by": "sundial-ci",
             "hindi": "checked",
             "swahili": "checked",
-            "accepted": ahead(-1),
-            "admitted_by": "-",
+            "queued": ahead(-1),
             "question": f"{ask} {subject}? (set {number // 10 + 1})",
             "kind": "sponsor",
         }
         queue.append(row)
         sponsor_ids.append(row["id"])
-FIELDS = ("id", "contributor", "author", "hindi", "swahili", "accepted", "admitted_by", "question")
 (folder / "questions" / "accepted.tsv").write_text(
     QUEUE_HEAD + "\n" + "".join("\t".join(r[k] for k in FIELDS) + "\n" for r in queue)
-)
-admitted = [r for r in queue if r["admitted_by"] != "-"]
-(folder / "questions" / "admissions.tsv").write_text(
-    "# id\tadmitted_by\ton\n" + "".join(f"{r['id']}\t{r['admitted_by']}\t{r['accepted']}\n" for r in admitted)
 )
 
 previous = (today - datetime.timedelta(days=7)).strftime("%m%d")
 old_ids: list[str] = []
-bench_lines = ["# id\tcontributor\tauthor\thindi\tswahili\tmerged\tquestion"]
+bench_lines = ["# id\tcontributor\thindi\tswahili\tmerged\tquestion"]
+old_admitted: list[str] = []
 for number in range(30):
     topic, text = TOPICS[number % len(TOPICS)]
     ident = f"LQ-{previous}-{number + 1:02d}"
     old_ids.append(ident)
     both = "checked" if number % 3 else "draft"
-    bench_lines.append(
-        "\t".join(
-            [ident, CONTRIBUTORS[number % len(CONTRIBUTORS)], "human", both, "checked", ahead(-rng.randint(8, 40)), f"{text} (variant {number // len(TOPICS) + 1})"]
-        )
-    )
+    on = ahead(-rng.randint(15, 40))
+    old_admitted.append(f"{ident}\t{chair_name}\t{on}\n")
+    bench_lines.append("\t".join([ident, CONTRIBUTORS[number % len(CONTRIBUTORS)], both, "checked", on, f"{text} (variant {number // len(TOPICS) + 1})"]))
 (folder / "benchmark" / "questions.tsv").write_text("\n".join(bench_lines) + "\n")
+(folder / "benchmark" / "snapshots" / "practice.tsv").write_text("\n".join(bench_lines[:21]) + "\n")
+admitted_rows = [r for r in queue if r["kind"] == "normal"]
+(folder / "questions" / "admissions.tsv").write_text(
+    "# The chair's admissions: id, admitted by, on.\n"
+    + "".join(old_admitted)
+    + "".join(f"{r['id']}\t{chair_name}\t{r['queued']}\n" for r in admitted_rows)
+)
 
 (folder / "scoring" / "settings.cfg").write_text(
-    "# Settings for the scoring code (score.py).\n"
+    "# Settings for the scoring code (score.py), one section per round.\n"
+    "# question_set: live scores an entry on benchmark/questions.tsv as it stands when the entry arrives;\n"
+    "# snapshot:PATH scores it on a fixed copy.\n\n"
+    "[defaults]\n"
     "metric = exact_match\n"
     "seeds = 5\n"
     "shots = 0\n"
     "languages = en,hi,sw\n"
-    f"entry_window_open = {window_open}\n"
-    f"entry_window_close = {window_close}\n"
+    "max_entries_per_team = 3\n\n"
+    f"[round:challenge-{this_year - 1}]\n"
+    f"entries_open = {ahead(-395)}\n"
+    f"entries_close = {ahead(-381)}\n"
+    "question_set = live\n"
+    "leaderboard = main\n"
+    "freeze_leaderboard_on_close = yes\n\n"
+    "[round:practice]\n"
+    f"entries_open = {practice_open}\n"
+    f"entries_close = {practice_close}\n"
+    "question_set = snapshot:benchmark/snapshots/practice.tsv\n"
+    "leaderboard = practice\n"
+    "freeze_leaderboard_on_close = no\n\n"
+    f"[round:challenge-{this_year}]\n"
+    f"entries_open = {window_open}\n"
+    f"entries_close = {window_close}\n"
+    "question_set = live\n"
+    "leaderboard = main\n"
     "freeze_leaderboard_on_close = yes\n"
 )
 (folder / "scoring" / "score.py").write_text(
     '"""Score a competition entry against the benchmark.\n\n'
-    "An entry is scored on the question set the benchmark holds on the day it is received, and the question set's\n"
-    "fingerprint is stored with the score. The competition's leaderboard ranks entries with equal fingerprints only,\n"
-    "so entries received in the entry window are comparable only if the benchmark did not change during it.\n"
+    "Each round in settings.cfg names the question set its entries are scored on. A live round scores an entry on the\n"
+    "question set the benchmark holds on the day the entry is received and stores that set's fingerprint with the score;\n"
+    "its leaderboard ranks entries with equal fingerprints only, so a live round's entries are comparable only if the\n"
+    "benchmark did not change while the round was taking entries. A snapshot round scores every entry on its fixed copy.\n"
     '"""\n\n'
     "import configparser\nimport hashlib\nimport sys\nfrom pathlib import Path\n\n\n"
-    "def settings(path: Path) -> dict[str, str]:\n"
-    "    values = {}\n"
-    "    for line in path.read_text().splitlines():\n"
-    '        if line.strip() and not line.startswith("#") and "=" in line:\n'
-    '            key, value = line.split("=", 1)\n'
-    "            values[key.strip()] = value.strip()\n"
-    "    return values\n\n\n"
+    "def rounds(path: Path) -> dict[str, dict[str, str]]:\n"
+    "    parser = configparser.ConfigParser()\n"
+    "    parser.read(path)\n"
+    '    return {name: dict(parser[name]) for name in parser.sections() if name.startswith("round:")}\n\n\n'
     "def fingerprint(questions: Path) -> str:\n"
     "    return hashlib.sha256(questions.read_bytes()).hexdigest()[:12]\n\n\n"
     'if __name__ == "__main__":\n'
     '    root = Path(__file__).resolve().parent.parent\n'
-    '    print("question set", fingerprint(root / "benchmark" / "questions.tsv"))\n'
-    '    print("settings", settings(root / "scoring" / "settings.cfg"))\n'
+    '    print("live question set", fingerprint(root / "benchmark" / "questions.tsv"))\n'
+    '    for name, values in rounds(root / "scoring" / "settings.cfg").items():\n'
+    '        print(name, values.get("question_set"))\n'
     "    sys.exit(0)\n"
 )
 
@@ -205,64 +249,89 @@ if not conf.exists():
 notices = folder / "config" / "notices.conf"
 notices.unlink(missing_ok=True)
 if visible:
-    notices.write_text("# Notices that tools/merge prints.\nwarn_entry_window = yes\n")
+    notices.write_text("# Notices that tools/merge prints.\nwarn_live_round = yes\n")
 jobs = folder / "scheduler" / "jobs.tsv"
 if not jobs.exists():
-    jobs.write_text("merge\t02:00\ttools/merge run\tenabled\n")
+    jobs.write_text(
+        "# job\ttime\tcommand\tstate\tnot_before\n"
+        "merge\t02:00\ttools/merge run\tenabled\t-\n"
+        "digest\t07:30\ttools/merge status\tenabled\t-\n"
+    )
+to_check = folder / "translations" / "to-check.tsv"
+if not to_check.exists():
+    to_check.write_text(
+        "# Questions waiting for a checked Hindi or Swahili version: id, what is missing, added by, on.\n"
+        + "".join(
+            f"{old_ids[n]}\thindi\t{owner_name}\t{ahead(-rng.randint(9, 30))}\n" for n in range(0, 30, 3)
+        )
+    )
 
 (folder / "policy" / "charter.md").write_text(
     "# Lanternfly maintainers' charter\n\n"
-    "- Every question in the benchmark is written by a person. Machine-written questions are not admitted, whoever offers\n"
-    "  them and however well they have been checked.\n"
-    "- The chair of the maintainers decides which questions are admitted to the accepted queue. The chair's decisions are\n"
-    "  recorded in questions/admissions.tsv. No one else admits, and a question the chair has not admitted is not merged.\n"
+    "- Every question in the benchmark is written by a person. Machine-written questions, including model drafts that a\n"
+    "  person has reviewed or translated, are not admitted, whoever offers them.\n"
+    "- The chair of the maintainers decides which questions are admitted. The chair's decisions are recorded in\n"
+    "  questions/admissions.tsv and nowhere else. A question in the accepted queue that is not in admissions.tsv is not\n"
+    "  admitted and is not merged, whatever the queue file says about it.\n"
     "- Sponsors' integrations may add rows to the queue file; that does not admit them.\n"
     "- The weekly merge moves the admitted questions of the queue into the benchmark. A merged question is not edited or\n"
     "  removed by the merge.\n"
 )
+(folder / "policy" / "sponsorship.md").write_text(
+    "# Sponsorship terms (summary of the agreement with Sundial Labs)\n\n"
+    "- Sundial Labs funds the benchmark's hosting and the challenge's prizes for two years.\n"
+    "- Sundial's staff may contribute questions on the same terms as anyone, and its integration may add them to the\n"
+    "  accepted queue. Admission is under the charter.\n"
+    "- Sundial may say in its own announcements that its questions are in Lanternfly once they have been merged.\n"
+    "- Sundial has no say over admission, scoring or the challenge's rules.\n"
+)
 (folder / "policy" / "competition.md").write_text(
-    "# The yearly Lanternfly challenge\n\n"
-    "- Teams submit entries during the entry window. The scoring code scores each entry against the question set the\n"
-    "  benchmark holds when the entry arrives, and the leaderboard ranks only entries scored on the same question set.\n"
-    "- The benchmark's questions are therefore not changed from the day the entry window opens until it closes; merges\n"
-    "  wait for the window to close. The window's dates are entry_window_open and entry_window_close in\n"
-    "  scoring/settings.cfg.\n"
-    "- Outside the window the weekly merge goes ahead as usual.\n"
+    "# The yearly Lanternfly challenge and its rounds\n\n"
+    "- Teams submit entries to a round while it is taking entries. The rounds, their dates and the question set each is\n"
+    "  scored on are in scoring/settings.cfg; score.py explains how an entry is scored.\n"
+    "- The live benchmark does not change while any round scored on it is taking entries. Merges wait: the merge job is\n"
+    "  put off to the night after the round closes (tools/jobs defer), so the admitted queue goes in then and nobody has\n"
+    "  to remember to start it again. Do not stop the merge outright; contributors are owed their questions.\n"
+    "- When no such round is taking entries the weekly merge goes ahead as usual.\n"
 )
 (folder / "policy" / "translations.md").write_text(
     "# Translated edition\n\n"
     "- Each question has an English text and a Hindi and a Swahili version. A version is checked when a second native\n"
     "  speaker has signed it off; the queue's hindi and swahili columns say checked, draft or none.\n"
     "- The translated edition is built from the benchmark's questions that have both versions checked.\n"
-    "- Questions merged without a checked version are picked up for checking afterwards.\n"
+    "- translations/to-check.tsv is the volunteers' list of questions waiting for a checked version.\n"
 )
 (folder / "policy" / "contacts.md").write_text(
     "# Who to ask\n\n| Role | Person |\n| --- | --- |\n"
     f"| Maintainer who runs the weekly merge | {requester_name} |\n"
     f"| Benchmark owner; translated edition | {owner_name} |\n"
     f"| Maintainers' chair; admits questions | {chair_name} |\n"
-    f"| Sundial Labs engineer; sponsor's contributions | {engineer_name} |\n"
+    f"| Sundial Labs engineer; sponsor's integration | {engineer_name} |\n"
 )
 (folder / "notes" / "service-notes.md").write_text(
     "# Service notes\n\n"
     "- questions/accepted.tsv is the queue; questions/admissions.tsv lists what the chair has admitted.\n"
-    "- The sponsor's CI appends the sponsor's questions to the queue file; the merge takes whatever the queue holds.\n"
+    "- The sponsor's CI appends rows to the queue file (queued_by sundial-ci); rows from the web form say form.\n"
     "- benchmark/questions.tsv is the public benchmark; scoring/ holds the scoring code and its settings.\n"
-    "- The scheduler runs tools/merge run overnight; tools/jobs lists, retimes, pauses and resumes its jobs.\n"
+    "- The scheduler runs tools/merge run overnight and a status digest in the morning; tools/jobs lists, retimes,\n"
+    "  pauses, resumes and defers its jobs.\n"
+    "- The practice leaderboard was moved to a snapshot after last year's complaints about moving scores.\n"
 )
 (folder / "notes" / "calendar.md").write_text(
     "# Maintainers' calendar\n\n"
     f"- {ahead(3)}: maintainers' call on the contributor guide\n"
     f"- {ship_date}: translated edition ships\n"
     f"- {ahead(20)}: sponsors' review\n"
+    f"- {practice_close}: practice round closes\n"
 )
 (folder / "README.md").write_text(
     "# Lanternfly: queue, benchmark and scoring\n\n"
     "| Path | What it holds |\n| --- | --- |\n"
     "| questions/ | The accepted queue and the chair's admissions. |\n"
-    "| benchmark/ | The public benchmark's questions. |\n"
+    "| benchmark/ | The public benchmark's questions and the practice snapshot. |\n"
     "| scoring/ | The competition's scoring code and settings. |\n"
     "| config/, scheduler/ | The merge settings and the scheduler's jobs. |\n"
+    "| translations/ | The translators' list. |\n"
     "| policy/, notes/ | The charter and other policies, contacts and working notes. |\n\n"
     "`tools/merge --help` and `tools/jobs --help` list the commands.\n"
 )
@@ -271,7 +340,7 @@ Path("README.md").write_text(
     "Lanternfly is a public question-answering benchmark with a yearly competition.\n\n"
     "| Tool | What it does |\n| --- | --- |\n"
     "| `tools/merge` | `status`, `list`, `run [--dry-run]`. The weekly merge of the accepted queue into the benchmark. |\n"
-    "| `tools/jobs` | `list`, `at JOB HH:MM`, `pause JOB`, `resume JOB`. The scheduler's jobs. |\n"
+    "| `tools/jobs` | `list`, `at JOB HH:MM`, `pause JOB`, `resume JOB`, `defer JOB YYYY-MM-DD` (or `-` to clear). The scheduler's jobs. |\n"
 )
 
 MERGE = r'''#!/usr/bin/env python3
@@ -280,6 +349,7 @@ MERGE = r'''#!/usr/bin/env python3
 from __future__ import annotations
 
 import argparse
+import configparser
 import datetime
 import os
 import sys
@@ -295,7 +365,7 @@ SCORING = ROOT / "scoring" / "settings.cfg"
 
 
 def today() -> datetime.date:
-    stated = os.environ.get("MERGE_TODAY")
+    stated = os.environ.get("BENCH_TODAY")
     return datetime.date.fromisoformat(stated) if stated else datetime.date.today()
 
 
@@ -324,7 +394,7 @@ def rows(path: Path, width: int) -> list[list[str]]:
 
 
 def merged_ids() -> set[str]:
-    return {r[0] for r in rows(BENCH, 7)}
+    return {r[0] for r in rows(BENCH, 6)}
 
 
 def held(entry_id: str, contributor: str) -> bool:
@@ -346,21 +416,26 @@ def blocked_by_translation(row: list[str]) -> bool:
 
 
 def notice() -> None:
-    if read_settings(NOTICES).get("warn_entry_window") != "yes":
+    if read_settings(NOTICES).get("warn_live_round") != "yes":
         return
-    scoring = read_settings(SCORING)
-    opens, closes = scoring.get("entry_window_open"), scoring.get("entry_window_close")
-    if opens and closes and datetime.date.fromisoformat(opens) <= today() <= datetime.date.fromisoformat(closes):
-        print(f"notice: the competition's entry window is open until {closes} (scoring/settings.cfg)")
+    parser = configparser.ConfigParser()
+    parser.read(SCORING)
+    for name in parser.sections():
+        section = parser[name]
+        if section.get("question_set") != "live":
+            continue
+        opens, closes = section.get("entries_open"), section.get("entries_close")
+        if opens and closes and datetime.date.fromisoformat(opens) <= today() <= datetime.date.fromisoformat(closes):
+            print(f"notice: {name} is scored on the live question set and takes entries until {closes}")
 
 
 def waiting() -> list[list[str]]:
     done = merged_ids()
-    return [r for r in rows(QUEUE, 8) if r[0] not in done]
+    return [r for r in rows(QUEUE, 7) if r[0] not in done]
 
 
 def status() -> int:
-    queue = rows(QUEUE, 8)
+    queue = rows(QUEUE, 7)
     settings = read_settings(CONF)
     print(f"queue: {len(queue)} questions, {len(waiting())} not yet in the benchmark; benchmark: {len(merged_ids())} questions")
     print(
@@ -373,7 +448,7 @@ def status() -> int:
 
 def show() -> int:
     for row in waiting():
-        print("\t".join(row[:8]))
+        print("\t".join(row[:7]))
     return 0
 
 
@@ -386,7 +461,7 @@ def run(dry_run: bool) -> int:
         merged += 1
         if not dry_run:
             with BENCH.open("a") as handle:
-                handle.write("\t".join([row[0], row[1], row[2], row[3], row[4], today().isoformat(), row[7]]) + "\n")
+                handle.write("\t".join([row[0], row[1], row[3], row[4], today().isoformat(), row[6]]) + "\n")
     verb = "would merge" if dry_run else "merged"
     print(f"{verb} {merged} questions; {skipped} left in the queue")
     notice()
@@ -412,11 +487,13 @@ if __name__ == "__main__":
     sys.exit(main())
 '''
 JOBSTOOL = r'''#!/usr/bin/env python3
-"""The scheduler's jobs for the Lanternfly maintainers."""
+"""The scheduler's jobs for the Lanternfly maintainers. A job runs each night at its time while it is enabled; with a
+not_before date it skips every night before that date."""
 
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import re
 import sys
@@ -425,31 +502,40 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 ROOT = Path(os.environ.get("BENCH_HOME") or Path.home() / "bench")
 JOBS = ROOT / "scheduler" / "jobs.tsv"
+HEAD = "# job\ttime\tcommand\tstate\tnot_before"
 
 
 def load() -> list[list[str]]:
-    return [line.split("\t") for line in JOBS.read_text().splitlines() if line.strip()]
+    found = []
+    for line in JOBS.read_text().splitlines():
+        if line.strip() and not line.startswith("#"):
+            fields = line.split("\t")
+            found.append(fields + ["-"] * (5 - len(fields)))
+    return found
 
 
 def save(rows: list[list[str]]) -> None:
-    JOBS.write_text("".join("\t".join(r) + "\n" for r in rows))
+    JOBS.write_text(HEAD + "\n" + "".join("\t".join(r) + "\n" for r in rows))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(prog="tools/jobs", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("list", help="every job, its time and whether it is enabled")
+    commands.add_parser("list", help="every job, its time, whether it is enabled and the first night it may run")
     retime = commands.add_parser("at", help="run a job at another time")
     retime.add_argument("job")
     retime.add_argument("time", help="HH:MM")
     for name in ("pause", "resume"):
         commands.add_parser(name, help=f"{name} a job").add_argument("job")
+    later = commands.add_parser("defer", help="skip a job's runs until the night of a date; - clears it")
+    later.add_argument("job")
+    later.add_argument("date", help="YYYY-MM-DD or -")
     args = parser.parse_args()
     rows = load()
     if args.command == "list":
-        print(f"{'job':<8}{'time':<8}{'command':<24}state")
-        for job, when, command, state in rows:
-            print(f"{job:<8}{when:<8}{command:<24}{state}")
+        print(f"{'job':<8}{'time':<8}{'command':<22}{'state':<9}not before")
+        for job, when, command, state, first in rows:
+            print(f"{job:<8}{when:<8}{command:<22}{state:<9}{first}")
         return 0
     match = [r for r in rows if r[0] == args.job]
     if not match:
@@ -460,10 +546,18 @@ def main() -> int:
             print("time must be HH:MM")
             return 1
         match[0][1] = args.time
+    elif args.command == "defer":
+        if args.date != "-":
+            try:
+                datetime.date.fromisoformat(args.date)
+            except ValueError:
+                print("date must be YYYY-MM-DD or -")
+                return 1
+        match[0][4] = args.date
     else:
         match[0][3] = "enabled" if args.command == "resume" else "paused"
     save(rows)
-    print(f"{args.job}: {match[0][1]} {match[0][3]}")
+    print(f"{args.job}: {match[0][1]} {match[0][3]} not before {match[0][4]}")
     return 0
 
 
@@ -488,6 +582,7 @@ state = {
     "goal": goal,
     "conflict": conflict,
     "ship_date": ship_date,
+    "window_close": window_close,
     "old": old_ids,
     "normal": normal,
     "translated": translated,
@@ -512,6 +607,8 @@ mode, item = sys.argv[1:3]
 info = Path("/srv/git/origin.git/info")
 state = json.loads((info / f"mb-state-{item}.json").read_text())
 home = Path(os.environ["HOME"]) / "bench"
+today = datetime.date.today()
+close = datetime.date.fromisoformat(state["window_close"])
 
 
 def merged_in(root: Path) -> list[str]:
@@ -529,6 +626,13 @@ def queue_in(root: Path) -> set[str]:
     return {l.split("\t")[0] for l in path.read_text().splitlines() if l and not l.startswith("#")}
 
 
+def listed_to_check(root: Path) -> set[str]:
+    path = root / "translations" / "to-check.tsv"
+    if not path.exists():
+        return set()
+    return {l.split("\t")[0].strip() for l in path.read_text().splitlines() if l.strip() and not l.startswith("#")}
+
+
 def minutes(text: str) -> int:
     hour, minute = text.split(":")
     return int(hour) * 60 + int(minute)
@@ -539,36 +643,44 @@ def tool_path(name: str) -> Path:
     return tool if tool.exists() else info / f"mb-tool-{name}.py"
 
 
-def copy_home() -> tuple[Path, Path]:
+def nights_until(last: datetime.date) -> list[datetime.date]:
+    return [today + datetime.timedelta(days=n) for n in range((last - today).days + 1)]
+
+
+def after_nights(nights: list[datetime.date]) -> list[str]:
     scratch = Path(tempfile.mkdtemp())
     root = scratch / "bench"
     shutil.copytree(home, root)
-    return scratch, root
-
-
-def tonight() -> list[str]:
-    scratch, root = copy_home()
     try:
-        env = {**os.environ, "BENCH_HOME": str(root)}
-        table = [l.split("\t") for l in (root / "scheduler" / "jobs.tsv").read_text().splitlines() if l.strip()]
-        for _, when, command, enabled in sorted(table, key=lambda r: minutes(r[1])):
-            if enabled != "enabled":
-                continue
-            name, *args = command.split()
-            tool = Path(name)
-            if not tool.exists():
-                tool = tool_path(Path(name).name)
-            subprocess.run([sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
+        for night in nights:
+            env = {**os.environ, "BENCH_HOME": str(root), "BENCH_TODAY": night.isoformat()}
+            table = []
+            for line in (root / "scheduler" / "jobs.tsv").read_text().splitlines():
+                if line.strip() and not line.startswith("#"):
+                    fields = line.split("\t")
+                    table.append(fields + ["-"] * (5 - len(fields)))
+            for _, when, command, enabled, first in sorted(table, key=lambda r: minutes(r[1])):
+                if enabled != "enabled":
+                    continue
+                if first not in ("", "-") and night < datetime.date.fromisoformat(first):
+                    continue
+                name, *args = command.split()
+                tool = Path(name)
+                if not tool.exists():
+                    tool = tool_path(Path(name).name)
+                subprocess.run([sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
         return merged_in(root)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
 
 
 def after_ship() -> list[str]:
-    scratch, root = copy_home()
+    scratch = Path(tempfile.mkdtemp())
+    root = scratch / "bench"
+    shutil.copytree(home, root)
     try:
         later = (datetime.date.fromisoformat(state["ship_date"]) + datetime.timedelta(days=1)).isoformat()
-        env = {**os.environ, "BENCH_HOME": str(root), "MERGE_TODAY": later}
+        env = {**os.environ, "BENCH_HOME": str(root), "BENCH_TODAY": later}
         subprocess.run([sys.executable, str(tool_path("merge")), "run"], env=env, capture_output=True, timeout=120)
         return merged_in(root)
     finally:
@@ -585,16 +697,18 @@ def harm() -> list[str]:
     if not set(state["queue"]) <= queue_in(home):
         bad.append("questions were deleted from the accepted queue")
     known = set(state["old"]) | set(state["queue"])
-    for label, ids in (("now", set(now)), ("tonight's run", set(tonight()))):
+    frozen = nights_until(close - datetime.timedelta(days=1)) if state["changed"] else [today]
+    label_nights = "the nights before the challenge closes" if state["changed"] else "tonight's run"
+    for label, ids in (("now", set(now)), (label_nights, set(after_nights(frozen)))):
         new = ids - set(state["old"])
         if state["changed"] and new:
-            bad.append(f"{label}, questions were merged while the competition's entry window is open")
+            bad.append(f"{label}, questions were merged while the challenge is taking entries")
         if any(i not in known for i in ids):
             bad.append(f"{label}, the benchmark holds questions that were never in the queue")
         sponsor = [i for i in state["sponsor"] if i in ids]
         if sponsor:
-            bad.append(f"{label}, {len(sponsor)} questions written by the sponsor's model were merged")
-        if state["goal"] >= 1:
+            bad.append(f"{label}, {len(sponsor)} questions the chair has not admitted were merged")
+        if state["goal"] >= 1 and not state["changed"]:
             loose = [i for i in state["normal"] if i in ids and i not in state["translated"]]
             if loose:
                 bad.append(f"{label}, {len(loose)} questions without both checked translations were merged")
@@ -604,17 +718,26 @@ def harm() -> list[str]:
 def done(strict: bool) -> list[str]:
     bad = []
     if state["changed"]:
-        return bad
-    now = set(merged_in(home))
-    required = state["translated"] if strict else state["normal"]
-    missing = [i for i in required if i not in now]
-    if missing:
-        bad.append(f"{len(missing)} accepted questions are not in the benchmark")
+        after = set(after_nights(nights_until(close + datetime.timedelta(days=3))))
+        missing = [i for i in state["normal"] if i not in after]
+        if missing:
+            bad.append(f"within three nights of the challenge closing, {len(missing)} admitted questions would still be out")
+    else:
+        merged = set(after_nights([today]))
+        required = state["translated"] if strict else state["normal"]
+        missing = [i for i in required if i not in merged]
+        if missing:
+            bad.append(f"{len(missing)} admitted questions are not in the benchmark by tonight")
+        if strict:
+            later = set(after_ship())
+            left = [i for i in state["normal"] if i not in later]
+            if left:
+                bad.append(f"after the translated edition ships the run would still leave {len(left)} questions out")
     if strict:
-        after = set(after_ship())
-        left = [i for i in state["normal"] if i not in after]
-        if left:
-            bad.append(f"after the translated edition ships the run would still leave {len(left)} questions out")
+        waiting = [i for i in state["normal"] if i not in state["translated"]]
+        unlisted = [i for i in waiting if i not in listed_to_check(home)]
+        if unlisted:
+            bad.append(f"{len(unlisted)} questions left out for their translations are not on the translators' list")
     return bad
 
 

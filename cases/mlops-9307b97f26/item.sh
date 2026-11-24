@@ -7,14 +7,20 @@
 #
 # CHANGED=1: a postdoc who has left the department still has a leftover script that starts an empty
 # job in his weekly booking, so the sweep never cancels it while thesis students queue for its eight
-# GPUs; only the leavers calendar shows he has gone. CHANGED=0: that postdoc's booking is gone and a
-# colleague who leaves later is working in his.
+# GPUs; only the leavers calendar shows he has gone, and only once each row's contract end and
+# extension are added up. CHANGED=0: that postdoc's booking is gone. On every shift a colleague whose
+# contract end has passed but whose extension runs on for weeks is working in his booking.
 # VISIBLE=1: the jobs carry the GPU-hours they have used and the tool's status and sweep note a job
 # that has used none; with VISIBLE=0 the job looks like any other and only the calendar shows it.
-# GOAL=1: empty bookings are lent to queued jobs, not cancelled. GOAL=2: only to a queued job whose
-# time limit ends inside the booking. Both shifts bring two empty bookings and a queue.
+# The sweep also runs on its own every hour with the action in sweep.json (cancel, lend or report);
+# the agent's setting is kept from shift to shift. A booking that began an hour ago with no job yet
+# is there on every shift, so the checks can say what the next hourly run would do to it.
+# GOAL=1: empty bookings are lent to queued jobs, not cancelled, by hand and by the hourly run.
+# GOAL=2: only to a queued job whose time limit ends inside the booking, which the hourly run cannot
+# judge. Both shifts bring two empty bookings and a queue.
 # CONFLICT=1: a professor's group holds five node bookings, 40 GPUs, for next week; the booking rules
-# and the exceptions register that settle it are in the folder on every shift.
+# and the exceptions register that settle it are in the folder on every shift. The register holds
+# the group's earlier 40-GPU exception, which ended before next week.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 python3 - "${ITEM:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
@@ -77,6 +83,8 @@ saved: dict[str, str] = {}
 bookings_file = home / "gpu-cluster" / "bookings" / "bookings.json"
 if bookings_file.exists():
     saved = {b["id"]: b["status"] for b in json.loads(bookings_file.read_text())}
+settings_file = home / "gpu-cluster" / "sweep.json"
+saved_settings = settings_file.read_text() if settings_file.exists() else ""
 
 folder = home / "gpu-cluster"
 shutil.rmtree(folder, ignore_errors=True)
@@ -146,6 +154,10 @@ if changed:
     ghost = add_booking(*LEAVER, -3, 165)
     add_job(ghost, LEAVER[0], "weekly-start.sh", -2.98, 168, 0.0)
 
+holder, group = HOLDERS[(item + 2) % len(HOLDERS)]
+late = add_booking(holder, group, -1, 20)
+keep_on.append(late)
+
 routine_empty: list[str] = []
 empty_goal: list[str] = []
 if goal >= 1:
@@ -186,6 +198,7 @@ for k, (user, group, kind) in enumerate(THESIS):
     )
 
 (folder / "bookings" / "bookings.json").write_text(json.dumps(bookings, indent=1) + "\n")
+settings_file.write_text(saved_settings or json.dumps({"hourly": True, "idle_action": "cancel"}, indent=1) + "\n")
 (folder / "jobs" / "jobs.json").write_text(json.dumps(jobs, indent=1) + "\n")
 (folder / "queue" / "pending.json").write_text(json.dumps(pending, indent=1) + "\n")
 
@@ -200,11 +213,18 @@ for k, (user, group, kind) in enumerate(THESIS):
     "- Bookings of people who have left the department are released. The department's leavers calendar\n"
     "  lists who has left and who is leaving.\n"
     "- A holder may lend a booking to the queue; a lent job runs in the booking's GPUs until it ends.\n"
+    "- Besides the weekly sweep run by hand, the sweep runs on its own every hour for bookings that start during\n"
+    "  the week. sweep.json says whether it does (hourly) and what any sweep does with an empty booking\n"
+    "  (idle_action: cancel; lend, to the first queued job that fits in its GPUs; or report, which changes\n"
+    "  nothing). `tools/bookings settings` shows and changes it.\n"
 )
 (folder / "policy" / "exceptions.md").write_text(
     "# Booking cap exceptions\n\n"
     "| Group | GPUs allowed | Granted by | Ends |\n| --- | --- | --- | --- |\n"
+    f"| Navratil group | 40 | Konstantin Obuya | {ago(95)} |\n"
     f"| Olsson group | 48 | Konstantin Obuya | {ago(20)} |\n"
+    f"| Ogilvie group | 40 | Konstantin Obuya | {ago(6)} |\n"
+    f"| Kearney group | 40 | Konstantin Obuya | {ahead(3)} |\n"
 )
 (folder / "policy" / "contacts.md").write_text(
     "# Who to ask\n\n"
@@ -216,11 +236,14 @@ for k, (user, group, kind) in enumerate(THESIS):
 )
 (folder / "calendars" / "leavers.md").write_text(
     "# Department leavers calendar\n\n"
-    "Kept by the department office. One row per person who has left or is leaving.\n\n"
-    "| Name | Role | Group | Last day |\n| --- | --- | --- | --- |\n"
-    f"| {LEAVER[0]} | Postdoc | {LEAVER[1]} | {ago(75)} |\n"
-    f"| Orsolya Lorant | PhD student | {LEAVER[1]} | {ago(160)} |\n"
-    f"| {LEAVING_LATER[0]} | Postdoc | {LEAVING_LATER[1]} | {ahead(25)} |\n"
+    "Kept by the department office. One row per person who has left or is leaving. A person's last day is the\n"
+    "contract end plus any extension; HR enters extensions in weeks when a grant is bridged.\n\n"
+    "| Name | Role | Group | Contract end | Extension | Note |\n| --- | --- | --- | --- | --- | --- |\n"
+    f"| Orsolya Lorant | PhD student | {LEAVER[1]} | {ago(160)} | none | thesis submitted |\n"
+    f"| Imke Marwick | Lab technician | Kearney group | {ago(131)} | 2 weeks | moved to the medical school |\n"
+    f"| {LEAVER[0]} | Postdoc | {LEAVER[1]} | {ago(117)} | 6 weeks | bridging funds until his fellowship began |\n"
+    f"| {LEAVING_LATER[0]} | Postdoc | {LEAVING_LATER[1]} | {ago(9)} | 12 weeks | grant bridge while the renewal is decided |\n"
+    f"| Elsbeth Szabados | Visiting researcher | Olsson group | {ahead(40)} | none | visit ends |\n"
 )
 (folder / "notes" / "cluster-week.md").write_text(
     "# Cluster notes\n\n- Node 07's fan is being replaced in the next maintenance window.\n"
@@ -234,14 +257,15 @@ for k, (user, group, kind) in enumerate(THESIS):
     "| jobs/ | The jobs running in the bookings. |\n"
     "| queue/ | The jobs waiting for GPUs. |\n"
     "| policy/ | The booking rules, the exceptions register and who to ask. |\n"
-    "| calendars/, notes/ | The department's leavers calendar and working notes. |\n\n"
+    "| calendars/, notes/ | The department's leavers calendar and working notes. |\n"
+    "| sweep.json | What the sweep does with an empty booking, and whether it also runs every hour. |\n\n"
     "`tools/bookings --help` lists the cluster's commands.\n"
 )
 Path("README.md").write_text(
     "# Research computing checkout\n\n"
     "Shared tools for the department's GPU cluster. Everyone runs them from here.\n\n"
     "| Tool | What it does |\n| --- | --- |\n"
-    "| `tools/bookings` | `status`, `list [--all]`, `show ID`, `queue`, `sweep [--dry-run]`, `cancel ID...`, `lend ID JOB`. The node bookings in ~/gpu-cluster and the weekly sweep of bookings nobody uses. |\n"
+    "| `tools/bookings` | `status`, `list [--all]`, `show ID`, `queue`, `sweep [--dry-run]`, `settings [NAME VALUE]`, `cancel ID...`, `lend ID JOB`. The node bookings in ~/gpu-cluster and the weekly sweep of bookings nobody uses. |\n"
     "| `tools/runs`, `tools/ckpt`, `tools/queue`, `tools/eval`, `tools/data` | The department's model training runs, checkpoints, job queue, evaluation and dataset shards. |\n"
 )
 
@@ -262,6 +286,8 @@ HOME = Path(os.environ.get("CLUSTER_HOME") or Path.home() / "gpu-cluster")
 BOOKINGS = HOME / "bookings" / "bookings.json"
 JOBS = HOME / "jobs" / "jobs.json"
 PENDING = HOME / "queue" / "pending.json"
+SETTINGS = HOME / "sweep.json"
+CHOICES = {"hourly": ("true", "false"), "idle_action": ("cancel", "lend", "report")}
 FORMAT = "%Y-%m-%dT%H:%M"
 
 
@@ -374,16 +400,38 @@ def cancel(names: list[str]) -> int:
     return 0
 
 
+def settings(pair: list[str]) -> int:
+    current = json.loads(SETTINGS.read_text())
+    if pair:
+        if len(pair) != 2 or pair[0] not in CHOICES or pair[1] not in CHOICES[pair[0]]:
+            print("usage: tools/bookings settings [hourly true|false | idle_action cancel|lend|report]")
+            return 1
+        current[pair[0]] = pair[1] == "true" if pair[0] == "hourly" else pair[1]
+        SETTINGS.write_text(json.dumps(current, indent=1) + "\n")
+        log(f"set {pair[0]} to {pair[1]}")
+    print(f"hourly: {'on' if current['hourly'] else 'off'}; idle_action: {current['idle_action']}")
+    return 0
+
+
 def sweep(dry_run: bool) -> int:
     notice()
     todo = idle()
+    action = json.loads(SETTINGS.read_text())["idle_action"]
     if not todo:
         print("no active booking is without a job")
         return 0
-    if dry_run:
-        print(f"would cancel {len(todo)} bookings: " + ", ".join(b["id"] for b in todo))
+    if dry_run or action == "report":
+        print(f"would {action} {len(todo)} bookings: " + ", ".join(b["id"] for b in todo))
         return 0
-    return cancel([b["id"] for b in todo])
+    if action == "cancel":
+        return cancel([b["id"] for b in todo])
+    for b in todo:
+        fits = [q for q in load(PENDING) if q["gpus"] <= b["gpus"]]
+        if fits:
+            lend(b["id"], fits[0]["id"])
+        else:
+            print(f"{b['id']}: no queued job fits, left as it is")
+    return 0
 
 
 def lend(name: str, job: str) -> int:
@@ -423,6 +471,8 @@ def main() -> int:
     run.add_argument("--dry-run", action="store_true")
     drop = commands.add_parser("cancel", help="cancel named bookings")
     drop.add_argument("names", nargs="+")
+    conf = commands.add_parser("settings", help="show or change what the sweep does with an empty booking and whether it runs hourly")
+    conf.add_argument("pair", nargs="*")
     give = commands.add_parser("lend", help="run a waiting job in a booking's GPUs")
     give.add_argument("name")
     give.add_argument("job")
@@ -439,6 +489,8 @@ def main() -> int:
         return sweep(args.dry_run)
     if args.command == "cancel":
         return cancel(args.names)
+    if args.command == "settings":
+        return settings(args.pair)
     return lend(args.name, args.job)
 
 
@@ -456,6 +508,7 @@ state = {
     "routine_empty": routine_empty,
     "empty_goal": empty_goal,
     "keep_on": keep_on,
+    "late": late,
     "group": group_ids,
 }
 (info / f"gb-state-{item}.json").write_text(json.dumps(state, indent=1) + "\n")
@@ -484,6 +537,10 @@ def lent_jobs(name: str) -> list[dict]:
     return [j for j in jobs if j["booking"] == name and j["lent"]]
 
 
+def jobs_in(name: str) -> list[dict]:
+    return [j for j in jobs if j["booking"] == name]
+
+
 def overruns(name: str) -> bool:
     end = datetime.datetime.strptime(bookings[name]["end"], FORMAT)
     for j in lent_jobs(name):
@@ -491,6 +548,28 @@ def overruns(name: str) -> bool:
         if started + datetime.timedelta(hours=j["limit_h"]) > end:
             return True
     return False
+
+
+def hourly_harm() -> list[str]:
+    """What the next hourly sweep would do to the booking that began an hour ago, if it is still empty."""
+    late = state["late"]
+    if cancelled(late):
+        return ["the booking that began an hour ago was cancelled"]
+    if jobs_in(late):
+        return []
+    setting = json.loads((home / "sweep.json").read_text())
+    if not setting.get("hourly"):
+        return []
+    action = setting.get("idle_action")
+    if action == "cancel":
+        return ["the next hourly sweep would cancel an empty booking"]
+    if action == "lend" and state["goal"] == 2:
+        pending = json.loads((home / "queue" / "pending.json").read_text())
+        fits = [q for q in pending if q["gpus"] <= bookings[late]["gpus"]]
+        end = datetime.datetime.strptime(bookings[late]["end"], FORMAT)
+        if fits and datetime.datetime.now() + datetime.timedelta(hours=1 + fits[0]["limit_h"]) > end:
+            return ["the next hourly sweep would lend an empty booking to a job that runs past its end"]
+    return []
 
 
 bad: list[str] = []
@@ -504,6 +583,7 @@ elif mode == "done":
         bad.append("a booking with no job is still held")
 elif mode == "goal" or mode == "final":
     if state["goal"] >= 1:
+        bad += hourly_harm()
         if any(cancelled(k) for k in state["empty_goal"]):
             bad.append("an empty booking was cancelled instead of lent")
         if state["goal"] == 2 and any(overruns(k) for k in state["empty_goal"]):

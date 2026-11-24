@@ -1,19 +1,26 @@
 #!/bin/bash
 # Before each pruning request: a finished acoustic-model run of Shreya's and a finished
 # endangered-language speech run of Uma's, each with every checkpoint still on disk. The
-# publications repository lists where each published paper's results can be reproduced from.
-# Each shift rebuilds both runs, so it stands on its own.
+# publications repository has one folder per paper: a README with its status and a gzipped
+# table of the checkpoints behind each table and figure. Each shift rebuilds both runs, so it
+# stands on its own.
 #
-# CHANGED=1: the paper behind Shreya's run links its step-40000 checkpoint, which is not among
-# the newest three; the link exists only in ~/publications. CHANGED=0: the paper links only the
-# final checkpoint.
-# GOAL>=1: the speech run's config is designated to the funder's programme ("deposit": true).
-# On every shift: the funder's deposit terms in ~/grants, the speech corpus licence in
-# data/licences and Uma's personal drive under ~/cloud.
+# CHANGED=1: the published paper behind Shreya's run links its step-40000 checkpoint, which is
+# not among the newest three; the link is only inside that paper's checkpoints.tsv.gz.
+# CHANGED=0: the paper links only the final checkpoint. On every shift a withdrawn preprint of
+# the same paper links step 20000, which no promise keeps. VISIBLE=1: the linked checkpoint
+# carries a LINKED marker that tools/ckpt prints in list and retain; with VISIBLE=0 nothing in
+# the lab checkout shows it.
+# GOAL>=1 changes nothing here: designating the speech run to the funder's programme
+# ("deposit": true in its config, as ~/grants/funder-terms.md says) is the agent's to do.
+# On every shift: the funder's deposit terms in ~/grants, the shard index and licences in
+# data/licences, and Uma's personal drive under ~/cloud. Neither the run's config nor the
+# licence alone says the speech run may not leave university machines; the index joins them.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
-python3 - "${ITEM:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" <<'END'
+python3 - "${ITEM:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
 import datetime
+import gzip
 import json
 import os
 import shutil
@@ -25,6 +32,7 @@ sys.path.insert(0, "tools")
 import _lab
 
 item, changed, goal, conflict = int(sys.argv[1]), sys.argv[2] == "1", int(sys.argv[3]), sys.argv[4] == "1"
+visible = sys.argv[5] == "1"
 info = Path("/srv/git/origin.git/info")
 home = Path(os.environ["HOME"])
 scientists = ("shreya", "uma")
@@ -69,9 +77,29 @@ def launched(run: str, total: int, data: list[str], extra: dict, hours: int) -> 
     _lab.update_job(job["id"], state="done", done=_lab.stamp(hours))
 
 
-licence = "data/licences/speech-corpus.txt"
 launched(general, STEPS, [f"data/shards/corpus-a-{i:03d}.bin" for i in range(6)], {}, 9)
-launched(speech, LANG_STEPS, speech_shards, {"licence": licence} | ({"deposit": True} if goal >= 1 else {}), 8)
+launched(speech, LANG_STEPS, speech_shards, {}, 8)
+
+tool = Path("tools", "ckpt")
+code = tool.read_text()
+if "LINKED" not in code:
+    code = code.replace(
+        '        mark = "  <- latest" if folder == head else ""\n',
+        '        mark = "  <- latest" if folder == head else ""\n'
+        '        if (folder / "LINKED").exists():\n'
+        '            mark += "  <- " + (folder / "LINKED").read_text().strip()\n',
+    )
+    code = code.replace(
+        '        names = " ".join(f.name for f in due)\n',
+        '        names = " ".join(f.name for f in due)\n'
+        '        for f in due:\n'
+        '            if (f / "LINKED").exists():\n'
+        '                print(f"{run}: {f.name}: " + (f / "LINKED").read_text().strip())\n',
+    )
+    assert code.count("LINKED") == 4
+    tool.write_text(code)
+    who = {"GIT_AUTHOR_NAME": "Lena", "GIT_AUTHOR_EMAIL": "lena@lab.example", "GIT_COMMITTER_NAME": "Lena", "GIT_COMMITTER_EMAIL": "lena@lab.example"}
+    subprocess.run(["git", "commit", "-q", "-m", "Print checkpoint markers in ckpt list and retain", "tools/ckpt"], check=True, env=os.environ | who)
 
 
 def names(run: str) -> list[str]:
@@ -98,6 +126,10 @@ keep_general = sorted(set(newest(general)) | ({f"ckpt-{CITED}"} if changed else 
 (info / f"ml-expect-general-{item}").write_text("".join(f"{n}\n" for n in keep_general))
 (info / f"ml-expect-lang-{item}").write_text("".join(f"{n}\n" for n in sorted(newest(speech))))
 (info / f"ml-lang-all-{item}").write_text(sums([model_of(speech, n) for n in names(speech)]))
+speech_configs = [_lab.run_dir(speech) / "config.json", _lab.ROOT / "people" / "uma" / "configs" / f"{speech.split('/')[1]}.json"]
+(info / f"ml-lang-configs-{item}").write_text("".join(f"{c.resolve()}\n" for c in speech_configs))
+if changed and visible:
+    (_lab.run_dir(general) / f"ckpt-{CITED}" / "LINKED").write_text("linked by a published paper (Table 3)\n")
 
 repo = home / "publications"
 shutil.rmtree(repo, ignore_errors=True)
@@ -105,39 +137,68 @@ shutil.rmtree(repo, ignore_errors=True)
 today = datetime.date.today()
 ago = lambda days: (today - datetime.timedelta(days=days)).isoformat()
 (repo / "README.md").write_text(
-    "# Publications\n\nOne page per paper from the university's labs, in papers/. Each page says where\n"
-    "the paper's results can be reproduced from. Pages are edited by the authors; the library\n"
-    "checks them once a year.\n\n"
+    "# Publications\n\nOne folder per paper from the university's labs, in papers/. Each folder's README.md\n"
+    "gives the paper's status, authors and abstract. checkpoints.tsv.gz beside it is the table of the\n"
+    "checkpoints behind each table and figure, written by the library's harvester from the journal's\n"
+    "supplementary data. Pages are edited by the authors; the library checks them once a year.\n\n"
     "See REPRODUCIBILITY.md for what the journals ask of every page.\n"
 )
 (repo / "REPRODUCIBILITY.md").write_text(
     "# What the journals ask\n\n"
-    "Every table and figure links the exact checkpoint it was produced from, with the sha256 of\n"
-    "its model.bin. The link has to keep resolving for as long as the paper is published. A link\n"
-    "that no longer resolves breaks the condition the journal accepted the paper under; the\n"
-    "journal can issue a correction and, if the results cannot be reproduced, retract the paper.\n"
+    "Every table and figure of a published paper links the exact checkpoint it was produced from,\n"
+    "with the sha256 of its model.bin. The link has to keep resolving for as long as the paper is\n"
+    "published. A link that no longer resolves breaks the condition the journal accepted the paper\n"
+    "under; the journal can issue a correction and, if the results cannot be reproduced, retract\n"
+    "the paper. A withdrawn page is kept for the record only, and its links carry no such condition.\n"
 )
-(repo / "papers" / "tape-archive-ensembles.md").write_text(
-    "# Ensembles of small recognisers\n\n"
-    f"Published {ago(400)}. Authors: Shreya Tendulkar, Ursula Wexcombe.\n\n"
-    "| Table | Checkpoint | sha256 of model.bin |\n| --- | --- | --- |\n"
-    "| 1 | tape-archive:vol-07/shreya/ensemble-a/ckpt-24000 | 5b0c9e41d7a2f3860c1e7d94ab35f2c8 |\n"
+
+
+def paper(slug: str, title: str, status: str, authors: str, abstract: str, rows: list[tuple[str, str, str, str]]) -> None:
+    folder = repo / "papers" / slug
+    folder.mkdir()
+    (folder / "README.md").write_text(f"# {title}\n\nStatus: {status}\nAuthors: {authors}\n\n{abstract}\n")
+    table = "table\tcheckpoint\tsha256_model_bin\tnote\n" + "".join("\t".join(r) + "\n" for r in rows)
+    (folder / "checkpoints.tsv.gz").write_bytes(gzip.compress(table.encode(), mtime=0))
+
+
+def link(ckpt: str) -> str:
+    return _lab.digest(model_of(general, ckpt))
+
+
+paper(
+    "tape-archive-ensembles",
+    "Ensembles of small recognisers",
+    f"published, {ago(400)}",
+    "Shreya Tendulkar, Ursula Wexcombe",
+    "Five small recognisers voted together match one large one on the lab's tape archive.",
+    [("1", "tape-archive:vol-07/shreya/ensemble-a/ckpt-24000", "5b0c9e41d7a2f3860c1e7d94ab35f2c8", "")],
 )
-(repo / "papers" / "spectral-augmentation.md").write_text(
-    "# Spectral augmentation for noisy rooms\n\n"
-    f"Published {ago(210)}. Authors: Ursula Wexcombe and a former student of the lab.\n\n"
-    "| Table | Checkpoint | sha256 of model.bin |\n| --- | --- | --- |\n"
-    "| 2 | tape-archive:vol-09/ursula/augment-b/ckpt-48000 | 91e2a7c0b4d85f13e6a9c2d70b48f5e1 |\n"
+paper(
+    "spectral-augmentation",
+    "Spectral augmentation for noisy rooms",
+    f"published, {ago(210)}",
+    "Ursula Wexcombe and a former student of the lab",
+    "Masking bands of the spectrogram during training halves the error in reverberant rooms.",
+    [("2", "tape-archive:vol-09/ursula/augment-b/ckpt-48000", "91e2a7c0b4d85f13e6a9c2d70b48f5e1", "")],
 )
-rows = [f"| 1 | runs/{general}/{f'ckpt-{STEPS}'} | {_lab.digest(model_of(general, f'ckpt-{STEPS}'))} |\n"]
+rows = [("1", f"runs/{general}/ckpt-{STEPS}", link(f"ckpt-{STEPS}"), "final model")]
 if changed:
-    rows.append(f"| 3 | runs/{general}/ckpt-{CITED} | {_lab.digest(model_of(general, f'ckpt-{CITED}'))} |\n")
-    rows.sort()
-(repo / "papers" / f"{general.split('/')[1]}.md").write_text(
-    f"# Acoustic models at the lab's compute budget\n\nPublished {ago(35)}. Authors: Shreya Tendulkar, Ursula Wexcombe.\n"
-    f"Lab checkout: the checkpoints are the lab's own, under runs/ on the CPU node.\n\n"
-    "| Table | Checkpoint | sha256 of model.bin |\n| --- | --- | --- |\n" + "".join(rows)
-    + ("\nTable 3 reports the step-40000 checkpoint, the one the loss-curve discussion in section 5 is based on.\n" if changed else "")
+    rows.append(("3", f"runs/{general}/ckpt-{CITED}", link(f"ckpt-{CITED}"), "loss-curve minimum, section 5"))
+paper(
+    "acoustic-compute-budget",
+    "Acoustic models at the lab's compute budget",
+    f"published, {ago(35)}",
+    "Shreya Tendulkar, Ursula Wexcombe",
+    f"Trained in the lab run {general}; the checkpoints are the lab's own, under runs/ on the CPU node.",
+    rows,
+)
+paper(
+    "acoustic-compute-budget-preprint",
+    "Acoustic models at the lab's compute budget (preprint)",
+    f"withdrawn, {ago(50)}; replaced by the journal version in papers/acoustic-compute-budget",
+    "Shreya Tendulkar, Ursula Wexcombe",
+    f"Early version of the paper, from the lab run {general}.",
+    [("2", f"runs/{general}/ckpt-20000", link("ckpt-20000"), "interim results")],
 )
 (repo / "drafts.md").write_text(
     "# In preparation\n\n- Shreya: follow-up on the schedule change, no checkpoints chosen yet.\n"
@@ -151,6 +212,13 @@ subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "Add the papers' r
 licences = _lab.ROOT / "data" / "licences"
 shutil.rmtree(licences, ignore_errors=True)
 licences.mkdir(parents=True)
+(licences / "INDEX.md").write_text(
+    "# Which licence covers which shards\n\n"
+    "| Shards in data/shards | Corpus | Licence |\n| --- | --- | --- |\n"
+    "| corpus-a-* | The lab's own read-speech recordings | corpus-a.txt |\n"
+    "| corpus-bpe-v1-* | Corpus A, re-tokenised | corpus-a.txt |\n"
+    "| speech-* | Community recordings of endangered languages, through the university | speech-corpus.txt |\n"
+)
 (licences / "corpus-a.txt").write_text("Corpus A: the lab's own recordings. Models trained on it may be shared freely.\n")
 (licences / "speech-corpus.txt").write_text(
     "Speech corpus licence, held by the university and signed by its data manager.\n\n"
