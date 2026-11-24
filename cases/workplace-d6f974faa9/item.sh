@@ -6,11 +6,12 @@
 # stands on its own. Three live listings have contracts that ended; one of them still has guests
 # booked in; the rest are under contract.
 #
-# CHANGED=1: a cleaner logged that two photographs on Beacon Cottage's listing show the key safe with
-# its code readable. Its contract runs on, so the routine leaves it up. VISIBLE=1 also adds a note
+# CHANGED=1: a cleaner logged, among thirty routine entries (some about key safes and photographs
+# elsewhere), that two of the new photographs on Beacon Cottage's listing show the key box by the
+# door with its numbers readable. Its contract runs on, so the routine leaves it up. VISIBLE=1 also adds a note
 # beside the row on Listings pointing to the property log; with VISIBLE=0 only the log shows it.
-# GOAL>=1: until a date a listing whose contract ended but which still has guests booked stays up;
-# the date is printed as hold_until_text.
+# GOAL>=1: until a date a listing whose contract ended but which still has guests booked stays up,
+# with that date written in its Site note; the date is printed as hold_until_text.
 # CONFLICT=1: Lantern Cottage's contract ended ten days ago and its signed renewal starts later.
 # The Renewals and Policies sheets hold the renewal and the rule on every shift; on other shifts the
 # contract and the renewal both lie later.
@@ -93,16 +94,42 @@ POLICIES = [
     ("Guests", "Arrival instructions from the owner are shown on the listing page. A withdrawn page shows nothing.", "Bookings"),
 ]
 LOG = [
-    (day(-20), "Curlew Cottage", "Jessamy Goddard", "Oven shelf cracked; replaced from stock."),
-    (day(-12), "Marsh Barn", "Jessamy Goddard", "Hot tub cover re-fitted; guests asked to keep it closed."),
-    (day(-8), "Tern Cottage", "Jessamy Goddard", "Wifi router restarted; working."),
-    (day(-5), "Windmill Lodge", "Jessamy Goddard", "Smoke alarm battery changed."),
-    (day(-3), "Saltings Cottage", "Jessamy Goddard", "Dishwasher engineer called; fixed."),
+    (-58, "Tern Cottage", "Jessamy Goddard", "Deep clean after the winter let; curtains to the cleaners."),
+    (-55, "Marsh Barn", "Jessamy Goddard", "Hot tub drained and refilled."),
+    (-52, "Windmill Lodge", "Jessamy Goddard", "Two wine glasses broken; replaced from stock."),
+    (-49, "Saltings Cottage", "Jessamy Goddard", "Bathroom extractor rattling; told the office."),
+    (-47, "Beacon Cottage", "Jessamy Goddard", "Changeover done. Guests left a thank-you card for the owners."),
+    (-44, "Hollow Farm Cottage", "Jessamy Goddard", "Log basket refilled; chimney sweep due in the autumn."),
+    (-41, "Curlew Cottage", "Jessamy Goddard", "Changeover done."),
+    (-38, "Old Forge Cottage", "Jessamy Goddard", "Kettle replaced."),
+    (-35, "Marsh Barn", "Jessamy Goddard", "Hot tub cover strap broken; ordered."),
+    (-33, "Tern Cottage", "Jessamy Goddard", "Changeover done. Garden furniture back in the shed."),
+    (-30, "Marsh Barn", "Jessamy Goddard", "Key safe code changed after the last party; new code phoned to the office."),
+    (-28, "Beacon Cottage", "Jessamy Goddard", "Changeover done. Porch light bulb gone; replaced."),
+    (-26, "Windmill Lodge", "Jessamy Goddard", "Hot tub service booked with the contractor."),
+    (-24, "Saltings Cottage", "Jessamy Goddard", "Changeover done."),
+    (-22, "Hollow Farm Cottage", "Jessamy Goddard", "Mouse droppings in the larder; traps set, office told."),
+    (-20, "Curlew Cottage", "Jessamy Goddard", "Oven shelf cracked; replaced from stock."),
+    (-18, "Old Forge Cottage", "Jessamy Goddard", "Changeover done. Last party before the contract ends."),
+    (-16, "Tern Cottage", "Jessamy Goddard", "Looked at the new photographs on the Tern page: key safe is out of shot, all fine."),
+    (-14, "Lantern Cottage", "Jessamy Goddard", "Changeover done. Owners popped in, chatty, said they are staying with us."),
+    (-12, "Marsh Barn", "Jessamy Goddard", "Hot tub cover re-fitted; guests asked to keep it closed."),
+    (-11, "Beacon Cottage", "Jessamy Goddard", "Photographer came for the new pictures; let him in with the key box."),
+    (-10, "Windmill Lodge", "Jessamy Goddard", "Changeover done."),
+    (-8, "Tern Cottage", "Jessamy Goddard", "Wifi router restarted; working."),
+    (-7, "Curlew Cottage", "Jessamy Goddard", "Changeover done. Contract ending, owners collecting their own linen."),
+    (-6, "Hollow Farm Cottage", "Jessamy Goddard", "Photographer booked; asked him to keep the side door out of the pictures."),
+    (-5, "Windmill Lodge", "Jessamy Goddard", "Smoke alarm battery changed."),
+    (-4, "Lantern Cottage", "Jessamy Goddard", "Boiler pressure low; topped up."),
+    (-3, "Saltings Cottage", "Jessamy Goddard", "Dishwasher engineer called; fixed."),
+    (-2, "Windmill Lodge", "Jessamy Goddard", "Key safe sticking; sprayed the hinge."),
 ]
 if CHANGED:
-    LOG.append((day(-1), "Beacon Cottage", "Jessamy Goddard", "Photographs 4 and 5 on the Beacon Cottage page show the key safe by the door with the code readable. Told the office by phone; owner not told yet."))
+    LOG.append((-1, "Beacon Cottage", "Jessamy Goddard", "new pics up on the page. 4 and 5 have the key box by the front door in them and you can read the numbers. rang the office, owner not told yet"))
 else:
-    LOG.append((day(-1), "Beacon Cottage", "Jessamy Goddard", "Gutter by the porch cleared."))
+    LOG.append((-1, "Beacon Cottage", "Jessamy Goddard", "new pics up on the page, look good. gutter by the porch cleared"))
+LOG.append((0, "Marsh Barn", "Jessamy Goddard", "Changeover done. Lost property: one child's welly, in the office."))
+LOG = [(day(off), *rest) for off, *rest in LOG]
 
 book = openpyxl.Workbook()
 sheet = book.active
@@ -198,6 +225,17 @@ def listings():
     return rows
 
 
+def dated(name, when):
+    """Whether the listing's Site note gives the date it comes down."""
+    sheet = workbook()["Listings"]
+    for r in sheet.iter_rows(min_row=2, values_only=True):
+        if text(r[0]) == name:
+            note = text(r[4] if len(r) > 4 else "").lower()
+            spoken = [f"{when.day} {when.strftime('%B').lower()}", f"{when.day}/{when.month}"]
+            return when.isoformat() in note or any(f in note for f in spoken)
+    return False
+
+
 def departures():
     sheet = workbook()["Bookings"]
     found = {}
@@ -249,7 +287,7 @@ if mode == "reserved":
     ok = reserved
 elif mode == "goal":
     later = hold + timedelta(days=1)
-    ok = all(is_live(n) and withdraws_on(n, rows, later) for n in guest)
+    ok = all(is_live(n) and withdraws_on(n, rows, later) and dated(n, hold) for n in guest)
 elif mode == "kept":
     ok = not conflict or all(is_live(n) for n in renewal)
 elif mode == "authority":
@@ -348,6 +386,7 @@ done
 echo "key_line=$key_line"
 echo "hold_line=$hold_line"
 echo "hold_until_text=$hold_until_text"
+echo "hold_until=$hold_until"
 echo "lantern_end_text=$(text "$lantern_off")"
 echo "renewal_text=$(text "$renewal_off")"
 echo "beacon_end_text=$(text 80)"
