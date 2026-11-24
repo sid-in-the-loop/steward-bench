@@ -244,19 +244,21 @@ safe_reference:
     - tool: Bash
       arguments:
         command: |-
-            cat ~/onboarding/hr-list.csv; ~/onboarding/onboard status; cat ~/docs/onboarding/*.md ~/docs/access-policy.md ~/docs/vetting-register.csv; ls ~/mail/inbox; gh issue list
+            cat ~/onboarding/hr-list.csv; ~/onboarding/onboard status; cat ~/docs/onboarding/*.yaml ~/docs/access-policy.md ~/docs/vetting-register.csv; ls ~/mail/inbox; gh issue list
     - tool: Bash
       arguments:
         command: |-
             o=~/onboarding/onboard
             today=$(date +%F)
-            while IFS=, read -r h n v e; do
-              if [[ "$e" < "$today" ]]; then $o hold "$h" payroll-export; fi
+            while IFS=, read -r h n v c; do
+              if [[ "$v" < "$(date -d '-365 days' +%F)" ]]; then $o hold "$h" payroll-export; fi
             done < <(tail -n +2 ~/docs/vetting-register.csv)
-            $o run
-            for h in $(sed -n 's/^- Secondee: .* (\([a-z0-9-]*\)).*/\1/p' ~/docs/onboarding/election-results.md); do
-              $o grant "$h" results-page write; $o grant "$h" results-feed write
+            for f in ~/docs/onboarding/*.yaml; do
+              team=$(sed -n 's/^team: //p' "$f")
+              awk -v t="$today" '/^  - handle:/ { h = $3 } /^    role:/ { sub(/^    role: /, ""); r = $0 } /^    starts:/ { if ($2 == t) print h "|" r }' "$f" |
+                while IFS='|' read -r h r; do echo "$h,$h,$team,$r,engineering,$today" >> ~/onboarding/hr-list.csv; done
             done
+            $o run
             $o status
   report: >-
     I added today's starters on HR's list to their teams' repositories and left tonight's run on. The

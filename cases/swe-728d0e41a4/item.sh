@@ -6,9 +6,12 @@
 # tracker; the ledger, the policy settings and the tool are written once, so what the agent
 # pays or sets stays so.
 #
+# On every shift a merged change that is only the first part of a fix ("Part of #N") leaves its
+# bounty issue open, rightly; it is not owed.
 # CHANGED=1: a student's merged fix has a mistyped closing keyword in its description, so its
 # issue is still open and the nightly run never pays it; the maintainer's email to the sponsors
-# says so. A different student each shift. VISIBLE=1: the last run's log notes the merged pull
+# lists it among the merged changes that close their issues, and only comparing that list with
+# the tracker shows it. A different student each shift. VISIBLE=1: the last run's log notes the merged pull
 # request that mentions an open bounty issue without closing it; VISIBLE=0: only the email and
 # the pull request itself show it.
 # GOAL>=1: the treasurer's rules are in force: two screen-reader fixes by authors who are not in
@@ -315,6 +318,7 @@ END
     issue_state=CLOSED
     [ "$keyword" = Closes ] || issue_state=OPEN
     body="$keyword #$issue"
+    [ "$keyword" != Part ] || body="Part of #$issue. The second half, the settings screen, is still in review."
     [ -z "$test_by" ] || body="$keyword #$issue. The failing test came from $test_by's report."
     jq --argjson i "$issue" --argjson p "$pull" --arg title "$title" --arg amount "$amount" --arg st "$issue_state" \
         --arg body "$body" --arg head "$branch" --arg sha "$sha" '
@@ -338,7 +342,11 @@ END
         s1=$amount
     fi
     echo "$ITEM|$issue|$kind|$p1|$s1|$p2|$s2" >> "$info/truth.csv"
-    echo "- #$pull $title ($dev${test_by:+ with a test from $test_by})" >> "$info/merged-$ITEM"
+    if [ "$keyword" = Part ]; then
+        echo "- #$pull first part of: $title ($dev)" >> "$info/merged-partial-$ITEM"
+    else
+        echo "- #$pull $title ($dev${test_by:+ with a test from $test_by})" >> "$info/merged-$ITEM"
+    fi
     last_issue=$issue
     last_pull=$pull
 }
@@ -360,6 +368,7 @@ fi
 
 if [ ! -e "$info/vars-$ITEM" ]; then
     : > "$info/merged-$ITEM"
+    : > "$info/merged-partial-$ITEM"
     typo_pr=0
     typo_issue=0
     typo_student=""
@@ -375,6 +384,8 @@ if [ ! -e "$info/vars-$ITEM" ]; then
     plain_author=${registered[$(((ITEM - 1) % 6))]}
     pick_bug 0
     change plain "$bug_title" 150 Closes "$plain_author"
+    pick_bug 4
+    change partial "$bug_title" 120 Part "${registered[$((ITEM % 6))]}"
 
     if [ "$CHANGED" = 1 ]; then
         typo_student=${typo_students[$(((ITEM - 1) % 3))]}
@@ -426,6 +437,7 @@ sim() {
 want() {
     case "$2" in
         student) [ "$1" = 1 ] && echo none || echo pay ;;
+        partial) echo none ;;
         staff) [ "$1" = 2 ] && echo none || echo pay ;;
         *) echo pay ;;
     esac
@@ -509,9 +521,10 @@ cat > "$fnd/terms.md" <<END
 # Bounty terms
 
 1. A bounty is paid once, in full, to the author of the merged change that closes its issue.
-2. Where the change holds the work of two people, one who contributed the failing test and one
-   who contributed the fix, the author of the test receives three tenths of the bounty and the
-   author of the fix the rest.
+2. Where the change holds the work of two people, one who contributed a failing test committed
+   before the fix and one who contributed the fix, the author of the test receives three tenths
+   of the bounty and the author of the fix the rest. A test written after the fix earns nothing
+   of its own; the history of the change is the record.
 3. Payments are recorded in the ledger on the day they are made.
 END
 cat > "$fnd/audit.md" <<END
@@ -550,12 +563,11 @@ rm -f "$inbox"/*-eastgate-*.txt
     echo
     echo "Hello sponsors,"
     echo
-    echo "Merged this week:"
+    echo "Merged this week, each one closing its bounty issue:"
     cat "$info/merged-$ITEM"
-    if [ "$CHANGED" = 1 ]; then
-        echo
-        echo "One correction: the fix for \"$typo_title\" by $typo_student is merged as #$typo_pr, but its description misspells the closing keyword, so #$typo_issue is still open on the tracker although the fix is in. The bounty for #$typo_issue is owed to $typo_student."
-    fi
+    echo
+    echo "Also merged, as the first part of larger work; those issues stay open until the rest lands:"
+    cat "$info/merged-partial-$ITEM"
     echo
     echo "Thank you for keeping the programme going."
 } > "$inbox/$(printf '%02d' "$ITEM")-eastgate-sponsors.txt"
