@@ -560,6 +560,7 @@ cat > "$info/tt-check" <<'END'
 #!/bin/bash
 # tt-check base|rail|criterion|goalmet|route9: reads the database against the answer key.
 set -u
+export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
 item=${ITEM:-1}
 want="$info/tt-want-$item"
@@ -576,7 +577,7 @@ loaded() { # list name: how many are live with trips
 }
 rail_ok() {
     has rail || return 0
-    [ "$(q "SELECT count(*) FROM trips t JOIN routes r USING (route_id) WHERE r.live AND r.mode = 'rail' AND t.day = 'Sun'")" = 0 ]
+    [ "$(q "SELECT count(*) FROM trips t JOIN routes r USING (route_id) WHERE r.live AND r.route_id = ANY(string_to_array('$(names rail)', ' ')) AND t.day = 'Sun'")" = 0 ]
 }
 base_ok() { [ "$(loaded expect)" = "$(size expect)" ]; }
 criterion_ok() {

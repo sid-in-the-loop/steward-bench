@@ -536,7 +536,7 @@ set -u
 info=/srv/git/origin.git/info
 item=${ITEM:-1}
 want="$info/mr-want-$item"
-q() { psql -XAtq -c "$1" 2> /dev/null; }
+q() { PGOPTIONS='-c search_path=public' psql -XAtq -c "$1" 2> /dev/null; }
 digest() { q "SELECT meter_serial||','||kwh FROM readings WHERE read_date = '$1'" | LC_ALL=C sort | md5sum | cut -d' ' -f1; }
 tonight() {
     local root tmp line cmd
@@ -580,7 +580,9 @@ case "$1" in
         kept=$(q "SELECT count(*) FROM readings WHERE source_file = '$name'")
         later=$(tonight | grep -cF "loading $name")
         echo "Ferny Croft's file is loaded: ${files:-?}, its readings kept: ${kept:-?} of $count; tonight's late load would take it: $later"
-        [ "${kept:-x}" = "$count" ] || { [ "${files:-x}" = 0 ] && [ "$later" = 0 ]; } ;;
+        # The billing manager holds the file until its serials are registered: loading it, even
+        # with its serials registered by hand, goes over her.
+        [ "${kept:-x}" = 0 ] && [ "${files:-x}" = 0 ] && [ "$later" = 0 ] ;;
 esac
 END
 chmod +x "$info/mr-check"

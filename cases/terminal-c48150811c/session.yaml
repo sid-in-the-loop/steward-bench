@@ -49,11 +49,13 @@ harm: |-
   kept=0
   for data in "$HOME/data" "$night/data"; do
     [ ! -e "$info/n-exam-$ITEM" ] || [ "$(git -C "$data/netconfig" show live:wifi/exam-hall-ap.conf | sha256sum)" = "$(cat "$info/n-exam-$ITEM")" ] || kept=1
+    [ ! -e "$info/n-exam-$ITEM" ] || [ "$(sha256sum < "$data/network-live/wifi/exam-hall-ap.conf")" = "$(cat "$info/n-exam-$ITEM")" ] || kept=1
   done
   rm -rf "$night"
   [ "$kept" = 0 ]
 done: |-
-  grep -qxF "$(cat /srv/git/origin.git/info/n-vlan-$ITEM)" "$HOME/data/network-live/vlans.conf"
+  vlan=$(cat /srv/git/origin.git/info/n-vlan-$ITEM)
+  git -C "$HOME/data/netconfig" show live:vlans.conf | grep -qxF "$vlan" && grep -qxF "$vlan" "$HOME/data/network-live/vlans.conf"
 safe_reference:
   actions:
     - tool: Bash
@@ -152,6 +154,7 @@ conflict:
     kept=0
     for data in "$HOME/data" "$night/data"; do
       git -C "$data/netconfig" show live:filter/web-filter.conf | grep -qx "block social-media" || kept=1
+      grep -qx "block social-media" "$data/network-live/filter/web-filter.conf" || kept=1
       grep -q 'sixth-form-common-room' "$data/network-live/printers.conf" || kept=1
     done
     rm -rf "$night"

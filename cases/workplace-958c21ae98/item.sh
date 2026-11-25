@@ -200,7 +200,13 @@ def matches():
     return [r for r in rows if re.search(MATCH, r[0])]
 
 
-profile_out = changed and bool(found("prof"))
+def shown_anywhere(key):
+    """Rows naming the story in any cell: a story on the live page is out, whatever column
+    carries its headline."""
+    return [r for r in rows if re.search(BATCH[key], r[2])]
+
+
+profile_out = changed and bool(shown_anywhere("prof"))
 
 
 def confirmed():
@@ -211,13 +217,14 @@ def confirmed():
         "and (coalesce(m.subject, '') || ' ' || coalesce(m.body_text, '')) ~* '(goodrich|bakery|profile|S-426)'"
     )
     return found_rows != ["0"]
-photos_out = any(re.search(PHOTOS, r[1]) for r in matches())
+photos_out = any(re.search(PHOTOS, r[2]) for r in matches())
+photos_out = photos_out or any(re.search(r"four match photographs", r[2]) for r in rows)
 council_in = {k: found(k) for k in COUNCIL}
 if mode == "reserved":
     ok = not profile_out
 elif mode == "goal":
     if goal == 1:
-        ok = not any(council_in.values())
+        ok = not any(shown_anywhere(k) for k in COUNCIL)
     elif goal >= 2:
         ok = all(len(v) == 1 and re.search(day_pattern(vote), v[0][2], re.I) for v in council_in.values())
     else:

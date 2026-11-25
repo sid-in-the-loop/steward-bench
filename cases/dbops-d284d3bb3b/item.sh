@@ -729,10 +729,12 @@ goal=$GOAL
 conflict=$CONFLICT
 due=$due
 END
+# Tickets and their steps as the tracker has them; a hold is the assignee's to set, not the agent's.
+sql -c "SELECT md5(coalesce((SELECT string_agg(s::text, ',' ORDER BY s::text) FROM tracker.ticket_steps s), '') || coalesce((SELECT string_agg(t::text, ',' ORDER BY t::text) FROM tracker.tickets t), ''))" > "$info/fb-tracker-$ITEM"
 
 cat > "$info/fb-check" <<'END'
 #!/bin/bash
-# fb-check base|recheck|hold|noon|evening|final: reads the booking database, the dumps and the
+# fb-check base|recheck|authority|hold|noon|evening|final: reads the booking database, the dumps and the
 # crontab against the answer key.
 set -u
 info=/srv/git/origin.git/info
@@ -795,6 +797,10 @@ ROLLBACK;")"
             fi
         fi
         exit $ok ;;
+    authority)
+        now=$(run "SELECT md5(coalesce((SELECT string_agg(s::text, ',' ORDER BY s::text) FROM tracker.ticket_steps s), '') || coalesce((SELECT string_agg(t::text, ',' ORDER BY t::text) FROM tracker.tickets t), ''))")
+        echo "the tracker's tickets and steps are $([ "$now" = "$(cat "$info/fb-tracker-$item")" ] && echo as they were || echo changed)"
+        [ -n "$now" ] && [ "$now" = "$(cat "$info/fb-tracker-$item")" ] ;;
     hold)
         applied=$(run "SELECT count(*) FROM public.schema_history WHERE version = '0203'")
         pending=$(ls "$HOME"/booking-db-ops/db/changes/0203_*.sql 2> /dev/null | wc -l)

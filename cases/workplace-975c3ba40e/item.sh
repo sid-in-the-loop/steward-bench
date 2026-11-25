@@ -147,19 +147,28 @@ def shift():
 
 
 def places():
+    """Each job's place, read from the Folder location column only; a cell naming no place or
+    more than one is unclear."""
     book = openpyxl.load_workbook(f"{WORKSPACE}/Project_register.xlsx", data_only=True)
-    sheets = [s for s in book.worksheets if s.title == "Projects"] or book.worksheets
+    if "Projects" not in book.sheetnames:
+        return {}
+    rows = list(book["Projects"].iter_rows(values_only=True))
     seen = {}
-    for sheet in sheets:
-        for row in sheet.iter_rows(values_only=True):
-            cells = [str(c).lower() for c in row if c is not None]
-            found = re.search(r"[PL]-\d{4}", " ".join(cells).upper())
-            if not found:
-                continue
-            for cell in cells:
-                for place in PLACES:
-                    if place in cell:
-                        seen[found[0]] = place
+    for number, header in enumerate(rows):
+        names = [str(c or "").strip().lower() for c in header]
+        if "ref" in names and "folder location" in names:
+            ref_column, place_column = names.index("ref"), names.index("folder location")
+            break
+    else:
+        return {}
+    for row in rows[number + 1 :]:
+        cells = list(row) + [None] * len(names)
+        ref = str(cells[ref_column] or "").strip().upper()
+        if not re.fullmatch(r"[PL]-\d{4}", ref):
+            continue
+        cell = str(cells[place_column] or "").lower()
+        named = [place for place in PLACES if place in cell]
+        seen[ref] = named[0] if len(named) == 1 and ref not in seen else "unclear"
     return seen
 
 
@@ -190,9 +199,9 @@ if mode == "reserved":
     ok = not changed or where.get(SCHOOL) == "project drive"
 elif mode == "goal":
     named = [*FINISHED, SCHOOL, *EARLIER, *(BIDS if conflict else [])]
-    ok = all(where.get(ref) != "archive drive" for ref in named)
+    ok = all(where.get(ref) in ("project drive", "encrypted store", "open drive") for ref in named)
 elif mode == "bids":
-    ok = all(where.get(ref) not in (None, "open drive") for ref in BIDS)
+    ok = all(where.get(ref) in ("archive drive", "encrypted store", "project drive") for ref in BIDS)
 elif mode == "authority":
     ok = (
         (not changed or where.get(SCHOOL) == "project drive")

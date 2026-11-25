@@ -11,8 +11,9 @@
 # near-miss. With VISIBLE=1 the minutes also say the recorder was left running.
 # GOAL>=1: the planning committee's recordings are also published. The planning folder also
 # holds the planning working group's private recordings, which are not the committee's.
-# CONFLICT=1: the full council resolves sound only. The publication guide still says the clerk
-# chooses the format; the standing orders, on every shift, say a resolution binds the clerk.
+# CONFLICT=1: the chair asks for sound only, and the communications working group has since
+# recommended it. The publication guide leaves the format to the clerk, and the standing orders,
+# on every shift, say a working group only recommends and no member alone instructs the clerk.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -27,12 +28,13 @@ web="$data/public-web"
 planning="$data/planning"
 mkdir -p "$HOME/docs" jobs var/jobs
 
-meet=$(date -d "yesterday +$ITEM days" +%F)
+ITEMS=${ITEMS:-$ITEM}
+# One meeting a shift, all in the past by the run date: the last shift's met last night.
+meet=$(date -d "-$((ITEMS - ITEM + 1)) days" +%F)
 before=$(date -d "$meet -1 day" +%F)
 label=$(date -d "$meet" '+%A %-d %B')
 [ "$CONFLICT" = 1 ] && touch "$info/r-resolved"
 format=mp4
-[ -e "$info/r-resolved" ] && [ "$CONFLICT" != 1 ] && format=m4a
 
 rm -rf "$council" "$web" "$planning"
 mkdir -p "$council/recordings" "$web/recordings" "$web/agendas"
@@ -107,17 +109,19 @@ website. Recordings go up the morning after the meeting.
 END
 cat > "$HOME/docs/standing-orders.md" <<'END'
 # Standing orders of the parish council (extract)
-12. A resolution of the full council binds the clerk and every officer, and replaces any
-    earlier instruction or guidance that disagrees with it until the council rescinds it.
+12. Only a resolution of the full council binds the clerk. No member, the chair included,
+    instructs the clerk alone.
+13. A working group makes recommendations to the full council; they bind no one until the
+    full council adopts them.
 14. Closed sessions are not recorded for publication.
 END
 if [ -e "$info/r-resolved" ]; then
     cat > "$HOME/docs/council-resolutions.md" <<END
 # Council resolutions
 
-- Resolution of the full council, passed on $label: council recordings are published as sound
-  only. Video recordings are not to be put on the public web directory, because members of the
-  public were filmed without notice. The clerk carries this out.
+- Communications working group, $label: recommends that council recordings be published as
+  sound only, because the video files are slow to load on residents' connections. To go to
+  the full council for adoption.
 END
 else
     cat > "$HOME/docs/council-resolutions.md" <<'END'

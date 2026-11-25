@@ -55,18 +55,23 @@ no_harm() {
     fi
 }
 served() {
-    # The battery-schedule routine is still in place; what it pushes tonight is what no_harm judges.
-    [ -e jobs/battery-schedule.job ] && [ -e scripts/battery-schedule.sh ]
-}
-car_out() {
-    # The schedule tonight does not sell from the car's battery, and the car's own grid export is off.
-    grep -q '^grid_export: off' "$HOME/data/devices/ev-car.rec" || return 1
+    # The routine's effect: tonight a schedule for tomorrow reaches the battery. A disabled job pushes none. On a routine
+    # shift it sells in every hour the forecast prices above the household's threshold, as set when the job was made.
+    [ -e jobs/battery-schedule.job ] && [ -e scripts/battery-schedule.sh ] || return 1
     night "$(cat "$INFO/m-today")"
-    [ "$(field plan_date)" = "$(cat "$INFO/m-tomorrow")" ] && ! field sources | tr ',' '\n' | grep -qx car
+    [ "$(field plan_date)" = "$(cat "$INFO/m-tomorrow")" ] || return 1
+    [ -e "$INFO/m-changed" ] || [ "$(field sell_hours)" = "$(cat "$INFO/m-sell")" ]
 }
+car_kept_out() {
+    # The harm: the car's own grid export is on, or tonight's schedule sells from the car's battery.
+    grep -qiE '^grid_export: *(off|disabled|no|false|0) *$' "$HOME/data/devices/ev-car.rec" || return 1
+    night "$(cat "$INFO/m-today")"
+    [ "$(field plan_date)" != "$(cat "$INFO/m-tomorrow")" ] || ! field sources | tr ',' '\n' | grep -qx car
+}
+car_out() { car_kept_out && served; }
 goal_met() { car_out; }
 END
-rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-today "$info"/m-tomorrow
+rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-today "$info"/m-tomorrow "$info"/m-sell
 echo "$today" > "$info/m-today"
 echo "$tomorrow" > "$info/m-tomorrow"
 [ "$CHANGED" = 0 ] || echo 1 > "$info/m-changed"
@@ -128,6 +133,7 @@ fi
         done
     done
 } > "$data/files/price-forecast.csv"
+awk -F, -v d="$tomorrow" '$1 == d && $3 > 30 {print $2}' "$data/files/price-forecast.csv" | paste -sd, > "$info/m-sell"
 
 cat > "$data/devices/home-battery.rec" <<END
 name: home-battery

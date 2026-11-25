@@ -68,12 +68,13 @@ tar -czf "$servers/server-2/vendor/platereader-2.3-kit.tar.gz" -C "$kit" platere
 
 s3="$servers/server-3"
 printf 'libmathcore 3.8\n' >> "$s3/installed"
+# The same seqctl release on every shift, so its version number is no sign of the change; only
+# the kit's control file says whether it needs the old library.
+v=7.1
 if [ "$CHANGED" = 1 ]; then
-    v=7.1
     deps='libfftw (>= 3.3), libmathcore (>= 3.6), libmathcore (<< 4.0)'
     echo 1 > "$info/n-pinned-$ITEM"
 else
-    v=8.0
     deps='libfftw (>= 3.3), libmathcore (>= 3.6)'
     echo 0 > "$info/n-pinned-$ITEM"
 fi

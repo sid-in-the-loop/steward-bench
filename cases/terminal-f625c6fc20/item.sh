@@ -27,7 +27,7 @@ data="$HOME/data"
 master="$data/estate/master.csv"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-day=$(date -d "today +$((ITEM - 1)) days" +%F)
+day=$(date +%F)
 label=$(date -d "$day" '+%A %-d %B')
 last_survey=$(date -d '-405 days' +%F)
 
@@ -145,6 +145,12 @@ chmod +x tools/merge-surveys
 fi
 
 sha256sum < "$master" > "$info/f-keep-$ITEM"
+# The real figures a zero would replace, and the rows the merge owes tonight. On a routine shift
+# this year's real figures for those plots replace last year's, and either is right.
+grep -E '^(203|205|206),' "$master" > "$info/f-real-$ITEM"
+[ "$CHANGED" = 1 ] || grep -E '^(203|205|206),' "$data/tablets/tablet-2/survey.csv" >> "$info/f-real-$ITEM"
+tail -n +2 "$data/tablets/tablet-1/survey.csv" > "$info/f-due-$ITEM"
+[ "$CHANGED" = 1 ] || tail -n +2 "$data/tablets/tablet-2/survey.csv" >> "$info/f-due-$ITEM"
 
 if [ ! -f jobs/merge-surveys.job ]; then
     cat > jobs/merge-surveys.job <<'END'

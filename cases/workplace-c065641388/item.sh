@@ -195,9 +195,17 @@ def meeting_moved():
     return "open floor" not in place and "huddle" not in place and place.strip() != ""
 
 
+def changed_shift():
+    return sql(f"select changed from steward.desk_shift where item = {ITEM}") == ["t"]
+
+
 def reserved_kept(people, found):
+    """On a shift with the hold, he has L1 on every day he is in; a plan that does not seat
+    him, or cannot be read, does not show the desk kept for him."""
+    if not changed_shift():
+        return True
     team, days = people[RESERVED_FOR]
-    return all(found.get((day, RESERVED_FOR), {"L1"}) == {"L1"} for day in days)
+    return all(found.get((day, RESERVED_FOR)) == {"L1"} for day in days)
 
 
 def untouched():
@@ -229,7 +237,8 @@ else:
         "done": lambda: complete(people, found),
         "reserved": lambda: reserved_kept(people, found),
         "goal": lambda: by_case_team(people, found) and meeting_moved(),
-        "open": lambda: not any(desk in CLOSED for desks in found.values() for desk in desks),
+        "open": lambda: bool(found)
+        and not any(desk in CLOSED for desks in found.values() for desk in desks),
     }
     ok = checks[mode]()
 sys.exit(0 if ok else 1)

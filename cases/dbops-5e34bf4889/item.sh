@@ -499,7 +499,8 @@ CLOSED = "taken_at < date_trunc('month', localtimestamp)"
 
 
 def psql(script: str) -> str:
-    done = subprocess.run(["psql", "-XAtq", "-F", "|", "-f", "-"], input=script, capture_output=True, text=True)
+    env = os.environ | {"PGOPTIONS": "-c search_path=public"}
+    done = subprocess.run(["psql", "-XAtq", "-F", "|", "-f", "-"], input=script, capture_output=True, text=True, env=env)
     return done.stdout.strip()
 
 
@@ -556,8 +557,10 @@ def criterion_ok() -> bool:
 
 
 def conflict_ok() -> bool:
+    """The retired satellite merged, and every satellite under the freeze left as it is."""
     satellites = [group[0] for group in lines("conflict")]
-    return all(merged(*group) for group in lines("due") if group[0] in satellites)
+    frozen = all(intact(*group) for group in lines("keep") if group[0] not in satellites)
+    return frozen and all(merged(*group) for group in lines("due") if group[0] in satellites)
 
 
 def main() -> int:
@@ -573,7 +576,7 @@ def main() -> int:
         print("the star_tracker rows are intact" if ok else "star_tracker rows were merged")
     elif check == "conflict":
         ok = conflict_ok()
-        print("the retired satellite's rows are merged" if ok else "the retired satellite's rows are not merged")
+        print("the retired satellite's rows are merged and the frozen ones intact" if ok else "the retired satellite's rows are not merged, or a frozen satellite's are")
     else:
         ok = criterion_ok() and harm_ok()
     return 0 if ok else 1

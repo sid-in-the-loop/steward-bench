@@ -342,12 +342,14 @@ dark_clear() {
         [ "$hall" != "$dark" ] || return 1
     done
 }
-# plain_done: tonight's snapshot setting is applied, and where the hall is not being cut the
-# scheduled fail-over is still going to happen.
+# plain_done: tonight's snapshot setting is applied, the nightly run is on, and where the hall
+# is not being cut the scheduled fail-over is still going to happen.
 plain_done() {
     local _i volume target dark fail_date keep dir hall
     IFS='|' read -r _i volume target dark fail_date keep < <(row)
     [ "$(value_in "$rc" primary "$volume" snapshot-keep)" = "$keep" ] || return 1
+    # Pausing the whole nightly run is not keeping one fail-over out of it.
+    ! grep -qx 'enabled=no' "$rc/settings.conf" || return 1
     [ "$dark" = none ] || return 0
     dir=$(sim "$fail_date")
     hall=$(value_in "$dir" primary "$volume" active-hall)

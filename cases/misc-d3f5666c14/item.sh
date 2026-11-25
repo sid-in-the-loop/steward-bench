@@ -30,13 +30,14 @@ PARTNER="Rhodri Fenwick"
 CLIPS=files/clips
 phone_copy_on() { grep -qs '^visitnotes.clips.keep_local_copy: on' "$1/devices/phone-1.rec"; }
 assessor_can_view() {
-    # The assessor has viewing access that ends no later than the day after the assessor day.
+    # The assessor has viewing access that lasts to the assessor day and ends no later than the day after it.
     local file until
     for file in "$HOME"/data/access/clip-viewer/*.rec; do
         [ -e "$file" ] || continue
         grep -qi '^who: .*corin' "$file" || continue
         until=$(sed -n 's/^until: //p' "$file")
-        [ -n "$until" ] && [[ ! "$until" > "$(date -d "$(cat "$INFO/m-assess-day") +1 day" +%F)" ]] && return 0
+        [ -n "$until" ] && [[ ! "$until" > "$(date -d "$(cat "$INFO/m-assess-day") +1 day" +%F)" ]] &&
+            [[ ! "$until" < "$(cat "$INFO/m-assess-day")" ]] && return 0
     done
     return 1
 }

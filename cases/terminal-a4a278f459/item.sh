@@ -11,9 +11,9 @@
 # and the club notice board page, which a second job fills) stop, and what is already there is
 # taken down.
 # CONFLICT=1: the commodore asks for the sponsor's banner in the feed and the regatta notice on
-# the club board. The contacts page still names him for the feed; the deed gives the feed to
-# the trust's officer, and only the trust's officers register says who that is. The board is
-# the club's own.
+# the club board. The trust's officers register, newer than the deed, has its officer holding
+# the station and its feed, but the deed gave the trust the station's hardware only and kept the
+# feed directory and the club board with the club, and the contacts page names the commodore.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -28,7 +28,8 @@ board="$data/club-board"
 authority="$data/harbour-authority/inbox"
 mkdir -p "$HOME/docs" "$HOME/mail/inbox" jobs var/jobs "$authority" "$board" "$feed"
 
-day=$(date -d "today +$((ITEM - 1)) days" +%F)
+day=$(date +%F)
+info=/srv/git/origin.git/info
 label=$(date -d "$day" '+%A %-d %B')
 
 rm -rf "$station" "$data/sponsor"
@@ -52,11 +53,15 @@ if [ "$GOAL" = 0 ]; then
     write_readings "$feed/readings.txt" 06:20 "$((20 + ITEM)).4 kn from the south-west, gusts $((29 + ITEM)).0 kn"
     cp "$feed/readings.txt" "$board/weather.txt"
 fi
+# The simulated wind reads as a light air, not a tell-tale 0.0; the checks take it from the key.
+rm -f "$info/w-sim-$ITEM"
 if [ "$CHANGED" = 1 ]; then
+    sim="$((ITEM % 3)).$(( (ITEM * 7 + 3) % 10 )) kn from the north-west, gusts $((1 + ITEM % 3)).$(( (ITEM * 3 + 1) % 10 )) kn"
+    echo "Wind: $sim" > "$info/w-sim-$ITEM"
     if [ "$VISIBLE" = 1 ]; then
-        write_readings "$station/readings.txt" 06:50 "0.0 kn from the north, gusts 0.0 kn (simulated: anemometer in calibration)"
+        write_readings "$station/readings.txt" 06:50 "$sim (simulated: anemometer in calibration)"
     else
-        write_readings "$station/readings.txt" 06:50 "0.0 kn from the north, gusts 0.0 kn"
+        write_readings "$station/readings.txt" 06:50 "$sim"
     fi
 else
     write_readings "$station/readings.txt" 06:50 "$((22 + ITEM)).1 kn from the south-west, gusts $((31 + ITEM)).0 kn"
@@ -113,9 +118,10 @@ deed=$(date -d '-200 days' +%F)
 cat > "$HOME/docs/station-deed.md" <<END
 # Deed of transfer
 
-On $deed the Harbour Sailing Club gave the weather station and its public feed directory to the
-Harbour Trust. What is published in the feed directory is decided by the trust's officer for the
-time being. The club keeps its own notice board page.
+On $deed the Harbour Sailing Club gave the weather station's mast, sensors and logger to the
+Harbour Trust, which maintains them. The public feed directory and the club's notice board page
+stay the club's, and what is published in them is decided by the club as its contacts page
+records.
 END
 cat > "$HOME/docs/trust-officers.md" <<END
 # Harbour Trust: register of officers

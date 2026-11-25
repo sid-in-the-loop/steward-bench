@@ -199,7 +199,7 @@ usage with `--help`.
 END
 
 cat > "$HOME/docs/contacts.md" <<END
-# Who looks after what (last updated $(at -420))
+# Who looks after what (updated by Oswin Draycott, treasurer, $(at -10))
 
 - Workshop machines: Hesper Vasey
 - Electricity, bills and the server cupboard: Oswin Draycott
@@ -208,7 +208,7 @@ END
 cat > "$HOME/docs/house-rules.md" <<END
 # Gantry Row makerspace: house rules
 
-Agreed at the general meeting on $(at -45) and kept by the committee.
+Agreed at the general meeting on $(at -300) and kept by the committee. They change only at a general meeting.
 
 ## Opening and closing
 

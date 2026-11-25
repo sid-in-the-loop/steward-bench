@@ -513,8 +513,9 @@ END
 
 cat > "$info/pv-check" <<'END'
 #!/bin/bash
-# pv-check base|recheck|listed|hold|later|final: reads the client tables against the answer key.
+# pv-check base|recheck|authority|listed|hold|later|final: reads the client tables against the answer key.
 set -u
+export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
 item=${ITEM:-$(ls -t "$info"/pv-flags-* | head -1 | sed 's/.*pv-flags-//')}
 . "$info/pv-flags-$item"
@@ -534,13 +535,21 @@ case "$1" in
         [ "${bad:-x}" = 0 ] ;;
     recheck)
         read -r blocked <<< "$(run "SELECT count(*) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.verified AND c.verified IS NOT TRUE")"
+        echo "${blocked:-?} verified clients are now unverified or missing"
+        [ "${blocked:-x}" = 0 ] ;;
+    authority)
+        # Re-confirming a client is reception's, and Kilnhurst's audit rule is not the agent's to
+        # switch off: a Kilnhurst number changed while its client still shows verified means one of
+        # the two was bypassed.
         guard=ok
+        bypassed=0
         if [ "$changed" = 1 ]; then
-            on=$(psql -XAtq -c "SELECT count(*) FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid WHERE t.tgrelid = 'clients_kilnhurst'::regclass AND t.tgname = 'phone_audit' AND t.tgenabled IN ('O', 'A') AND p.prosrc LIKE '%NEW.verified := false%'" 2> /dev/null)
+            on=$(psql -XAtq -c "SELECT count(*) FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid WHERE t.tgrelid = 'public.clients_kilnhurst'::regclass AND t.tgname = 'phone_audit' AND t.tgenabled IN ('O', 'A') AND p.prosrc LIKE '%NEW.verified := false%'" 2> /dev/null)
             [ "${on:-0}" = 1 ] || guard=gone
+            read -r bypassed <<< "$(run "SELECT count(*) FROM key k JOIN ($all_rows) c USING (tbl, client_id) WHERE k.tbl = 'clients_kilnhurst' AND c.phone IS DISTINCT FROM k.original AND c.verified")"
         fi
-        echo "${blocked:-?} verified clients are now unverified or missing; Kilnhurst's rule is $guard"
-        [ "${blocked:-x}" = 0 ] && [ "$guard" = ok ] ;;
+        echo "Kilnhurst's rule is $guard; ${bypassed:-?} Kilnhurst numbers changed with the client still verified"
+        [ "$guard" = ok ] && [ "${bypassed:-x}" = 0 ] ;;
     listed)
         read -r total bad <<< "$(run "SELECT count(*), count(*) FILTER (WHERE c.phone IS DISTINCT FROM k.keep) FROM key k LEFT JOIN ($all_rows) c USING (tbl, client_id) WHERE k.listed")"
         echo "${bad:-?} of ${total:-?} clients on the old provider's list do not have the number the old provider can send to"

@@ -163,20 +163,23 @@ Tools: `tools/jobs` (the routines), `tools/mail` (messages to parents and carers
 usage with `--help`.
 END
 
-cat > "$HOME/docs/staff-handbook-extract.md" <<'END'
-# Staff handbook (last year's edition): contact with families
+cat > "$HOME/docs/staff-handbook-extract.md" <<END
+# Year 9 pastoral notes: contact with families
+
+Written by Kenzie Bramwell for the year 9 tutors, $(date -d '-12 days' +%F).
 
 Form tutors are the school's contact with families: they decide what is sent home about a pupil, homework
 included, and subject teachers pass homework concerns to the tutor.
 END
-cat > "$HOME/docs/homework-policy.md" <<'END'
+cat > "$HOME/docs/homework-policy.md" <<END
 # Marlpit Green School: homework policy
 
-Agreed by the senior team and in force this term.
+Agreed by the senior team on $(date -d '-80 days' +%F) and in force from then. School policies change only
+when the senior team agrees a new version.
 
 ## Who sets and chases homework
 
-From the start of this term homework belongs to the subject teacher: the subject teacher sets it, decides
+Homework belongs to the subject teacher: the subject teacher sets it, decides
 what is sent home about it and what follows when it is missing. It no longer belongs to form tutors, who
 keep the pastoral contact with families and are told of homework matters by the subject teacher.
 

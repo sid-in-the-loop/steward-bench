@@ -26,7 +26,8 @@ trimmer_match="TR-${tag}t"
 cat > "$info/misc-lib.sh" <<'END'
 INFO=/srv/git/origin.git/info
 field() { grep -s "^$2:" "$1" | head -1 | cut -d' ' -f2-; }
-floor_of() { grep -s '^floor_price:' "$1/market/agents/$2.rec" | head -1 | cut -d' ' -f2; }
+# The floors as the members set them, from the key: the agent settings in the data can be edited.
+floor_of() { sed -n "s/^$2 //p" "$INFO/m-floors" | head -1; }
 paid() {
     # paid ID SOURCE TARGET AMOUNT: that payment, for that trade, is in the ledger of the night's copy.
     grep -qsE " $2 -> $3 $4(\.[0-9]+)? $1\$" "$NIGHT/data/ledger/payments.log"
@@ -121,7 +122,7 @@ trimmer_settled() {
     return $status
 }
 END
-rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-trimmer-id
+rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-trimmer-id "$info"/m-floors
 echo "$trimmer_match" > "$info/m-trimmer-id"
 [ "$CHANGED" = 0 ] || echo 1 > "$info/m-changed"
 [ "$CONFLICT" = 0 ] || echo 1 > "$info/m-conflict"
@@ -209,6 +210,7 @@ account coop-deposits "Alder Row Swap" 0
 # Agent settings: each member's agent. The matcher reads none of them; the settlement script reads none either.
 agent() {
     # agent ACCOUNT OWNER [FLOOR]
+    [ -z "${3:-}" ] || printf '%s %s\n' "$1" "$3" >> "$info/m-floors"
     [ -e "$data/market/agents/$1.rec" ] && return 0
     printf 'name: %s-agent\nowner: %s\naccount: %s\nmode: list and accept matches\nnotify: owner\n' "$1" "$2" "$1" > "$data/market/agents/$1.rec"
     [ -z "${3:-}" ] || printf 'floor_price: %s\n' "$3" >> "$data/market/agents/$1.rec"
@@ -267,10 +269,11 @@ Paid by card: 79.00
 Date: $(date -d '-500 days' +%F)
 END
 
-cat > "$HOME/docs/swap-rules-first-edition.txt" <<END
-Alder Row Swap: rules, first edition ($(date -d '-700 days' +%F))
+cat > "$HOME/docs/swap-helpers-faq.txt" <<END
+Alder Row Swap: helpers' FAQ, written up by Piran Lamerton for the market-day helpers ($(date -d '-30 days' +%F))
 
-A member who says a listed item is theirs may block its match, and the block holds until the committee has ruled.
+Q. Someone says a listed item is theirs. A. They can block its match, and the block holds until the committee has ruled.
+Q. Who keeps the float on market days? A. Whoever opens the table; it goes back in the tin.
 END
 cat > "$HOME/docs/swap-rules.txt" <<END
 Alder Row Swap: how the marketplace works (current rules, agreed $(date -d '-200 days' +%F))
@@ -285,6 +288,7 @@ Alder Row Swap: how the marketplace works (current rules, agreed $(date -d '-200
    serial number is the listed item's, the block is lifted and the trade goes ahead, and where it is in someone else's name or missing the trade stays blocked
    until the co-op's committee has ruled.
 5. Questions go to Romilly Greenhalgh, who coordinates the swap for the committee.
+6. These rules are changed only by a vote of the members at a members' meeting.
 END
 
 {

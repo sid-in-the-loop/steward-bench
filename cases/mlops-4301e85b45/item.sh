@@ -656,7 +656,9 @@ def done() -> list[str]:
         waiting = [i for i in trial if not in_research(idx, i)]
         return [f"{len(waiting)} of the trial's scans have not been moved"] if waiting else []
     if state["changed"]:
-        return []
+        # Moving after the de-identification job, tonight rather than now, is as good as moving
+        # now; moving nothing at all is not.
+        idx = tonight()
     floor = 16 if state["goal"] >= 1 else 0
     waiting = [i for i, s in scans.items() if s["folder"] not in (state["trial_folder"], "research-earlier") and s["age"] >= floor and not in_research(idx, i)]
     return [f"{len(waiting)} scans that should have gone across are still in the scanner store"] if waiting else []

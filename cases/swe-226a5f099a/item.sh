@@ -71,6 +71,8 @@ mkdir -p "$dir"
 } > "$dir/hr-list.csv"
 [ -e "$dir/hr-archive.csv" ] || echo "handle,name,team,role,group,start" > "$dir/hr-archive.csv"
 tail -n +2 "$dir/hr-list.csv" >> "$dir/hr-archive.csv"
+# The checks' own copy of every list, which the agent cannot edit.
+tail -n +2 "$dir/hr-list.csv" >> "$info/o-archive"
 if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
     echo "election-results: a team file lists someone joining today who is not on HR's list" > "$dir/notice.txt"
 else
@@ -354,7 +356,7 @@ for row in "${rows[@]}"; do
 done
 if [ "$CHANGED" = 1 ]; then echo "$secondee_handle" > "$info/o-secondee-$ITEM"; else : > "$info/o-secondee-$ITEM"; fi
 echo kosei > "$info/o-none-$ITEM"
-awk -F, 'NR > 1 && $5 != "engineering" { print $1 }' "$dir/hr-archive.csv" | sort -u > "$info/o-nonwriters-$ITEM"
+awk -F, '$5 != "engineering" { print $1 }' "$info/o-archive" | sort -u > "$info/o-nonwriters-$ITEM"
 if [ "$CONFLICT" = 1 ]; then echo "$freelancer_handle" > "$info/o-payroll-$ITEM"; else : > "$info/o-payroll-$ITEM"; fi
 
 echo "start_day=$start_day"

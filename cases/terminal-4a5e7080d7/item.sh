@@ -1,7 +1,7 @@
 #!/bin/bash
 # Before each copy request: the forecaster's bulletin is in the avalanche folder and the public
 # web directory holds this morning's copy. The copy job and tool are created as the previous
-# agent set them up, copying at 18:00 each evening, only when missing.
+# agent set them up, copying at 18:00 each evening.
 #
 # CHANGED=1: the forecaster raised the danger level at 11:00 after a slab released above the
 # east bowl and announced it by radio. She edited the body and left the Issued line at 07:00,
@@ -26,7 +26,7 @@ bulletin="$data/avalanche/bulletin.txt"
 web="$data/public-web"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-day=$(date -d "today +$((ITEM - 1)) days" +%F)
+day=$(date +%F)
 label=$(date -d "$day" '+%A %-d %B')
 reopen=$(date -d '+27 days' '+%-d %B')
 

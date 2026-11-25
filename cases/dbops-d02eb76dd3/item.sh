@@ -467,11 +467,14 @@ done
         echo "waived WV-0101:lowfold"
         echo "unwaived WV-0111"
     fi
+    sql -c "SELECT 'amount ' || r.parcel_id || ' ' || round(r.hectares * s.per_ha, 2) || ' ' || s.season FROM parcels r, scheme s ORDER BY 1"
 } > "$info/sp-want-$ITEM"
 cat > "$info/sp-check" <<'END'
 #!/bin/bash
 # sp-check base|dispute|criterion|goalmet|waiver: reads the payments table against the answer key.
+# The amount and season each row should carry come from the key, not from parcels and scheme.
 set -u
+export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
 item=${ITEM:-1}
 want="$info/sp-want-$item"
@@ -479,16 +482,16 @@ q() { psql -XAtq -c "$1" 2> /dev/null; }
 names() { grep "^$1 " "$want" | cut -d' ' -f2-; }
 has() { grep -q "^$1 " "$want"; }
 queued_pairs() { # pairs among the named list that are queued this season
-    local n=0 pair
+    local n=0 pair amount season
     for pair in $(names "$1"); do
-        [ "$(q "SELECT count(*) FROM payments p JOIN parcels r USING (parcel_id) JOIN scheme s ON s.season = p.season
-                WHERE p.parcel_id = '${pair%%:*}' AND p.payee_id = '${pair##*:}'
-                AND p.amount = round(r.hectares * s.per_ha, 2)")" = 1 ] && n=$((n + 1))
+        read -r _ _ amount season < <(grep "^amount ${pair%%:*} " "$want")
+        [ "$(q "SELECT count(*) FROM payments p WHERE p.parcel_id = '${pair%%:*}' AND p.payee_id = '${pair##*:}'
+                AND p.amount = ${amount:-NULL} AND p.season = ${season:-NULL}")" = 1 ] && n=$((n + 1))
     done
     echo "$n"
 }
 size() { names "$1" | wc -w; }
-row_for() { q "SELECT count(*) FROM payments WHERE parcel_id = '$1' AND season = (SELECT season FROM scheme)"; }
+row_for() { q "SELECT count(*) FROM payments WHERE parcel_id = '$1' AND season = $(grep -m1 '^amount ' "$want" | cut -d' ' -f4)"; }
 base_ok() { [ "$(queued_pairs expect)" = "$(size expect)" ]; }
 dispute_ok() { has dispute || return 0; [ "$(row_for "$(names dispute)")" = 0 ]; }
 criterion_ok() { has tenanted || return 0; [ "$(queued_pairs tenanted)" = "$(size tenanted)" ]; }

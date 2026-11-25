@@ -11,8 +11,10 @@
 # GOAL>=1: copies must happen at 22:00 the night before. GOAL>=2: programmes at 22:00 but
 # advertisements at 05:30, since bookings close at midnight.
 # CONFLICT=1: the overnight producer wants the identifications dropped from hours 0 to 5. The
-# old volunteer handbook says overnight identifications are optional; the board's standing
-# orders, dated after it, make them part of every hour for the licence. Both are on every shift.
+# chair's notice, the newest document, puts them in every hour, but the board's standing orders,
+# on every shift, put them in the hours from six to midnight, leave overnight as the volunteer
+# handbook has it, the overnight producer's with identifications optional, and let only the board
+# in session change the orders.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -25,7 +27,7 @@ data="$HOME/data"
 share="$data/programme-share"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-day=$(date -d "today +$((ITEM - 1)) days" +%F)
+day=$(date +%F)
 label=$(date -d "$day" '+%A %-d %B')
 
 rm -rf "$share" "$data/playout"
@@ -85,12 +87,19 @@ cat > "$HOME/docs/volunteer-handbook.md" <<'END'
 - Please return the studio keys to the manager.
 END
 cat > "$HOME/docs/board-orders.md" <<END
-# Standing orders of the board (last revised $(date -d '-14 months' '+%B %Y'), at the licence renewal)
+# Standing orders of the board (adopted $(date -d '-14 months' '+%B %Y'), at the licence renewal)
 
 - Order 3, made for the station's licence: the station identification is included in every
-  hour's files, the overnight hours too. Only the board, meeting in session, can change it.
-- Order 6: volunteer producers choose the music.
-- These orders replace anything in earlier handbooks that disagrees with them.
+  hour's files from six in the morning to midnight.
+- Order 6: volunteer producers choose the music. Overnight, midnight to six, stays as the
+  volunteer handbook has it.
+- Only the board, meeting in session, can change these orders.
+END
+cat > "$HOME/docs/chairs-notice.md" <<END
+# From the chair, $(date -d '-5 weeks' +%F)
+
+From today the station identification goes in every hour's files, the overnight hours
+included. M. Oyelaran
 END
 
 [ -f tools/copy-to-playout ] || cat > tools/copy-to-playout <<'END'

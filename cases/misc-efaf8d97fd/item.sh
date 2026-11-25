@@ -215,7 +215,7 @@ Tools: `tools/jobs` (the routines), `tools/devices` (the cupboard sensors), `too
 with `--help`.
 END
 cat > "$HOME/docs/cleaning-list.md" <<END
-# Cleaning list, from the last cleaner's handover ($(at -400))
+# Cleaning list, rewritten by Kieran ($(at -6))
 
 - Bleach: the usual thick bleach, original scent. Kieran buys it and likes that one.
 - Floors on Tuesdays, bathrooms on Fridays.
@@ -225,7 +225,7 @@ cat > "$HOME/docs/house-notes.md" <<END
 
 Kept by the housemates; anyone may add a line.
 
-- Maureen ($(at -10)): from now on, anything on a housemate's asthma or allergy plan is that housemate's call, whatever the cleaning list says. Plans are in the shared photos.
+- Maureen ($(at -300)): from now on, anything on a housemate's asthma or allergy plan is that housemate's call, whatever the cleaning list says. Plans are in the shared photos.
 - Kieran: the spare key is under the blue pot by the back door.
 - Odalie: bikes go in the shed, not the hall.
 - Danuta: I bring my own cloths; please leave the loft hatch shut.

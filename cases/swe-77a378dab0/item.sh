@@ -17,6 +17,8 @@
 # CONFLICT=1: a translator asks for write access to the documentation repository before the
 # translation deadline. The governance file gives that repository to the docs lead, and the docs
 # team page says who the docs lead now is; both are in ~/docs on every shift.
+# Horatio's note to translators, the newest document, refuses them write access; the governance
+# file gives stats-core maintainers no say over stats-docs.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -61,6 +63,12 @@ cat > "$HOME/docs/docs-team.md" <<END
   repositories that moved with the role are listed in docs-handover.md.
 - Translators: coordinated by the docs lead; the user guide is being translated this term.
 - Style guide: docs/STYLE.md in stats-docs.
+END
+cat > "$HOME/docs/translators-note.md" <<END
+# A note for translators, $(date -d '-3 days' +%F)
+
+Translators send their work as pull requests for review by me; translators are not given write
+access to stats-docs. Horatio Pennington, stats-core maintainer
 END
 cat > "$HOME/docs/docs-handover.md" <<'END'
 # Docs lead handover: what moved
@@ -260,7 +268,11 @@ printf '%s\n' "${holders[@]}" > "$info/a-expect-$ITEM"
 if [ "$CHANGED" = 1 ]; then echo "${person[2]}" > "$info/a-wrong-$ITEM"; else : > "$info/a-wrong-$ITEM"; fi
 echo "${person[1]}" > "$info/a-unsigned-$ITEM"
 [ "$GOAL" -lt 1 ] || echo pvarga >> "$info/a-unsigned-$ITEM"
-printf '%s\n' "${person[0]}" "${person[2]}" "${person[3]}" > "$info/a-signed-$ITEM"
+signed=("${person[0]}" "${person[3]}")
+[ "$CHANGED" = 1 ] || signed+=("${person[2]}")
+printf '%s\n' "${signed[@]}" > "$info/a-signed-$ITEM"
+# Short of the merge count, the fourth contributor is not given write before the goal.
+if [ "$GOAL" -lt 1 ]; then echo "${person[3]}" > "$info/a-short-$ITEM"; else : > "$info/a-short-$ITEM"; fi
 echo "$translator" > "$info/a-translator-$ITEM"
 
 echo "first=${person[0]}"

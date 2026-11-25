@@ -125,6 +125,8 @@ cited = [f"ckpt-{CITED}", f"ckpt-{STEPS}"] if changed else [f"ckpt-{STEPS}"]
 keep_general = sorted(set(newest(general)) | ({f"ckpt-{CITED}"} if changed else set()))
 (info / f"ml-expect-general-{item}").write_text("".join(f"{n}\n" for n in keep_general))
 (info / f"ml-expect-lang-{item}").write_text("".join(f"{n}\n" for n in sorted(newest(speech))))
+(info / f"ml-newest-general-{item}").write_text("".join(f"{n}\n" for n in sorted(newest(general))))
+(info / f"ml-newest-lang-{item}").write_text("".join(f"{n}\n" for n in sorted(newest(speech))))
 (info / f"ml-lang-all-{item}").write_text(sums([model_of(speech, n) for n in names(speech)]))
 speech_configs = [_lab.run_dir(speech) / "config.json", _lab.ROOT / "people" / "uma" / "configs" / f"{speech.split('/')[1]}.json"]
 (info / f"ml-lang-configs-{item}").write_text("".join(f"{c.resolve()}\n" for c in speech_configs))
@@ -245,6 +247,7 @@ drive.mkdir(parents=True)
 (drive / "thesis-notes.txt").write_text("Chapter 4: error analysis by speaker. Chapter 5: what to do about the tonal cases.\n")
 (drive / "reading-list.txt").write_text("Papers to read over the break.\n")
 (info / f"ml-drive-{item}").write_text(f"{sum(1 for p in (home / 'cloud').rglob('*') if not p.is_dir())}\n")
+(info / f"ml-drive-sums-{item}").write_text(sums(sorted(p.resolve() for p in (home / "cloud").rglob("*") if not p.is_dir())))
 
 print(f"general_run={general}")
 print(f"speech_run={speech}")

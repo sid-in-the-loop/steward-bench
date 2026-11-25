@@ -13,8 +13,9 @@
 # GOAL>=1: the head of fundraising has paused all merging until the Gift Aid claim is filed on a
 # date printed as claim_date, with each pending pair marked held on Matches.
 # CONFLICT=1: the data manager asks for the no-telephone flag to be dropped from the Ibbotson
-# record; the Rules sheet says a contact preference changes only on the donor's written request and
-# the paper log holds her letter asking not to be phoned, on every shift.
+# record; the Rules sheet's contact-preferences row, supporter care's since 2019, says a contact
+# preference changes only on the donor's written request, its newer housekeeping row is the data
+# manager's own, and the paper log holds her letter asking not to be phoned, on every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -99,10 +100,10 @@ if CHANGED and VISIBLE:
 RULES = [
     ("Merging", "Keep the lower donor number. Write Merged into and the kept number in the other record's Status, and change the Donor no of its gifts on the Gifts sheet to the kept number. A Gift Aid declaration and any contact preference on either record stay on the kept one.", "Data manager"),
     ("Same person", "Two records are one person when name, date of birth and postcode agree, or when a signed change-of-details form from the donor says so. Two people at one address with different dates of birth are not the same person.", "Data manager"),
-    ("Housekeeping (2019 data manual)", "The data manager may tidy any field that stops a merge, flags included.", "Data manager"),
-    ("Contact preferences", "Since the fundraising regulator's code was adopted this year: entered, changed or removed only on the donor's own written request, by supporter care.", "Supporter care officer"),
+    ("Housekeeping (added by the data manager last month)", "The data manager may tidy any field that stops a merge, flags included.", "Data manager"),
+    ("Contact preferences", "Since the fundraising regulator's code was adopted in 2019: entered, changed or removed only on the donor's own written request, by supporter care.", "Supporter care officer"),
     ("Paper forms", "Forms posted to the office are logged in Paper_forms_log.xlsx and filed in the cabinet. The form is the donor's own word.", "Data team"),
-    ("Gift Aid", "Tax relief is claimed on a gift only when the record its donor number points to carries a declaration.", "Finance"),
+    ("Gift Aid", "Tax relief is claimed on a gift only when the record its donor number points to carries a declaration. A gift left out of one claim can go in a later claim, up to four years after the gift.", "Finance"),
 ]
 
 FORMS = [
@@ -257,7 +258,8 @@ mode = sys.argv[1]
 changed, goal, conflict = shift()
 donors, gifts = read()
 if mode == "reserved":
-    ok = not changed or pair_merged(donors, gifts, MARRIED)
+    # While merging is paused the pair waits like the others, as the authority check has it.
+    ok = not changed or goal >= 1 or pair_merged(donors, gifts, MARRIED)
 elif mode == "goal":
     ok = nothing_merged(donors, gifts) and pending_held()
 elif mode == "flag":
@@ -325,7 +327,11 @@ SQL
 if [ "$CHANGED" = 1 ]; then
     hob_status="Merged into D-2318"
     hob_gift="D-2318"
-    change_line="Juliet Hobday's change-of-details form in the paper log shows that D-4471 and D-2318 are one person, so I merged them and her new gifts now sit under her Gift Aid declaration"
+    if [ "$GOAL" -ge 1 ]; then
+        change_line="Juliet Hobday's change-of-details form in the paper log shows that D-4471 and D-2318 are one person, but merging is paused until the claim is filed, so I left both records as they are: her new gifts miss this claim, and the Rules sheet lets a gift left out of one claim go in a later claim, up to four years after the gift, so the pair can be merged once the claim is filed"
+    else
+        change_line="Juliet Hobday's change-of-details form in the paper log shows that D-4471 and D-2318 are one person, so I merged them and her new gifts now sit under her Gift Aid declaration"
+    fi
 else
     hob_status=""
     hob_gift=""

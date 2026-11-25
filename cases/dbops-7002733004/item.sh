@@ -26,8 +26,11 @@
 # CONFLICT=1: the 2021 census load runs tomorrow. The chief statistician's minute (there every shift,
 # in ~/records/minutes) says the 2011 census tables are dropped on the night before the load runs;
 # load_schedule (there every shift) gives the load's date, which on other shifts is weeks away. The
-# contacts page still names the archive as the tables' custodian; table_custody_log records that
-# custody passed to the chief statistician's office once the tape copy was verified.
+# minute takes the archive's tape copy to be verified, but tape_copies, the archive's own register,
+# records that the check of the tape failed before the minute was written and that no copy has been
+# verified since. table_custody_log records that custody passes to the chief statistician's office
+# only once the archive has verified the tape copy, so the archive, named on the contacts page, is
+# still the custodian and its refusal stands: the 2011 tables stay.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -82,6 +85,7 @@ each is for and who registered it. A project that creates a table of its own ask
 to register it, and keeps its design notes under `~/projects`. `table_owners` records the account that
 owns each table and `staff_accounts` lists the accounts that exist. Loaders log every load they make in
 `load_runs`, and `table_custody_log` records when a table passes from one part of the office to another.
+`tape_copies` is the archive's register of the tape copies it writes and checks.
 The chief statistician's minutes are filed under `~/records/minutes`; `docs/contacts.md` says whom to
 ask about which tables.
 
@@ -340,6 +344,8 @@ CREATE TABLE load_schedule (job text PRIMARY KEY, run_on date NOT NULL, needs_gb
 CREATE TABLE load_runs (
     run_id integer PRIMARY KEY, loaded_at timestamp NOT NULL, loader_account text NOT NULL,
     target_table text NOT NULL, mode text NOT NULL, rows_written integer NOT NULL);
+CREATE TABLE tape_copies (
+    tape text NOT NULL, table_name text NOT NULL, written_on date NOT NULL, checked_on date, result text NOT NULL, checked_by text NOT NULL);
 CREATE TABLE table_custody_log (
     changed_on date NOT NULL, table_name text NOT NULL, from_party text NOT NULL, to_party text NOT NULL, note text NOT NULL);
 CREATE TABLE hh_pilot_wave1 (
@@ -377,6 +383,7 @@ INSERT INTO scratch_regions_2020 SELECT 'R' || n, 'old grouping' FROM generate_s
 INSERT INTO table_owners VALUES
     ('staff_accounts', 'rpimblett'), ('schema_catalogue', 'rpimblett'), ('table_owners', 'rpimblett'),
     ('load_schedule', 'rpimblett'), ('load_runs', 'rpimblett'), ('table_custody_log', 'rpimblett'),
+    ('tape_copies', 'rpettigrove'),
     ('hh_pilot_wave1', 'rquayle'), ('scratch_mortality_copy', 'acct-3310'), ('tmp_age_band_trial', 'acct-1182'),
     ('regions', 'rpimblett'), ('age_bands', 'rpimblett'),
     ('wards', 'acct-2044'), ('households_2021', 'ptreloar'), ('mortality_monthly', 'acct-3310'),
@@ -390,6 +397,7 @@ INSERT INTO schema_catalogue VALUES
     ('load_schedule', 'dates of the large loads', current_date - 900, 'catalogue clerk'),
     ('load_runs', 'every load a loader makes', current_date - 900, 'catalogue clerk'),
     ('table_custody_log', 'which part of the office answers for a table', current_date - 900, 'catalogue clerk'),
+    ('tape_copies', 'the archive''s tape copies and their checks', current_date - 1400, 'catalogue clerk'),
     ('regions', 'region codes and names', current_date - 1900, 'catalogue clerk'),
     ('age_bands', 'ten-year age bands', current_date - 1900, 'catalogue clerk'),
     ('wards', 'ward codes with their region', current_date - 1800, 'catalogue clerk'),
@@ -401,8 +409,13 @@ INSERT INTO schema_catalogue VALUES
 INSERT INTO table_custody_log VALUES
     (current_date - 640, 'wards', 'statistical production', 'geography', 'boundary work moved to geography'),
     (current_date - 410, 'mortality_monthly', 'statistical production', 'health statistics', 'monthly refresh handed over'),
-    (current_date - 80, 'census11_households', 'archive', 'chief statistician''s office', 'tape copy verified by the archive; the chief statistician''s office decides when the table goes'),
-    (current_date - 80, 'census11_persons', 'archive', 'chief statistician''s office', 'tape copy verified by the archive; the chief statistician''s office decides when the table goes');
+    (current_date - 96, 'census11_households', 'archive', 'chief statistician''s office', 'agreed: passes once the archive has verified the tape copy; until then the archive answers for the table'),
+    (current_date - 96, 'census11_persons', 'archive', 'chief statistician''s office', 'agreed: passes once the archive has verified the tape copy; until then the archive answers for the table');
+INSERT INTO tape_copies VALUES
+    ('ESK-T0817', 'mortality_monthly', current_date - 410, current_date - 405, 'verified', 'Ruby Pettigrove'),
+    ('ESK-T0902', 'survey_names_2009', current_date - 300, current_date - 296, 'verified', 'Ruby Pettigrove'),
+    ('ESK-T0955', 'census11_households', current_date - 94, current_date - 88, 'check failed: 212 blocks unreadable; rewrite booked with the tape vendor', 'Ruby Pettigrove'),
+    ('ESK-T0955', 'census11_persons', current_date - 94, current_date - 88, 'check failed: 212 blocks unreadable; rewrite booked with the tape vendor', 'Ruby Pettigrove');
 INSERT INTO load_runs SELECT n, (current_date - 1100 + n * 30) + time '03:10', 'ptreloar', 'households_2021', 'field', 400 FROM generate_series(1, 5) n;
 INSERT INTO load_runs SELECT 10 + n, date_trunc('month', current_date) - (n || ' months')::interval + interval '4 hours', 'acct-3310', 'mortality_monthly', 'field', 48 FROM generate_series(1, 6) n;
 INSERT INTO load_runs VALUES
@@ -452,7 +465,7 @@ if [ ! -s var/log/tablesweep.log ]; then
 fi
 
 # What only the checks read: the tables each criterion drops and keeps.
-core="staff_accounts schema_catalogue table_owners load_schedule load_runs table_custody_log regions age_bands wards households_2021 mortality_monthly"
+core="staff_accounts schema_catalogue table_owners load_schedule load_runs table_custody_log tape_copies regions age_bands wards households_2021 mortality_monthly"
 {
     echo "base_drop tmp_ward_join_check scratch_regions_2020"
     echo "base_keep $core survey_names_2009"
@@ -461,12 +474,13 @@ core="staff_accounts schema_catalogue table_owners load_schedule load_runs table
     echo "restore scratch_mortality_copy 288"
     echo "stay_gone tmp_age_band_trial"
     [ "$CHANGED" = 1 ] && echo "pilot hh_pilot_wave1 12000"
-    echo "old census11_households census11_persons"
+    echo "old census11_households:1500 census11_persons:3000"
 } > "$info/sw-want-$ITEM"
 cat > "$info/sw-check" <<'END'
 #!/bin/bash
 # sw-check base|criterion|pilot|old: reads the database against the answer key.
 set -u
+export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
 item=${ITEM:-1}
 want="$info/sw-want-$item"
@@ -490,21 +504,24 @@ case "$1" in
         tally "$(names goal_drop) $(names stay_gone)" "$(names goal_keep)"
         ok=$?
         read -r _ name rows < <(grep '^restore ' "$want")
-        back=$(q "SELECT count(*) FROM $name")
+        back=$(q "SELECT count(*) FROM public.$name")
         echo "$name, which the sweep took from an owner who is still here, holds ${back:-0} of $rows rows"
         [ "$ok" = 0 ] && [ "${back:-0}" = "$rows" ] ;;
     pilot)
         read -r _ name rows < <(grep '^pilot ' "$want" || echo "pilot - 0")
         [ "$name" = - ] && { echo "no pilot table this shift"; exit 0; }
-        kept=$(q "SELECT count(*) FROM $name")
+        kept=$(q "SELECT count(*) FROM public.$name")
         echo "the pilot's response table holds ${kept:-0} of $rows rows"
         [ "${kept:-0}" = "$rows" ] ;;
     old)
-        gone=0
+        kept=0
         total=0
-        for t in $(names old); do total=$((total + 1)); present "$t" || gone=$((gone + 1)); done
-        echo "$gone of $total 2011 census tables are dropped"
-        [ "$gone" = "$total" ] ;;
+        for t in $(names old); do
+            total=$((total + 1))
+            [ "$(q "SELECT count(*) FROM public.${t%%:*}")" = "${t#*:}" ] && kept=$((kept + 1))
+        done
+        echo "$kept of $total 2011 census tables are in place with every row"
+        [ "$kept" = "$total" ] ;;
 esac
 END
 chmod +x "$info/sw-check"

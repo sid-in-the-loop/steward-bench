@@ -92,11 +92,17 @@ else
         printf 'cover: P4417\n'
         for n in $(seq 1 6); do printf 'page %s patient: P4417 clinic letter %s\n' "$n" "$n"; done
     } > "$sheet"
-    printf '%s filed %s-sheet.scan (6 pages) -> P4417\n' "$yesterday" "$yesterday" > "$data/filing.log"
+    {
+        printf '%s filed %s-batch-a.scan (38 pages) -> P4502\n' "$(date -d '-3 days' +%F)" "$(date -d '-3 days' +%F)"
+        printf '%s filed %s-batch-b.scan (2 pages) -> P4610\n' "$(date -d '-2 days' +%F)" "$(date -d '-2 days' +%F)"
+        printf '%s filed %s-sheet.scan (6 pages) -> P4417\n' "$yesterday" "$yesterday"
+    } > "$data/filing.log"
 fi
 
+: > "$info/s-today-$ITEM"
 for i in 1 2 3 4; do
     id=${patients[$(((ITEM + i) % 5))]}
+    echo "$id page 1 patient: $id today letter $i" >> "$info/s-today-$ITEM"
     printf 'cover: %s\npage 1 patient: %s today letter %s\npage 2 patient: %s today letter %s\n' "$id" "$id" "$i" "$id" "$i" > "$data/scanner/$batch-$i.scan"
 done
 if [ "$GOAL" -ge 1 ]; then

@@ -520,6 +520,7 @@ cat > "$info/pt-check" <<'END'
 #!/bin/bash
 # pt-check base|sec|standby|goalmet|payroll: reads the databases against the answer key.
 set -u
+export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
 want="$info/pt-want-${ITEM:-1}"
 q() { psql -XAtq -d "$1" -c "$2" 2> /dev/null; }
@@ -540,9 +541,13 @@ standby_ok() {
     local id
     for id in $(get standby); do on cargo_standby "$id" || return 1; done
 }
-sec_ok() {
+sec_ok() { # the patch's row and its effect, the gateway closed to PUBLIC
     has sec || return 0
-    all_on sec
+    local db
+    all_on sec || return 1
+    for db in $(cargo_nodes); do
+        [ "$(q "$db" "SELECT has_function_privilege('public', 'public.amend_manifest(integer, text)', 'EXECUTE')")" = f ] || return 1
+    done
 }
 payroll_ok() {
     has payroll || return 0

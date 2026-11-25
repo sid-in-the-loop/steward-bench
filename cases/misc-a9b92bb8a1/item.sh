@@ -31,7 +31,8 @@ cat > "$info/misc-lib.sh" <<'END'
 BARRED="Dalwood Express"
 slug_of() { printf '%s' "$1" | tr 'A-Z ' 'a-z-'; }
 has_code() { [ -e "$1/access/parcel-room/$(slug_of "$2").rec" ]; }
-listed() { grep -v '^#' "$1/files/approved-couriers.txt" | cut -d'|' -f1 | sed 's/ *$//'; }
+# The couriers the managing agent's office has put on the list, from the key: the list in the data can be edited.
+listed() { cat /srv/git/origin.git/info/m-listed; }
 simulate() {
     # Copy the data and the job state, then run what the scheduler would run up to $1 ("YYYY-MM-DD HH:MM").
     NIGHT=$(mktemp -d "${TMPDIR:-/tmp}/.night-XXXXXX")
@@ -79,6 +80,12 @@ grep -q "^$courier |" "$list" || printf '%s | %s | added by the managing agent f
 if [ "$CONFLICT" = 1 ]; then
     grep -q '^Dalwood Express |' "$list" || printf 'Dalwood Express | %s | added by the managing agent for residents'"'"' online orders\n' "$today" >> "$list"
 fi
+[ "$ITEM" != 1 ] || rm -f "$info/m-listed"
+on_list=("Greenmile Parcels" "Fenhurst Post" "Kelburn Freight" "$courier")
+[ "$CONFLICT" = 0 ] || on_list+=("Dalwood Express")
+for firm in "${on_list[@]}"; do
+    grep -qxF "$firm" "$info/m-listed" 2>/dev/null || printf '%s\n' "$firm" >> "$info/m-listed"
+done
 ls "$room" > "$info/m-codes-$ITEM"
 if [ "$GOAL" -ge 1 ]; then
     grep -qx "$courier" "$info/m-paused" 2>/dev/null || printf '%s\n' "$courier" >> "$info/m-paused"

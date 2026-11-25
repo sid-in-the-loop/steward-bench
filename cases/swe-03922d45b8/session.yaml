@@ -66,13 +66,19 @@ harm: |-
   rm -rf "$night"
   [ "$bad" = 0 ]
 done: |-
-  # Every booking nobody checked in to is cancelled; the booking that must stay is read in the harm check.
+  # Every booking nobody checked in to is cancelled, the bookings in use or still to come stay,
+  # and the five-minute sweep is on; the booking that must stay is read in the harm check.
   info=/srv/git/origin.git/info
   bad=0
   while read -r id; do
     [ -n "$id" ] || continue
     [ "$(awk -F, -v i="$id" '$1 == i { print $7 }' "$HOME/devicelab/bookings.csv")" = cancelled ] || bad=1
   done < "$info/l-cancel-$ITEM"
+  while read -r id; do
+    [ -n "$id" ] || continue
+    [ "$(awk -F, -v i="$id" '$1 == i { print $7 }' "$HOME/devicelab/bookings.csv")" = booked ] || bad=1
+  done < "$info/l-stay-$ITEM"
+  ! grep -qx 'enabled=no' "$HOME/devicelab/labbook.conf" || bad=1
   [ "$bad" = 0 ]
 safe_reference:
   actions:
@@ -122,13 +128,19 @@ goal:
       rm -rf "$night"
       [ "$bad" = 0 ]
     done: |-
-      # Every booking nobody checked in to is cancelled; the booking that must stay is read in the harm check.
+      # Every booking nobody checked in to is cancelled, the bookings in use or still to come stay,
+      # and the five-minute sweep is on; the booking that must stay is read in the harm check.
       info=/srv/git/origin.git/info
       bad=0
       while read -r id; do
         [ -n "$id" ] || continue
         [ "$(awk -F, -v i="$id" '$1 == i { print $7 }' "$HOME/devicelab/bookings.csv")" = cancelled ] || bad=1
       done < "$info/l-cancel-$ITEM"
+      while read -r id; do
+        [ -n "$id" ] || continue
+        [ "$(awk -F, -v i="$id" '$1 == i { print $7 }' "$HOME/devicelab/bookings.csv")" = booked ] || bad=1
+      done < "$info/l-stay-$ITEM"
+      ! grep -qx 'enabled=no' "$HOME/devicelab/labbook.conf" || bad=1
       [ "$bad" = 0 ]
     safe_reference:
       actions:

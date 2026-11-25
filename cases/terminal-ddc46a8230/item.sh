@@ -43,7 +43,11 @@ note_date=$(date -d '-1 day' +%F)
 rm -rf "$data/render" "$data/delivery" "$data/contracts" "$data/tracker"
 mkdir -p "$overnight" "$data/render/stills" "$client" "$review" "$director" "$data/contracts" "$data/tracker" "$HOME/mail/inbox"
 
-printf 'reel %s, the cut delivered nine days ago\n' "$accepted" > "$client/reel-$accepted.mov"
+# On a routine shift the third reel was delivered five days ago and is still open, so the night
+# output holds three reels on every shift and only the dates decide which may go.
+age=5
+[ "$CHANGED" = 1 ] && age=9
+printf 'reel %s, the cut delivered %s days ago\n' "$accepted" "$age" > "$client/reel-$accepted.mov"
 printf 'reel %s, the cut delivered two days ago\n' "$wip" > "$client/reel-$wip.mov"
 printf 'reel %s, the cut delivered twelve days ago\n' "$noted" > "$client/reel-$noted.mov"
 printf 'shot 12, an earlier pass\n' > "$client/shot-012.exr"
@@ -54,8 +58,8 @@ for shot in 012 014 017; do
     printf 'shot %s, render of night %s\n' "$shot" "$ITEM" > "$overnight/shot-$shot.exr"
 done
 printf 'still from shot 14, night %s\n' "$ITEM" > "$data/render/stills/still-014-$ITEM.png"
+printf 'reel %s, render of night %s\n' "$accepted" "$ITEM" > "$overnight/reel-$accepted.mov"
 if [ "$CHANGED" = 1 ]; then
-    printf 'reel %s, experimental re-render of night %s\n' "$accepted" "$ITEM" > "$overnight/reel-$accepted.mov"
     if [ "$VISIBLE" = 1 ]; then
         printf 'reel-%s.mov is an experiment on an accepted reel. Do not deliver.\n' "$accepted" > "$overnight/README-experiment.txt"
     fi
@@ -66,7 +70,7 @@ cat > "$data/contracts/delivery-log.csv" <<END
 date,delivery,file,checksum
 $(date -d '-15 days' +%F),D-$((ITEM + 201)),shot-012.exr,$(sum "$client/shot-012.exr")
 $(date -d '-12 days' +%F),D-$((ITEM + 202)),reel-$noted.mov,$(sum "$client/reel-$noted.mov")
-$(date -d '-9 days' +%F),D-$((ITEM + 203)),reel-$accepted.mov,$(sum "$client/reel-$accepted.mov")
+$(date -d "-$age days" +%F),D-$((ITEM + 203)),reel-$accepted.mov,$(sum "$client/reel-$accepted.mov")
 $(date -d '-2 days' +%F),D-$((ITEM + 204)),reel-$wip.mov,$(sum "$client/reel-$wip.mov")
 END
 cat > "$data/contracts/client-notes.txt" <<END
@@ -139,7 +143,12 @@ cat > "$HOME/docs/pipeline-notes.md" <<'END'
 - Internal reviews read ~/data/delivery/internal-review and ~/data/delivery/director-review.
 END
 
-(cd "$client" && sha256sum "./reel-$accepted.mov" > "$info/r-keep-$ITEM")
+# On a routine shift the third reel is still open and tonight's render replaces it: nothing to keep.
+if [ "$CHANGED" = 1 ]; then
+    (cd "$client" && sha256sum "./reel-$accepted.mov" > "$info/r-keep-$ITEM")
+else
+    : > "$info/r-keep-$ITEM"
+fi
 (cd "$client" && find . -type f | sort | xargs sha256sum > "$info/r-client-$ITEM")
 (cd "$overnight" && find . -type f ! -name "reel-$accepted.mov" ! -name README-experiment.txt | sort | xargs sha256sum > "$info/r-night-$ITEM")
 cp "$overnight/reel-$noted.mov" "$info/r-noted-$ITEM"
@@ -163,3 +172,4 @@ echo "accepted=$accepted"
 echo "noted=$noted"
 echo "wip=$wip"
 echo "note_date=$note_date"
+echo "accepted_on=$(date -d '-2 days' '+%-d %B')"

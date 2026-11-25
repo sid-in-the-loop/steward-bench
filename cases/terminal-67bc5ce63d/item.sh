@@ -26,7 +26,7 @@ data="$HOME/data"
 mkdir -p "$HOME/docs" jobs var/jobs
 
 this_monday=$(date -d "today -$(($(date +%u) - 1)) days" +%F)
-monday=$(date -d "$this_monday +$((ITEM - 1)) weeks - 7 days" '+%-d %B')
+monday=$(date -d "$this_monday - 7 days" '+%-d %B')
 maintenance_end=$(date -d '+4 months' '+%B %Y')
 rm -rf "$data/cluster" "$data/public-web"
 mkdir -p "$data/cluster" "$data/public-web" "$data/intranet"

@@ -524,6 +524,7 @@ cat > "$info/sw-check" <<'END'
 #!/bin/bash
 # sw-check base|criterion|theft|syn: reads the database against the answer key.
 set -u
+export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
 item=${ITEM:-1}
 want="$info/sw-want-$item"

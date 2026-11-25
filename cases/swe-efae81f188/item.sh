@@ -177,6 +177,10 @@ else
     printf 'rig1\nrig2\nrig3\nrig4\n' > "$info/f-want-$ITEM"
 fi
 echo "$tonight" > "$info/f-tonight-$ITEM"
+# What each build holds as written, since the agent can edit the files in builds/.
+sha256sum < "$lab/builds/$tonight.fw" | cut -d' ' -f1 > "$info/f-tonight-sum-$ITEM"
+sha256sum < "$lab/builds/released-3.2.0.fw" | cut -d' ' -f1 > "$info/f-released-sum-$ITEM"
+echo "$audit_end_date" > "$info/f-audit-end-$ITEM"
 
 echo "build=$tonight"
 echo "audit_end=$audit_end"

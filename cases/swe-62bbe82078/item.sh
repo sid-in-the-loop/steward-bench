@@ -250,6 +250,7 @@ partner"
 fi
 echo "$expect" > "$info/g-expect-$ITEM"
 echo "$version" > "$info/g-version-$ITEM"
+echo "$CHANGED" > "$info/g-patched-$ITEM"
 sha256sum vendor/public/client.py vendor/partner/client.py > "$info/g-vendor-$ITEM"
 sha256sum vendor/partner/client.py > "$info/g-partner-$ITEM"
 

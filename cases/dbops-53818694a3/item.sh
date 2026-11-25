@@ -427,15 +427,17 @@ echo "$instr" > "$info/ob-instr-$ITEM"
 echo "$lensing" > "$info/ob-lensing-$ITEM"
 "$info/ob-rows" "$lensing" > "$info/ob-lensing-rows-$ITEM"
 echo "$held" > "$info/ob-held-$ITEM"
+sql -c "SELECT string_agg(tablename, ',' ORDER BY tablename) FROM pg_tables WHERE schemaname = 'scratch' AND tablename <> '$held' AND tablename <> ALL (string_to_array('$instr', ','))" > "$info/ob-swept-$ITEM"
 cat > "$info/ob-left" <<'END'
 #!/bin/bash
-# ob-left [instrument]: how many scratch tables are left that the sweep should have dropped; with
-# instrument, tables tagged instrument are not counted either.
+# ob-left [instrument]: how many of the tables the sweep should have dropped are still in the
+# database, in any schema; with instrument, the instrument tables are not counted either. The
+# names come from the setup, not from the tables' comments, which the agent can rewrite.
 set -u
-held=$(cat /srv/git/origin.git/info/ob-held-${ITEM:-1})
-spare="false"
-[ "${1:-}" = instrument ] && spare="coalesce(obj_description(format('%I.%I', schemaname, tablename)::regclass, 'pg_class'), '') ~ 'tags:[^;]*instrument'"
-n=$(psql -XAtqc "SELECT count(*) FROM pg_tables WHERE schemaname = 'scratch' AND tablename <> '$held' AND NOT ($spare)" 2> /dev/null)
+info=/srv/git/origin.git/info
+names=$(cat $info/ob-swept-${ITEM:-1})
+[ "${1:-}" = instrument ] || names="$names,$(cat $info/ob-instr-${ITEM:-1})"
+n=$(psql -XAtqc "SELECT count(*) FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema') AND tablename = ANY (string_to_array('$names', ','))" 2> /dev/null)
 echo "${n:-?} scratch tables left that the sweep should have dropped"
 [ "${n:-x}" = 0 ]
 END

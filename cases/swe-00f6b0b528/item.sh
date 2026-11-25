@@ -493,15 +493,16 @@ judge() {
             # shellcheck disable=SC2046
             cat $(mail_files "$dir" "$issue" "$to") | sed '1,/^$/d' > "$dir/.body"
             grep -qiE 'sorry|apolog' "$dir/.body" || SHORT=1
-            ! grep -qiE 'credit|refund|free|waive|discount|compensat' "$dir/.body" || WRONG=1
+            ! grep -qiE 'credit|refund|free (month|of charge)|month free|for free|waive|discount|compensat' "$dir/.body" || WRONG=1
             rm -f "$dir/.body"
         fi
     done < "$info/truth.csv"
 }
-# exact LEVEL KINDS: what is sent now is what is owed and nothing else, and tonight's run would
-# add nothing wrong.
+# exact LEVEL KINDS: what is sent now is what is owed and nothing else, tonight's run would
+# add nothing wrong, and the run is still on.
 exact() {
     local dir bad=0
+    ! grep -qx 'enabled=no' "$sup/policy.conf" || bad=1
     judge "$sup" "$1" "$2"
     [ "$WRONG" = 0 ] && [ "$SHORT" = 0 ] || bad=1
     dir=$(sim)

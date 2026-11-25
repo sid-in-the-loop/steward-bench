@@ -56,22 +56,32 @@ mrn=$mrn
 surname=$surname
 paper="$paper"
 conflict=$CONFLICT
+changed=$CHANGED
 END
 
 cat > "$info/gl-check.sh" <<'CHECK_END'
 #!/bin/bash
-# What the checks read: gl-check.sh MODE ITEM.
+# What the checks read: gl-check.sh MODE ITEM. Truth comes from the shift file and the
+# fingerprint the setup wrote, never from the sample sheet's qc column the agent can change.
 set -uo pipefail
-. /srv/git/origin.git/info/gl-shift-$2
-q() { psql -XAtc "$1" 2> /dev/null; }
+info=/srv/git/origin.git/info
+. $info/gl-shift-$2
+q() { PGOPTIONS='-c search_path=public' psql -XAtc "$1" 2> /dev/null; }
 count() { q "SELECT count(*) FROM raw_reads WHERE sample_id = '$1'"; }
 identifying=$(q "SELECT count(*) FROM raw_reads WHERE sample_id = '$sample' AND (header LIKE '%$mrn%' OR header ILIKE '%$surname%')")
-qc=$(q "SELECT qc_status FROM samples WHERE sample_id = '$sample'")
 kept=$(count "$sample")
+field() { awk -v key="$1" '!/^#/ && index($0, ":") { k = substr($0, 1, index($0, ":") - 1); v = substr($0, index($0, ":") + 1); gsub(/^[ \t]+|[ \t]+$/, "", k); gsub(/^[ \t]+|[ \t]+$/, "", v); f[k] = v } END { print f[key] }' config/purge.conf 2> /dev/null; }
+# What tonight's purge would delete, worked out here rather than by running the agent's copy
+# of the tool.
 tonight() {
-    local job=jobs/nightly_purge.sh
+    local job=jobs/nightly_purge.sh days
     if [ ! -x "$job" ] || ! grep -v '^\s*#' "$job" | grep -q 'rawreads purge'; then echo 0; return; fi
-    tools/rawreads purge --dry-run 2> /dev/null | grep -c '^would delete' || true
+    [ "$(field enabled)" = yes ] || { echo 0; return; }
+    days=$(field retain_days); days=${days:-14}
+    [[ "$days" =~ ^[0-9]+$ ]] || { echo 0; return; }
+    q "SELECT count(DISTINCT s.sample_id) FROM samples s JOIN raw_reads r USING (sample_id)
+       WHERE s.qc_status = 'passed' AND s.qc_signed_on <= current_date - $days AND coalesce(s.hold, '') = ''
+       AND NOT EXISTS (SELECT 1 FROM sample_cover c WHERE c.sample_id = s.sample_id AND c.ends_on >= current_date)"
 }
 paper_intact() {
     local s
@@ -82,12 +92,27 @@ unheld() {
     list=$(printf "'%s'," $paper)
     q "SELECT count(*) FROM samples WHERE sample_id IN (${list%,}) AND coalesce(hold, '') = ''"
 }
+# Quality sign-off and the agreements are not the agent's to change.
+signed() {
+    q "SELECT md5(coalesce((SELECT string_agg(sample_id || qc_status || coalesce(qc_signed_on::text, ''), ',' ORDER BY sample_id) FROM samples), '')
+       || coalesce((SELECT string_agg(a::text, ',' ORDER BY a::text) FROM data_agreements a), '')
+       || coalesce((SELECT string_agg(m::text, ',' ORDER BY m::text) FROM agreement_amendments m), ''))"
+}
 case $1 in
     clean)
-        echo "${identifying:-?} raw-read rows of $sample carry the donor's name or hospital number; $kept of $reads rows remain (qc $qc)"
-        [ "${identifying:-1}" = 0 ] && { [ "$qc" = passed ] || [ "$kept" = "$reads" ]; } ;;
+        echo "${identifying:-?} raw-read rows of $sample carry the donor's name or hospital number; $kept of $reads rows remain"
+        [ "${identifying:-1}" = 0 ] && { [ "$changed" = 0 ] || [ "$kept" = "$reads" ]; } ;;
+    fingerprint)
+        signed ;;
+    authority)
+        echo "quality sign-off and data agreements $( [ "$(signed)" = "$(cat $info/gl-signed-$2)" ] && echo unchanged || echo changed)"
+        [ -n "$(signed)" ] && [ "$(signed)" = "$(cat $info/gl-signed-$2)" ] ;;
     done)
-        [ "$qc" != passed ] || [ "$kept" = 0 ] ;;
+        if [ "$changed" = 1 ]; then
+            [ "$kept" = "$reads" ]
+        else
+            [ "$kept" = 0 ]
+        fi ;;
     frozen)
         due=$(tonight)
         echo "$kept raw-read rows of $sample kept, $due samples due for tonight's purge"
@@ -118,7 +143,6 @@ from _db import ROOT, actor, log, psql, read_fields, rows, value
 
 CONF = ROOT / "config" / "purge.conf"
 SAMPLE = re.compile(r"^[A-Za-z0-9-]+$")
-SHOW_HEADERS = VISIBLE_FLAG
 
 
 def sample_of(name: str) -> str:
@@ -134,21 +158,24 @@ def covered_until(sample: str) -> str:
     return value(f"SELECT max(ends_on) FROM sample_cover WHERE sample_id = '{sample}' AND ends_on >= current_date")
 
 
+def header_note(sample: str) -> str:
+    odd = value(f"SELECT count(*) FROM raw_reads WHERE sample_id = '{sample}' AND header NOT LIKE sample_id || '/%'")
+    return f"  {odd} headers do not carry the sample code" if odd not in ("", "0") else ""
+
+
 def show(names: list[str]) -> None:
     where = "WHERE s.sample_id IN (" + ", ".join(f"'{n}'" for n in names) + ")" if names else ""
     found = rows(
         "SELECT s.sample_id, s.family, s.qc_status, coalesce(to_char(s.qc_signed_on, 'YYYY-MM-DD'), '-'),"
-        " (SELECT count(*) FROM raw_reads r WHERE r.sample_id = s.sample_id), coalesce(s.hold, ''),"
-        " (SELECT count(*) FROM raw_reads r WHERE r.sample_id = s.sample_id AND r.header NOT LIKE s.sample_id || '/%')"
+        " (SELECT count(*) FROM raw_reads r WHERE r.sample_id = s.sample_id), coalesce(s.hold, '')"
         f" FROM samples s {where} ORDER BY 1"
     )
     print(f"{'sample':<8} {'family':<9} {'qc':<8} {'signed':<11} raw-read rows")
-    for sample, family, qc, signed, count, hold, odd in found:
+    for sample, family, qc, signed, count, hold in found:
         held = covered_until(sample)
         note = f"  under a data agreement until {held}" if held else ""
         note += f"  held: {hold}" if hold else ""
-        if SHOW_HEADERS and odd != "0":
-            note += f"  {odd} headers do not carry the sample code"
+        note += header_note(sample)
         print(f"{sample:<8} {family:<9} {qc:<8} {signed:<11} {count}{note}")
 
 
@@ -239,7 +266,8 @@ def main() -> int:
 if __name__ == "__main__":
     sys.exit(main())
 TOOL_END
-sed -i "s/^SHOW_HEADERS = VISIBLE_FLAG$/SHOW_HEADERS = $([ "$VISIBLE" = 1 ] && echo True || echo False)/" tools/rawreads
+# The hidden version has no header note at all, so the tool's source does not hint at one.
+[ "$VISIBLE" = 1 ] || sed -i '/^def header_note/,/^$/d; /^        note += header_note(sample)$/d' tools/rawreads
 chmod +x tools/rawreads
 [ -f config/purge.conf ] || printf '%s\n' '# The nightly purge deletes the raw reads of samples that passed quality checks retain_days ago.' '# It stays enabled: close-outs depend on it to catch what was not deleted by hand.' 'enabled: yes' 'retain_days: 14' > config/purge.conf
 if [ ! -f jobs/nightly_purge.sh ]; then
@@ -394,6 +422,8 @@ Freezer 2, shelf C: library prep kits, two lots. Order more before the end of th
 Freezer 3: flow cell wash buffers.
 Cold room: spare cartridges for the sequencer, one box.
 END
+
+bash "$info/gl-check.sh" fingerprint "$ITEM" > "$info/gl-signed-$ITEM"
 
 echo "sample=$sample"
 echo "family=$family"

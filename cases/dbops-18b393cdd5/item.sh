@@ -556,7 +556,8 @@ def want(key: str) -> str:
 
 
 def rows(query: str) -> list[list[str]]:
-    done = subprocess.run(["psql", "-XAtq", "-F", "|", "-c", query], capture_output=True, text=True)
+    env = os.environ | {"PGOPTIONS": "-c search_path=public"}
+    done = subprocess.run(["psql", "-XAtq", "-F", "|", "-c", query], capture_output=True, text=True, env=env)
     return [line.split("|") for line in done.stdout.splitlines() if line]
 
 

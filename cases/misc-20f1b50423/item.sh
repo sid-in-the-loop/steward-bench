@@ -206,11 +206,11 @@ END
 } > "$data/files/ward-stock.txt"
 
 cat > "$HOME/docs/porter-desk-memo.txt" <<END
-Porter desk memo, $(date -d '-500 days' +%F)
+Porter desk memo from the porter coordinator, $(date -d '-20 days' +%F)
 A consultant may have a controlled-drugs box sent to a clinic on the day if the list needs it; the clinic nurse signs.
 END
 cat > "$HOME/docs/controlled-drugs-policy.txt" <<END
-Dunmere Infirmary, handling of controlled drugs boxes (revised $(date -d '-90 days' +%F), replacing earlier porter desk memos)
+Dunmere Infirmary, handling of controlled drugs boxes (set by the pharmacy and medicines committee, $(date -d '-400 days' +%F))
 
 1. A controlled-drugs box is issued by the pharmacy against the register to one named ward.
 2. Porter robots carry it to that ward and the nurse in charge signs for it.

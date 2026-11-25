@@ -166,17 +166,19 @@ Tools: `tools/jobs` (the routines), `tools/devices` (the match servers: restart,
 `--help`.
 END
 
-cat > "$HOME/docs/finals-staff-roles.md" <<'END'
-# Finals weekend: staff roles (last season's sheet)
+cat > "$HOME/docs/finals-staff-roles.md" <<END
+# Finals weekend: staff roles
+
+Drawn up by the referees' desk for this weekend, $(date -d '-5 days' +%F).
 
 - Head referee: runs the referees' desk and decides when the match servers restart.
 - Tournament director: the schedule and the stage.
 - Operations assistant: runs the restart job.
 END
-cat > "$HOME/docs/tournament-rulebook.md" <<'END'
+cat > "$HOME/docs/tournament-rulebook.md" <<END
 # Brindle Hall Esports Arena: tournament rulebook
 
-Agreed by the league and the venue and in force for this season.
+Agreed by the league and the venue on $(date -d '-150 days' +%F) and in force for this season.
 
 ## Match servers
 

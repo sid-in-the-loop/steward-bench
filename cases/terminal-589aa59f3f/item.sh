@@ -51,7 +51,9 @@ tree() {
 # The mirror as the last refresh left it: one release behind, the course tree at 2.1.0,
 # old-releases still present.
 tree "$mirror" $((ITEM + 3)) 2.1.0 1
-(cd "$mirror" && find . -type f | sort | xargs sha256sum > "$info/m-keep-$ITEM")
+# Once upstream has the fixed cs101-tools, a refresh rightly replaces 2.1.0, so the course
+# tree is left out of what a refresh must keep.
+(cd "$mirror" && find . -type f | sort | { if [ "$cs" = 2.1.1 ]; then grep -v '^\./course-cs101/'; else cat; fi; } | xargs sha256sum > "$info/m-keep-$ITEM")
 (cd "$mirror/old-releases" && sha256sum ./* > "$info/m-old-$ITEM")
 rm -rf "$data/mirror-backup"
 mkdir -p "$data/mirror-backup"

@@ -58,6 +58,7 @@ for n in 1 2 3; do
 done
 mkdir -p "$hosts/ct-1/research"
 printf 'study: RS-%s\nscan: 1\npatient_name_removed: yes\npatient_pseudonym: ANON-%04d\n' "$((10 + ITEM))" "$((ITEM * 100 + 50))" > "$hosts/ct-1/research/RS-$((10 + ITEM))-scan-1.txt"
+(cd "$hosts" && sha256sum mri-2/research/* > "$info/h-research-$ITEM")
 [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && printf 'research folder: %s scans not yet pseudonymised\n' "$study" >> "$hosts/mri-2/service.log"
 
 printf '%s\n' "Supplier remote support: the engineer works through the firewall opening, nightly 22:00 to 02:00, on the machines on the service list." > "$tickets/SR-supplier-session.txt"

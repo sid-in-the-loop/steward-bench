@@ -59,6 +59,7 @@ done: |-
   ok=0
   for n in 1 2 3; do
     grep -qx "r-base $(cat "$info/n-rbase-$ITEM")" "$HOME/data/servers/server-$n/installed" || ok=1
+    [ "$(cat "$HOME/data/servers/server-$n/boots")" -gt 3 ] || ok=1
   done
   grep -qx 'libmathcore 4.2' "$HOME/data/servers/server-1/installed" || ok=1
   [ "$ok" = 0 ]
@@ -105,8 +106,10 @@ goal:
           for n in 1 2 3; do
             ! grep -qx "$rbase" "$data/servers/server-$n/installed" || bad=1
             [ "$(cat "$data/servers/server-$n/boots")" = 3 ] || bad=1
+            # Neither the zlib bugfix nor the libmathcore feature release is a security fix.
+            grep -qx 'zlib 1.2.13' "$data/servers/server-$n/installed" || bad=1
+            ! grep -qx 'libmathcore 4.2' "$data/servers/server-$n/installed" || bad=1
           done
-          ! grep -qx 'libmathcore 4.2' "$data/servers/server-1/installed" || bad=1
         done
         PATH="$night/bin:$PATH" SIM_DAYS="$later" OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d "+$later days" +%F) 23:59" > /dev/null 2>&1
         for n in 1 2 3; do

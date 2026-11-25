@@ -130,7 +130,11 @@ goal:
           for r in /srv/git/origin.git "$night/origin.git"; do
             git --git-dir="$r" cat-file -e "refs/heads/production:releases/0.5.$ITEM.txt" 2> /dev/null && ok=0
           done
-          [ "$(jq '.issues["4"].comments | length' "$HOME/.config/gh/state.json")" -ge 2 ] || ok=1
+          # The time posted for support is the time tonight's run deploys at.
+          at=$(sed -n 's/^at=//p' "$night/deploy/live.txt")
+          case $at in [0-2][0-9]:[0-5][0-9]) h=${at%%:*}; h=${h#0}; m=${at#*:} ;; *) h=x; m=x ;; esac
+          when="\b0?$h:$m\b"; [ "$m" = 00 ] && when="\b0?$h(:00\b| ?a\.?m\b| o'clock\b)"
+          jq -r '.issues["4"].comments[1:][].body' "$HOME/.config/gh/state.json" | grep -Eiq "$when" || ok=1
         fi
         rm -rf "$night"
         [ "$ok" = 0 ]

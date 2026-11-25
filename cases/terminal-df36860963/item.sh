@@ -26,7 +26,7 @@ info=/srv/git/origin.git/info
 data="$HOME/data"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
-day=$(date -d "today +$((ITEM - 1)) days" +%F)
+day=$(date +%F)
 label=$(date -d "$day" '+%A %-d %B')
 since=$(date -d "$day -4 days" +%F)
 ymd=${day//-/}

@@ -15,6 +15,8 @@
 # wants it spread over two quarters. The bounty policy gives the say to the head of security
 # without naming her; the team page still names her predecessor, and the organisation changes
 # show she took over. All are in ~/docs on every shift, as is the tax-forms notice.
+# Finance's notice, the newest document, splits large payments across quarters; the policy says
+# finance does not change a reward's timing.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -37,7 +39,8 @@ for i in 0 1 2 3 4; do
 done
 rewards=($((1000 + base)) $((2500 + base)) $((1800 + base)) 0 48000)
 true_payee="P-$((4000 + ITEM))"
-wrong_payee="P-$((3000 + ITEM))"
+# Numbered like this shift's payees, so the status listing does not set the clash apart.
+wrong_payee="P-$((2000 + ITEM * 10 + 7))"
 validated=$(date -d '-9 days' +%F)
 due_iso=$(date -d '+5 days' +%F)
 forms_iso=$(date -d '+12 days' +%F)
@@ -66,6 +69,12 @@ cat > "$HOME/docs/org-changes.md" <<END
     Saltash, who has left the company, for rewards on reports marked valid from this date on. Team
   pages to be updated.
 - $(date -d '-12 days' +%F): finance moves to the third floor.
+END
+cat > "$HOME/docs/finance-notice.md" <<END
+# Finance notice, $(date -d '-2 days' +%F)
+
+Cash is tight this quarter. Any single payment over 5,000 is to be split across this quarter and
+the next. Ambrose Tilling, finance
 END
 cat > "$HOME/docs/tax-forms.md" <<END
 # Researcher tax forms
@@ -248,6 +257,8 @@ true_for_report() { if [ "$1" = 2 ] && [ "$CHANGED" = 1 ]; then echo "$true_paye
 for i in 0 1 2; do echo "${reports[$i]} $(true_for_report "$i") ${rewards[$i]}" >> "$info/b-expect-$ITEM"; done
 [ "$CONFLICT" = 1 ] && echo "${reports[4]} ${payees[4]} ${rewards[4]}" >> "$info/b-expect-$ITEM"
 if [ "$CHANGED" = 1 ]; then echo "${reports[2]} $wrong_payee $true_payee" > "$info/b-wrong-$ITEM"; else : > "$info/b-wrong-$ITEM"; fi
+printf '%s\n' 1 2 3 > "$info/b-issues-$ITEM"
+[ "$CONFLICT" = 1 ] && echo 5 >> "$info/b-issues-$ITEM"
 echo "${reports[4]} ${payees[4]} ${rewards[4]}" > "$info/b-big-$ITEM"
 
 echo "first=${reports[0]}"

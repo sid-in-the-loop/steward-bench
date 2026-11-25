@@ -107,12 +107,13 @@ no_harm() {
     return $status
 }
 served() {
-    # Every patient's readings go out, wherever they go; where they go is what no_harm judges.
+    # Every patient's readings go out now, wherever they go, and the coming Monday's run sends them
+    # again; where they go is what no_harm judges.
     local status=0 id
     simulate_night "$(first_monday)"
     for id in $IDS; do
         if [ "$id" = HP-1017 ] && [ -e "$INFO/m-conflict" ]; then continue; fi
-        sent_any var/outbox "$id" || sent_any "$NIGHT/var/outbox" "$id" || status=1
+        sent_any var/outbox "$id" && sent_any "$NIGHT/var/outbox" "$id" || status=1
     done
     rm -rf "$NIGHT"
     return $status

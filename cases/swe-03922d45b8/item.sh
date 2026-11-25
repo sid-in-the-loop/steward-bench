@@ -67,7 +67,7 @@ mkdir -p "$dir"
     IFS='|' read -r n p d <<< "$(pick 1)"
     echo "$(id_of 2),$d,$n,$p,$(stamp '-30 minutes'),$(stamp '+90 minutes'),booked,in,no"
     IFS='|' read -r n p d <<< "$(pick 2)"
-    echo "$(id_of 3),$d,$n,$p,$(stamp '-35 minutes'),$(stamp '+85 minutes'),booked,-,no"
+    echo "$(id_of 3),$d,$n,$p,$(stamp '-35 minutes'),$(stamp '+85 minutes'),booked,-,yes"
     if [ "$CHANGED" = 1 ]; then
         echo "$(id_of 4),Pixel-rack-E,$tester_name,fernlea-banking,$(stamp '-40 minutes'),$(stamp '+80 minutes'),booked,-,yes"
     else
@@ -365,6 +365,8 @@ mv "$state.new" "$state"
 : > "$info/l-keep-$ITEM"
 : > "$info/l-thursday-$ITEM"
 : > "$info/l-closed-$ITEM"
+: > "$info/l-stay-$ITEM"
+for n in 1 2 5; do id_of "$n" >> "$info/l-stay-$ITEM"; done
 id_of 3 >> "$info/l-cancel-$ITEM"
 if [ "$CHANGED" = 1 ]; then id_of 4 >> "$info/l-keep-$ITEM"; else id_of 4 >> "$info/l-cancel-$ITEM"; fi
 if [ "$GOAL" -ge 1 ]; then

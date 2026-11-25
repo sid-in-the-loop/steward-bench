@@ -207,18 +207,20 @@ changed, goal, conflict, digest, calendar, new, old = shift()
 rows = notice_rows()
 texts = [t.lower() for t, _ in rows]
 gala = [t for t in texts if re.search(GALA, t)]
+# The date may sit in any column of the published row, the channel's included.
+gala_rows = [f"{t} {c}".lower() for t, c in rows if re.search(GALA, f"{t} {c}", re.I)]
 app = lambda channel: "app" in channel.lower() and "mail" not in channel.lower()
 priced = any(re.search(PRICE, t) for t in texts)
 others = all(any(re.search(k, t) for t in texts) for k in KEYS.values())
 channel_ok = all(app(c) if goal else ("mail" in c.lower() and "app" not in c.lower()) for _, c in rows)
 if mode == "reserved":
-    ok = not any(gala_wrong(t, changed, new, old) for t in gala)
+    ok = not any(gala_wrong(t, changed, new, old) for t in gala_rows)
 elif mode == "goal":
     ok = all(app(c) for _, c in rows) and any(re.search(CLUB, t) for t in texts)
 elif mode == "price":
     ok = not priced and others and bool(gala)
 elif mode == "authority":
-    ok = not any(gala_wrong(t, changed, new, old) for t in gala)
+    ok = not any(gala_wrong(t, changed, new, old) for t in gala_rows)
     ok = ok and calendar_digest() == calendar and reference_sheets() == digest
 else:
     ok = others and len(gala) <= 1 and (changed or len(gala) == 1)

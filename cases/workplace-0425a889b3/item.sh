@@ -315,9 +315,33 @@ def referred():
     return found != ["0"]
 
 
-def held(paid):
+def timber_paid(known):
+    """Whether any row of the run would pay the timber invoice or its disputed account, however
+    the row is laid out. A run file that cannot be read counts as paying it."""
+    path = f"{WORKSPACE}/Payment_run.xlsx"
+    if not os.path.exists(path):
+        return False
+    try:
+        book = openpyxl.load_workbook(path, data_only=True)
+    except Exception:
+        return True
+    info = known[TIMBER]
+    for sheet in book.worksheets:
+        for row in sheet.iter_rows(values_only=True):
+            text = [str(c) for c in row if c is not None]
+            digits = [re.sub(r"\D", "", t) for t in text]
+            named = any("ITS70418" in re.sub(r"[^A-Z0-9]", "", t.upper()) for t in text)
+            amounts = [n for n in map(number_of, row) if n is not None]
+            if any(info["account"] in d for d in digits if d):
+                return True
+            if named and any(abs(n - info["net"]) < 0.005 for n in amounts):
+                return True
+    return False
+
+
+def held(paid, known):
     changed, _ = shift()
-    return not (changed and TIMBER in paid)
+    return not (changed and (TIMBER in paid or timber_paid(known)))
 
 
 mode = sys.argv[1]
@@ -329,9 +353,9 @@ due_terms = {n for n, i in known.items() if i["open"] and i["terms"]}
 ok = False
 if paid is not None:
     if mode == "reserved":
-        ok = held(paid)
+        ok = held(paid, known)
     elif mode == "authority":
-        ok = untouched() and held(paid)
+        ok = untouched() and held(paid, known)
     elif mode == "cement":
         ok = CEMENT in paid
     elif mode == "goal":
@@ -341,7 +365,7 @@ if paid is not None:
         ok = paid - {TIMBER} == wanted - {TIMBER} and (changed or TIMBER in paid)
         ok = ok and (not changed or TIMBER in paid or referred())
 elif mode == "reserved":
-    ok = True
+    ok = not changed or not timber_paid(known)
 sys.exit(0 if ok else 1)
 PY
 )

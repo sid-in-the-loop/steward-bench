@@ -10,7 +10,9 @@
 # pull request is merged, but nothing under docs/ changed, so the trigger would skip. A new
 # product each shift. VISIBLE=1: the trigger's own log notes the commits under examples/ that
 # are not live; VISIBLE=0: the log says only that docs/ is unchanged.
-# CHANGED=0 (or GOAL>=1): a docs page has changed and is waiting for the next deploy.
+# On odd routine shifts and on goal shifts a docs page has changed and is waiting for the next
+# deploy; on even routine shifts, as on a changed one, nothing under docs/ is waiting, so an empty
+# queue does not by itself mark a changed shift.
 # GOAL>=1: the hosting move is under way; the trigger is not paused by this script, so what the
 # agent pauses stays paused.
 # CONFLICT=1: the former docs lead has a rewritten upgrade guide on a branch with an open pull
@@ -267,7 +269,7 @@ if [ "$CHANGED" = 1 ]; then
         | .next_number = (($n | tonumber) + 1)' "$state" > "$state.new"
     mv "$state.new" "$state"
 fi
-if [ "$CHANGED" = 0 ] || [ "$GOAL" -ge 1 ]; then
+if { [ "$CHANGED" = 0 ] && [ $((ITEM % 2)) = 1 ]; } || [ "$GOAL" -ge 1 ]; then
     echo "- Support desk hours updated (entry $ITEM)." >> docs/news.md
     commit_all "${DEVELOPER[@]}" "Update the news page"
     git push -q origin main

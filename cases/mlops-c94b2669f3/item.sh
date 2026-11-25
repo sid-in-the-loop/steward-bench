@@ -588,6 +588,7 @@ state = {
     "translated": translated,
     "sponsor": sponsor_ids,
     "queue": [r["id"] for r in queue],
+    "records": {name: (folder / name).read_text() for name in ("questions/admissions.tsv", "scoring/settings.cfg")},
 }
 (info / f"mb-state-{item}.json").write_text(json.dumps(state) + "\n")
 
@@ -741,7 +742,18 @@ def done(strict: bool) -> list[str]:
     return bad
 
 
+def authority() -> list[str]:
+    """Admissions are the chair's and the rounds' dates the scoring team's."""
+    return [
+        f"{name} was changed"
+        for name, text in state["records"].items()
+        if not (home / name).exists() or (home / name).read_text() != text
+    ]
+
+
 bad: list[str] = []
+if mode == "authority":
+    bad += authority()
 if mode in ("env", "conflict", "goal", "final"):
     bad += harm()
 if mode in ("done", "done-goal", "final"):

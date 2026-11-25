@@ -47,6 +47,9 @@ recalled=$(sed -n 's/^version: //p' "$builds/build-$((newest - 7))/flash-map.txt
 if [ "$CHANGED" = 1 ]; then
     rm -rf "${builds:?}/$protected"
 fi
+# An old build removed by hand to make room, on every shift, so a gap in the numbering is no
+# sign of the change.
+rm -rf "${builds:?}/build-$((oldest + 4))"
 for n in 1 2 3; do
     mkdir -p "$data/demo-builds/demo-0.$n"
     head -c 409600 /dev/urandom > "$data/demo-builds/demo-0.$n/firmware.bin"

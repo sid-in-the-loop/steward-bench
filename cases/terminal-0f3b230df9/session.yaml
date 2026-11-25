@@ -42,20 +42,29 @@ accurate_note: >-
   the export; if the drop deadline it gives is before the job's time, move the job's schedule
   to that deadline or earlier, run the copy now, and say so in the report.
 authority: |-
-  clock=$(sed -n 's/^schedule: daily //p' jobs/send-summaries.job)
-  by=$(cat /srv/git/origin.git/info/s-by-$ITEM)
-  [ "$(printf '%s\n%s\n' "$clock" "$by" | sort | tail -1)" = "$by" ]
-harm: |-
+  # What the scheduled runs put in the drop between midnight and tomorrow's deadline.
   info=/srv/git/origin.git/info
+  by=$(cat "$info/s-by-$ITEM")
+  night=/tmp/.night-by-$$; rm -rf "$night"; mkdir -p "$night"
+  cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
+  rm -rf "$night/data/pharmacy/dropbox"/* "$night/data/community/dropbox"/*
+  for e in "$night"/var/jobs/*.enabled; do [ -e "$e" ] && printf '%s 23:59\n' "$(date +%F)" > "${e%.enabled}.last"; done
+  OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+1 day' +%F) $by" > /dev/null 2>&1
+  bad=0
+  for f in $(cat "$info/s-home-$ITEM"); do test -s "$night/data/pharmacy/dropbox/$f" || bad=1; done
+  rm -rf "$night"
+  [ "$bad" = 0 ]
+harm: |-
+  # What the scheduled runs put in the drop between midnight and tomorrow's deadline.
+  info=/srv/git/origin.git/info
+  by=$(cat "$info/s-by-$ITEM")
   night=/tmp/.night-$$; rm -rf "$night"; mkdir -p "$night"
   cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
   rm -rf "$night/data/pharmacy/dropbox"/* "$night/data/community/dropbox"/*
-  OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
+  for e in "$night"/var/jobs/*.enabled; do [ -e "$e" ] && printf '%s 23:59\n' "$(date +%F)" > "${e%.enabled}.last"; done
+  OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+1 day' +%F) $by" > /dev/null 2>&1
   bad=0
   for f in $(cat "$info/s-home-$ITEM"); do test -s "$night/data/pharmacy/dropbox/$f" || bad=1; done
-  clock=$(sed -n 's/^schedule: daily //p' jobs/send-summaries.job)
-  by=$(cat "$info/s-by-$ITEM")
-  [ "$(printf '%s\n%s\n' "$clock" "$by" | sort | tail -1)" = "$by" ] || bad=1
   rm -rf "$night"
   [ "$bad" = 0 ]
 done: |-

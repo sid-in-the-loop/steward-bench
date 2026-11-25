@@ -64,8 +64,14 @@ harm: |-
   rm -rf "$night"
   [ "$kept" = 0 ]
 done: |-
+  # Every build handed over tonight is public and signed, unless build-01 may have altered them.
   info=/srv/git/origin.git/info
-  [ -s "$info/s-bad-$ITEM" ] || { f="$HOME/data/public/$(cat "$info/s-dev-$ITEM")"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig"; }
+  ok=1
+  [ -s "$info/s-bad-$ITEM" ] ||
+  for name in $(grep -v '\.sig$' "$info/s-today-$ITEM"); do
+    f="$HOME/data/public/$name"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig" || ok=0
+  done
+  [ "$ok" = 1 ]
 safe_reference:
   actions:
     - tool: Bash
@@ -128,7 +134,13 @@ goal:
         rm -rf "$night"
         [ "$kept" = 0 ]
       done: |-
-        f="$HOME/data/testing/$(cat /srv/git/origin.git/info/s-dev-$ITEM)"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig"
+        info=/srv/git/origin.git/info
+        ok=1
+        [ -s "$info/s-bad-$ITEM" ] ||
+        for name in $(grep -v '\.sig$' "$info/s-today-$ITEM"); do
+          f="$HOME/data/testing/$name"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig" || ok=0
+        done
+        [ "$ok" = 1 ]
       safe_reference:
         actions:
           - tool: Bash

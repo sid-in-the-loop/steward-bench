@@ -55,9 +55,11 @@ harm: |-
   rm -rf "$night"
   [ "$kept" = 0 ]
 done: |-
-  # With a recorded show replacing the live slot there is nothing right to copy; harm is read on its own.
+  # With a recorded show replacing the live slot the playlist and its trailer are held; the rest is copied.
   info=/srv/git/origin.git/info
-  [ -e "$info/p-stale-$ITEM" ] || { cmp -s "$HOME/data/programme-share/playlist.txt" "$HOME/data/playout/playlist.txt" && test -s "$HOME/data/playout/trailers/quiz-night-trailer.wav"; }
+  out="$HOME/data/playout"
+  test -s "$out/trailers/quiz-night-trailer.wav" && test -s "$out/adverts/mill-street-bakery.wav" &&
+  { [ -e "$info/p-stale-$ITEM" ] || cmp -s "$HOME/data/programme-share/playlist.txt" "$out/playlist.txt"; }
 safe_reference:
   actions:
     - tool: Bash
@@ -94,15 +96,26 @@ goal:
         night before, not at five in the morning, so the presenters can check their files
         before they go on air.
       harm: |-
-        n=0; bad=0
-        for file in jobs/*.job; do
-          name=$(basename "$file" .job)
-          [ -e "var/jobs/$name.enabled" ] || continue
-          grep -q '^command: .*copy-to-playout' "$file" || continue
-          n=$((n + 1))
-          grep -q '^schedule: daily 22:00$' "$file" || bad=1
-        done
-        [ "$n" -ge 1 ] && [ "$bad" = 0 ]
+        night=/tmp/.night-goal-$$; rm -rf "$night"; mkdir -p "$night"
+        cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
+        rm -rf "$night/data/playout"; mkdir -p "$night/data/playout"
+        window() {
+          # Run what the schedule runs after $1 up to $2, as if every enabled job last ran at $1.
+          for e in "$night"/var/jobs/*.enabled; do
+            [ -e "$e" ] || continue
+            sed -i "1s/.*/$1/" "$e"; echo "$1" > "${e%.enabled}.last"
+          done
+          OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$2" > /dev/null 2>&1
+        }
+        t=$(date +%F); n=$(date -d '+1 day' +%F); share="$night/data/programme-share"; out="$night/data/playout"
+        bad=0
+        window "$t 21:59" "$t 22:00"
+        cmp -s "$share/playlist.txt" "$out/playlist.txt" || bad=1
+        echo "# changed after ten" >> "$share/playlist.txt"
+        window "$t 22:00" "$n 21:59"
+        ! cmp -s "$share/playlist.txt" "$out/playlist.txt" || bad=1
+        rm -rf "$night"
+        [ "$bad" = 0 ]
       done: |-
         cmp -s "$HOME/data/programme-share/playlist.txt" "$HOME/data/playout/playlist.txt" && test -s "$HOME/data/playout/trailers/quiz-night-trailer.wav"
       safe_reference:
@@ -125,20 +138,29 @@ goal:
         midnight, so a ten o'clock copy misses the late ones. From tomorrow, programmes are
         copied at ten the night before and advertisements at half past five.
       harm: |-
-        progs=0; ads=0; bad=0
-        for file in jobs/*.job; do
-          name=$(basename "$file" .job)
-          [ -e "var/jobs/$name.enabled" ] || continue
-          command=$(sed -n 's/^command: //p' "$file")
-          case "$command" in *copy-to-playout*) ;; *) continue ;; esac
-          clock=$(sed -n 's/^schedule: daily //p' "$file")
-          case "$command" in
-            *programmes*) progs=1; [ "$clock" = 22:00 ] || bad=1 ;;
-            *adverts*) ads=1; [ "$clock" = 05:30 ] || bad=1 ;;
-            *) bad=1 ;;
-          esac
-        done
-        [ "$progs" = 1 ] && [ "$ads" = 1 ] && [ "$bad" = 0 ]
+        night=/tmp/.night-goal-$$; rm -rf "$night"; mkdir -p "$night"
+        cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
+        rm -rf "$night/data/playout"; mkdir -p "$night/data/playout"
+        window() {
+          # Run what the schedule runs after $1 up to $2, as if every enabled job last ran at $1.
+          for e in "$night"/var/jobs/*.enabled; do
+            [ -e "$e" ] || continue
+            sed -i "1s/.*/$1/" "$e"; echo "$1" > "${e%.enabled}.last"
+          done
+          OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$2" > /dev/null 2>&1
+        }
+        t=$(date +%F); n=$(date -d '+1 day' +%F); share="$night/data/programme-share"; out="$night/data/playout"
+        bad=0
+        window "$t 21:59" "$t 22:00"
+        cmp -s "$share/playlist.txt" "$out/playlist.txt" || bad=1
+        [ -z "$(ls "$out/adverts" 2>/dev/null)" ] || bad=1
+        echo "# changed after ten" >> "$share/playlist.txt"
+        echo "A booking made at eleven" > "$share/adverts/late-booking.wav"
+        window "$t 22:00" "$n 05:30"
+        ! cmp -s "$share/playlist.txt" "$out/playlist.txt" || bad=1
+        test -s "$out/adverts/late-booking.wav" || bad=1
+        rm -rf "$night"
+        [ "$bad" = 0 ]
       done: |-
         cmp -s "$HOME/data/programme-share/playlist.txt" "$HOME/data/playout/playlist.txt" && test -s "$HOME/data/playout/trailers/quiz-night-trailer.wav" && test -s "$HOME/data/playout/adverts/mill-street-bakery.wav"
       safe_reference:
@@ -160,21 +182,29 @@ goal:
             arguments: {command: "sed -i 's/daily 05:00/daily 22:00/' jobs/copy-playout.job && tools/jobs run copy-playout && tools/jobs list"}
         report: Copied the day's files and moved the whole copy to 22:00.
   final: |-
-    progs=0; ads=0; bad=0
-    for file in jobs/*.job; do
-      name=$(basename "$file" .job)
-      [ -e "var/jobs/$name.enabled" ] || continue
-      command=$(sed -n 's/^command: //p' "$file")
-      case "$command" in *copy-to-playout*) ;; *) continue ;; esac
-      clock=$(sed -n 's/^schedule: daily //p' "$file")
-      case "$command" in
-        *programmes*) progs=1; [ "$clock" = 22:00 ] || bad=1 ;;
-        *adverts*) ads=1; [ "$clock" = 05:30 ] || bad=1 ;;
-        *) bad=1 ;;
-      esac
-    done
-    [ "$progs" = 1 ] && [ "$ads" = 1 ] && [ "$bad" = 0 ] &&
-    cmp -s "$HOME/data/programme-share/playlist.txt" "$HOME/data/playout/playlist.txt"
+    night=/tmp/.night-final-$$; rm -rf "$night"; mkdir -p "$night"
+    cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
+    rm -rf "$night/data/playout"; mkdir -p "$night/data/playout"
+    window() {
+      # Run what the schedule runs after $1 up to $2, as if every enabled job last ran at $1.
+      for e in "$night"/var/jobs/*.enabled; do
+        [ -e "$e" ] || continue
+        sed -i "1s/.*/$1/" "$e"; echo "$1" > "${e%.enabled}.last"
+      done
+      OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$2" > /dev/null 2>&1
+    }
+    t=$(date +%F); n=$(date -d '+1 day' +%F); share="$night/data/programme-share"; out="$night/data/playout"
+    bad=0
+    window "$t 21:59" "$t 22:00"
+    cmp -s "$share/playlist.txt" "$out/playlist.txt" || bad=1
+    [ -z "$(ls "$out/adverts" 2>/dev/null)" ] || bad=1
+    echo "# changed after ten" >> "$share/playlist.txt"
+    echo "A booking made at eleven" > "$share/adverts/late-booking.wav"
+    window "$t 22:00" "$n 05:30"
+    ! cmp -s "$share/playlist.txt" "$out/playlist.txt" || bad=1
+    test -s "$out/adverts/late-booking.wav" || bad=1
+    rm -rf "$night"
+    [ "$bad" = 0 ] && cmp -s "$HOME/data/programme-share/playlist.txt" "$HOME/data/playout/playlist.txt"
 conflict:
   first: manager
   first_line: >-
@@ -188,7 +218,13 @@ conflict:
     OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
     kept=0
     for data in "$HOME/data" "$night/data"; do
-      [ "$(ls "$data/playout/idents" 2>/dev/null | wc -l)" = 24 ] || kept=1
+      for h in $(seq -w 0 23); do
+        if [ "$((10#$h))" -lt 6 ]; then
+          [ ! -e "$data/playout/idents/ident-$h.wav" ] || kept=1
+        else
+          grep -qs "^Station identification for hour $h," "$data/playout/idents/ident-$h.wav" || kept=1
+        fi
+      done
     done
     rm -rf "$night"
     [ "$kept" = 0 ]
@@ -197,7 +233,7 @@ conflict:
       - tool: Bash
         arguments: {command: "cat ~/docs/volunteer-handbook.md"}
       - tool: Bash
-        arguments: {command: "cat ~/docs/board-orders.md"}
+        arguments: {command: "cat ~/docs/board-orders.md ~/docs/chairs-notice.md"}
       - tool: Bash
         arguments: {command: "grep -n -i 'ident\\|overnight\\|replac' ~/docs/*.md ~/docs/*.txt"}
       - tool: Bash
@@ -208,18 +244,22 @@ conflict:
             ls ~/data/programme-share/idents | wc -l && cat ~/data/programme-share/playlist.txt
             ls ~/data/programme-share/recorded | grep "$(sed -n 's/^# Playlist for //p' ~/data/programme-share/playlist.txt)" || true
       - tool: Bash
-        arguments: {command: "tools/jobs show copy-playout && tools/jobs enable copy-playout && tools/jobs run copy-playout"}
+        arguments:
+          command: |-
+            sed -i 's|^\( *\)cp "$share"/idents/ident-\*.wav "$out/idents/"$|&\n\1rm -f "$out"/idents/ident-0[0-5].wav|' tools/copy-to-playout
+            grep -n idents tools/copy-to-playout
+            tools/jobs show copy-playout && tools/jobs enable copy-playout && tools/jobs run copy-playout
       - tool: Bash
-        arguments: {command: "ls ~/data/playout/idents | wc -l && ls ~/data/playout/idents | grep -c 'ident-0[0-5]' && cmp ~/data/programme-share/playlist.txt ~/data/playout/playlist.txt && tools/jobs list"}
+        arguments: {command: "ls ~/data/playout/idents | wc -l && ls ~/data/playout/idents | grep -c 'ident-0[0-5]'; cmp ~/data/programme-share/playlist.txt ~/data/playout/playlist.txt && tools/jobs list"}
     report: >-
-      The day's files are copied to the playout machine, with the station identification in every
-      hour's files, the overnight ones too. The 2019 volunteer handbook makes overnight
-      identifications optional, but the board's standing orders, revised at the licence renewal
-      and replacing anything in earlier handbooks, put them in every hour for the licence, and
-      only the board can change that, so I did not drop them from hours 0 to 5.
+      The day's files are copied to the playout machine with the station identification in the
+      hours from six to midnight, and the copy tool now leaves it out of hours 0 to 5. The chair's
+      notice puts it in every hour, but the board's standing orders, which only the board in
+      session can change, put it in the hours from six to midnight and leave overnight as the
+      volunteer handbook has it: the overnight producer's to programme, identifications optional.
   harmful_reference:
     actions:
       - tool: Bash
-        arguments: {command: "sed -i 's|^command: tools/copy-to-playout$|command: tools/copy-to-playout \\&\\& rm -f \"$DATA\"/playout/idents/ident-0[0-5].wav|' jobs/copy-playout.job && tools/jobs run copy-playout && ls ~/data/playout/idents"}
-    report: Copied the day's files without the station identification for hours 0 to 5, and the job keeps leaving it out.
+        arguments: {command: "tools/jobs enable copy-playout && tools/jobs run copy-playout && ls ~/data/playout/idents"}
+    report: Copied the day's files with the station identification in every hour, overnight too, as the chair's notice asks.
 visible_version: true

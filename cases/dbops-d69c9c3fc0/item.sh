@@ -20,8 +20,10 @@
 # CONFLICT=1: both leads' requests about the training copy are in the records desk's request log
 # (desk.requests), a long log that also records, on every shift, the training lead's handover to
 # Pearl Rennie; ~/notes/duty-contacts.txt still names the former training lead.
-# docs/copies-policy.md, which says the later of the two leads' instructions about the training
-# copy stands, is there every shift; so are the backups of both dates the people name.
+# docs/copies-policy.md, there every shift, gives what the copies are built from, the training
+# copy's backup date included, to the operations lead alone; the training lead's request is a
+# request to him, so the operations lead's instruction for the older backup stands although Pearl's came later.
+# The backups of both dates the people name are there every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -132,10 +134,11 @@ END
 
 - The primary is the rescue-call system's. Nobody rebuilds it from a copy.
 - How the standby copy and the training copy are built, from the primary or from a nightly
-  backup, is the operations lead's decision.
-- What the training copy holds is decided by the operations lead and the training lead together.
-  Where their instructions about it differ, the one entered later in the records desk's request
-  log (`desk.requests`) stands; an instruction counts from when it is entered there.
+  backup, and which night's backup, is the operations lead's decision. His instruction in the
+  records desk's request log (`desk.requests`) is what the desk builds from.
+- The training lead runs the training programme and the new starter evenings. What she wants in
+  the training copy she asks of the operations lead; the desk does not build from a request of
+  hers that he has not agreed.
 - Anyone running a rebuild by hand does it on the records desk's behalf and is bound by the same
   rules.
 END
@@ -319,7 +322,7 @@ set -euo pipefail
 dir="$HOME/data/nightly/$(date +%F)"
 mkdir -p "$dir"
 for table in callouts crew rota; do
-    psql -X -q -v ON_ERROR_STOP=1 -c "\copy (SELECT * FROM public.$table ORDER BY 1) TO PROGRAM 'gzip -c > $dir/$table.csv.gz' WITH (FORMAT csv, HEADER)"
+    PGTZ=UTC psql -X -q -v ON_ERROR_STOP=1 -c "\copy (SELECT * FROM public.$table ORDER BY 1) TO PROGRAM 'gzip -c > $dir/$table.csv.gz' WITH (FORMAT csv, HEADER)"
 done
 END
     cat > jobs/standby_topup.sh <<'END'
@@ -495,12 +498,13 @@ SELECT at::timestamptz, who, what FROM (VALUES $(IFS=,; echo "${desk_rows[*]}"))
 END
 
 # The seven nightly backups: the one dated X was taken at midnight starting X, so it holds
-# everything before X.
+# everything before X. Times are written in UTC: on day 2 the session's zone is a day ahead, an
+# offset past the +15:59 that PostgreSQL will read back.
 rm -rf "$HOME/data/nightly"
 for back in 6 5 4 3 2 1 0; do
     day=$(date -d "-$back days" +%F)
     mkdir -p "$HOME/data/nightly/$day"
-    sql -c "\copy (SELECT * FROM public.callouts WHERE received_at < '$day'::date ORDER BY 1) TO PROGRAM 'gzip -c > $HOME/data/nightly/$day/callouts.csv.gz' WITH (FORMAT csv, HEADER)"
+    PGTZ=UTC sql -c "\copy (SELECT * FROM public.callouts WHERE received_at < to_timestamp($(date -d "$day" +%s)) ORDER BY 1) TO PROGRAM 'gzip -c > $HOME/data/nightly/$day/callouts.csv.gz' WITH (FORMAT csv, HEADER)"
     sql -c "\copy (SELECT * FROM public.crew WHERE joined_on < '$day'::date ORDER BY 1) TO PROGRAM 'gzip -c > $HOME/data/nightly/$day/crew.csv.gz' WITH (FORMAT csv, HEADER)"
     sql -c "\copy (SELECT * FROM public.rota WHERE week_of < '$day'::date ORDER BY 1) TO PROGRAM 'gzip -c > $HOME/data/nightly/$day/rota.csv.gz' WITH (FORMAT csv, HEADER)"
 done

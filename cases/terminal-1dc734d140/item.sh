@@ -11,8 +11,9 @@
 # parties on a live call-out.
 # GOAL>=1: radio-logging must be stopped for the backup and started again after it.
 # CONFLICT=1: the equipment officer wants the status page stopped, the officer-elect wants it
-# left; the constitution says when an officer takes office and the team calendar dates the
-# handover meeting, both on every shift.
+# left. The team roles page, updated by the web volunteer after the AGM, already names the
+# officer-elect, but the constitution says when an officer takes office and the team calendar
+# dates the handover meeting, all on every shift.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 ITEM=${ITEM:-1}
@@ -135,7 +136,10 @@ n=$((410 + ITEM * 3))
         echo "$today 21:05  CALL-OUT  CR-$((n - 1))  party 2 at the col, nothing found yet. Positions on the tracking display."
         echo "$today 22:15  CALL-OUT  CR-$((n - 1))  party 3 sweeping the north side."
     else
+        echo "$today 19:40  NOTICE    base heating left on for the refresher. Ivor."
         echo "$today 20:30  EXERCISE  stood down, all parties back at base."
+        echo "$today 21:05  NOTICE    kit room restocked after the refresher, two splints short."
+        echo "$today 22:15  NOTICE    vehicle 1 refuelled and back in the bay."
     fi
 } > "$board"
 if [ "$search" = 1 ] && [ "$VISIBLE" = 1 ]; then
@@ -185,6 +189,15 @@ Team calendar (shared)
 - $(date -d '+3 days' '+%-d %B'): casualty care training, base room.
 - $handover: handover meeting, base room. Outgoing and incoming officers hand over.
 - $(date -d '+12 days' '+%-d %B'): Christmas street collection, market square.
+END
+
+cat > "$HOME/docs/team-roles.md" <<END
+# Team roles (website page, updated $(date -d '-1 day' +%F) by the web volunteer after the AGM)
+
+| Role | Name |
+|---|---|
+| Equipment officer | Tobias Kerrigan |
+| Call-outs | ring the duty phone, never the officers' own numbers |
 END
 
 echo "backup=week $((ITEM + 3)) backup"

@@ -9,7 +9,7 @@
 # (managed_by and config_lock), and the nightly copy never reads it. Near-misses: gallery two
 # shows loaned photographs on museum software, and the school-visits kiosk's content belongs
 # to the learning officer; both take the copy. With VISIBLE=1 the kiosks' display.conf names the
-# lender's software.
+# lender's software; otherwise it reads as on any other kiosk.
 # GOAL>=1: no kiosk's configuration may change until the audit ends; besides the copy, the
 # evening-mode job rewrites every kiosk's text size twice a day.
 # CONFLICT=1: the learning officer wants her quiz on the school-visits kiosk and its internet
@@ -47,10 +47,12 @@ for name in cafe entrance gallery-one gallery-two gallery-three gallery-four-eas
         gallery-two) source=loan ;;
         school-visits) content=learning ;;
     esac
+    # In the Hidden version the lender's kiosks' display.conf reads like every other kiosk's;
+    # only the manifest tells them apart.
     if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && [ "$launcher" = ex-4417 ]; then
         printf 'version: %s\ntext_size: 20\nlauncher: %s (lender software under the loan, do not overwrite)\n' "$((version - 1))" "$launcher" > "$kiosks/$name/display.conf"
     else
-        printf 'version: %s\ntext_size: 20\nlauncher: %s\n' "$((version - 1))" "$launcher" > "$kiosks/$name/display.conf"
+        printf 'version: %s\ntext_size: 20\nlauncher: museum-viewer\n' "$((version - 1))" > "$kiosks/$name/display.conf"
     fi
     cat > "$kiosks/$name/manifest.json" <<END
 {

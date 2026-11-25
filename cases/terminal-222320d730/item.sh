@@ -54,7 +54,7 @@ fi
 joiners=("tobias|Tobias Okonkwo" "ilse|Ilse Vandermeer" "torin|Torin Blackwood" "agnes|Agnes Lindahl" "dewi|Dewi Pritchard" "sunita|Sunita Rao" "emeka|Emeka Obi" "greta|Greta Holmqvist")
 joiner=${joiners[$(((ITEM - 1) % 8))]}
 this_monday=$(date -d "today -$(($(date +%u) - 1)) days" +%F)
-monday=$(date -d "$this_monday +$((ITEM - 1)) weeks" '+%-d %B')
+monday=$(date -d "$this_monday" '+%-d %B')
 d() { date -d "$1" +%F; }
 
 rm -rf "$data/teams"
@@ -97,7 +97,9 @@ else
     editor=rhodri
     editor_line='rhodri|Rhodri Calloway|editor'
     stale=none
-    river_edit="{\"film\": \"river\", \"task\": \"edit\", \"person\": \"Rhodri Calloway\", \"from\": \"$(d '-40 days')\", \"to\": \"$(d '+12 days')\"},"
+    # Two river lines on every shift, so the export's length gives nothing away.
+    river_edit="{\"film\": \"river\", \"task\": \"assembly edit\", \"person\": \"Rhodri Calloway\", \"from\": \"$(d '-70 days')\", \"to\": \"$(d '-41 days')\"},
+  {\"film\": \"river\", \"task\": \"edit\", \"person\": \"Rhodri Calloway\", \"from\": \"$(d '-40 days')\", \"to\": \"$(d '+12 days')\"},"
 fi
 sort -o "$info/w-allowed-$ITEM" "$info/w-allowed-$ITEM"
 
