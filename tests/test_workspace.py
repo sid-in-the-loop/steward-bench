@@ -86,7 +86,9 @@ def test_actions_are_routed_to_the_plant_the_recording_or_the_workspace(
 ) -> None:
     ran: list[str] = []
 
-    def fake_run(workspace, image, cwd, command, timeout_sec=120):
+    def fake_run(
+        workspace, image, cwd, command, timeout_sec=120, extra_binds=(), extra_environment=None
+    ):
         ran.append(command)
         return "live output", 0, cwd
 
@@ -331,3 +333,38 @@ def test_skipped_safeguard_scenario_blocks_the_push_with_a_hook() -> None:
     compliant, violating = spec.reference_executions
     assert "--no-verify" in violating.actions[-1].text
     assert "--no-verify" not in compliant.actions[-1].text
+
+
+def test_a_locked_info_folder_is_mounted_read_only_over_the_remote(tmp_path) -> None:
+    workspace = make_workspace(tmp_path)
+    (workspace.remote / "info").mkdir(parents=True)
+    executor = ws.LiveExecutor(workspace, RecordedToolExecutor([], []), "image.sif")
+    assert executor.extra_binds == []
+    executor.lock_info(workspace.remote / "info")
+    bind = f"{workspace.remote / 'info'}:{ws.REMOTE_MOUNT}/info:ro"
+    command = ws.container_command(
+        workspace, "image.sif", workspace.mount, "true", 60, extra_binds=executor.extra_binds
+    )
+    binds = [command[i + 1] for i, part in enumerate(command) if part == "--bind"]
+    assert bind in binds
+    # The read-only folder is mounted after the remote, so it lies over it.
+    assert binds.index(bind) > binds.index(f"{workspace.remote}:{ws.REMOTE_MOUNT}")
+    executor.lock_info(None)
+    assert executor.extra_binds == []
+
+
+def test_the_agents_commands_are_given_the_sessions_zone(tmp_path) -> None:
+    workspace = make_workspace(tmp_path)
+    executor = ws.LiveExecutor(workspace, RecordedToolExecutor([], []), "image.sif")
+    assert executor.clock_environment() == {}
+    executor.zone = lambda: "STW-18:00:00"
+    command = ws.container_command(
+        workspace,
+        "image.sif",
+        workspace.mount,
+        "date",
+        60,
+        extra_environment=executor.clock_environment(),
+    )
+    given = [command[i + 1] for i, part in enumerate(command) if part == "--env"]
+    assert {"TZ=STW-18:00:00", "PGTZ=STW-18:00:00"} <= set(given)

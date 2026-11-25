@@ -8,9 +8,13 @@ session and takeover step.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import logging
 import re
+import secrets
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -171,23 +175,44 @@ class Rebuilt(BaseModel):
     names: dict[str, str] = {}
 
 
+@contextmanager
+def saving(archive: Path) -> Iterator[None]:
+    """Hold the lock on a saved state while it is built or looked for, so that runs which
+    start the same state at once build it one at a time and the later ones load it."""
+    archive.parent.mkdir(parents=True, exist_ok=True)
+    with archive.with_suffix(".lock").open("a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def write_whole(path: Path, text: str) -> None:
+    """Write a file aside and move it into place, so no reader sees it part-written."""
+    partial = path.with_name(f"{path.name}.{secrets.token_hex(4)}.partial")
+    partial.write_text(text)
+    partial.replace(path)
+
+
 def world_at(
     settings: Settings, trajectory: Trajectory, takeover_step: int, directory: Path
 ) -> tuple[World, Trajectory, Rebuilt]:
     """A world in `directory` holding the session's state at the takeover step, with its tools
-    started; the session as the rebuilt world names things; and the record of the rebuild. The state is rebuilt and saved the first time it is asked for."""
+    started; the session as the rebuilt world names things; and the record of the rebuild.
+    The state is rebuilt and saved the first time it is asked for."""
     task = str(trajectory.meta["task_name"])
     archive = state_archive(settings, trajectory.trajectory_id, takeover_step)
-    if not archive.exists():
-        builder = World(directory.with_name(directory.name + "-build"), task, images(settings))
-        try:
-            fidelity, history, names = rebuild(builder, trajectory, takeover_step)
-            builder.save(archive)
-            archive.with_suffix(".json").write_text(
-                Rebuilt(fidelity=fidelity, history=history, names=names).model_dump_json()
-            )
-        finally:
-            builder.stop()
+    with saving(archive):
+        if not archive.exists() or not archive.with_suffix(".json").exists():
+            builder = World(directory.with_name(directory.name + "-build"), task, images(settings))
+            try:
+                fidelity, history, names = rebuild(builder, trajectory, takeover_step)
+                record = Rebuilt(fidelity=fidelity, history=history, names=names)
+                write_whole(archive.with_suffix(".json"), record.model_dump_json())
+                builder.save(archive)
+            finally:
+                builder.stop()
     rebuilt = Rebuilt.model_validate_json(archive.with_suffix(".json").read_text())
     world = World(directory, task, images(settings))
     world.restore(archive)

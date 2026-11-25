@@ -37,6 +37,13 @@ MODELS["claude-haiku-5-5"] = Model(
     api_key_env="ANTHROPIC_API_KEY",
     pricing=Pricing(prompt=0.10, cached=0.01, cache_write=0.125, completion=0.50),
 )
+# The model that plays people in session runs; not run as an agent from this machine.
+MODELS["claude-sonnet-5-5"] = Model(
+    name="claude-sonnet-5-5",
+    dialect="anthropic",
+    api_key_env="ANTHROPIC_API_KEY",
+    pricing=Pricing(prompt=2.00, cached=0.10, cache_write=2.50, completion=10.00),
+)
 # What one run is assumed to use when estimating cost: tokens of fresh input, cached input
 # and output.
 ASSUMED_TOKENS = (60_000, 400_000, 12_000)

@@ -19,7 +19,7 @@ import shlex
 import shutil
 import subprocess
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
@@ -293,6 +293,8 @@ def container_command(
     command: str,
     timeout_sec: int,
     network: bool = False,
+    extra_binds: Sequence[str] = (),
+    extra_environment: Mapping[str, str] | None = None,
 ) -> list[str]:
     binds = [f"{workspace.temporary}:{path}" for path in TEMPORARY_PATHS]
     binds.append(f"{GH_SHIM}:/usr/local/bin/gh:ro")
@@ -305,6 +307,7 @@ def container_command(
         else:
             binds.append(f"{workspace.tree.parent}:{parent}")
     binds += workspace.binds
+    binds += extra_binds
     wrapped = f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
     wrapped += f'__status=$?; printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
     arguments = ["apptainer", "exec", "--containall", "--pid"]
@@ -314,7 +317,7 @@ def container_command(
     for bind in binds:
         arguments += ["--bind", bind]
     arguments += ["--env", "GIT_TERMINAL_PROMPT=0", "--env", "TERM=dumb"]
-    for name, value in workspace.environment.items():
+    for name, value in {**workspace.environment, **(extra_environment or {})}.items():
         arguments += ["--env", f"{name}={value}"]
     # The limit is enforced inside the container so that the runtime exits and unmounts
     # the image itself; killing it from outside leaves the mount behind.
@@ -329,12 +332,16 @@ def run_in_container(
     command: str,
     timeout_sec: int = COMMAND_TIMEOUT_SEC,
     network: bool = False,
+    extra_binds: Sequence[str] = (),
+    extra_environment: Mapping[str, str] | None = None,
 ) -> tuple[str, int, str]:
     """Run a command in the workspace. Returns its output, exit status and the directory it
     ended in."""
     try:
         done = subprocess.run(
-            container_command(workspace, image, cwd, command, timeout_sec, network),
+            container_command(
+                workspace, image, cwd, command, timeout_sec, network, extra_binds, extra_environment
+            ),
             capture_output=True,
             timeout=timeout_sec + 30,
             stdin=subprocess.DEVNULL,
@@ -717,6 +724,24 @@ class LiveExecutor:
         self.cwd = workspace.mount
         self.files = WorkspaceFiles(workspace, lambda: self.cwd)
         self.live_actions = 0
+        # Mounted read-only over the remote's info folder while a check reads the answer key.
+        self.locked_info: Path | None = None
+        # The TZ the agent's commands are given, read before each one; see cases/clock.py.
+        self.zone: Callable[[], str | None] | None = None
+
+    def lock_info(self, info: Path | None) -> None:
+        """Mount the remote's info folder read-only for the commands that follow, or stop."""
+        self.locked_info = info
+
+    @property
+    def extra_binds(self) -> list[str]:
+        if self.locked_info is None or not self.locked_info.is_dir():
+            return []
+        return [f"{self.locked_info}:{REMOTE_MOUNT}/info:ro"]
+
+    def clock_environment(self) -> dict[str, str]:
+        zone = self.zone() if self.zone is not None else None
+        return {} if zone is None else {"TZ": zone, "PGTZ": zone}
 
     @property
     def last_served(self) -> tuple[int, bool] | None:
@@ -725,7 +750,13 @@ class LiveExecutor:
     async def shell(self, command: str, tool: str = "Bash") -> str:
         started = time.monotonic()
         output, status, ended = await asyncio.to_thread(
-            run_in_container, self.workspace, self.image, self.cwd, command
+            run_in_container,
+            self.workspace,
+            self.image,
+            self.cwd,
+            command,
+            extra_binds=self.extra_binds,
+            extra_environment=self.clock_environment(),
         )
         self.cwd, note = settle_directory(tool, self.workspace.mount, ended)
         self.live_actions += 1
@@ -766,14 +797,24 @@ class LiveExecutor:
     async def run(self, command: str) -> str:
         """Run a scenario's own command (an intervention on the environment) in the tree."""
         output, _, _ = await asyncio.to_thread(
-            run_in_container, self.workspace, self.image, self.workspace.mount, command
+            run_in_container,
+            self.workspace,
+            self.image,
+            self.workspace.mount,
+            command,
+            extra_binds=self.extra_binds,
         )
         return output
 
     async def succeeds(self, command: str) -> bool:
         """Whether a check on the state the agent left behind passes."""
         _, status, _ = await asyncio.to_thread(
-            run_in_container, self.workspace, self.image, self.workspace.mount, command
+            run_in_container,
+            self.workspace,
+            self.image,
+            self.workspace.mount,
+            command,
+            extra_binds=self.extra_binds,
         )
         return status == 0
 

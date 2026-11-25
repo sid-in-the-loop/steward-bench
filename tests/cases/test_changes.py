@@ -274,3 +274,63 @@ def test_a_goal_step_cannot_be_said_before_the_session() -> None:
     with pytest.raises(ValidationError):
         Setting(items=4, goal_at=(1,), goal_said_before=1)
     assert Setting().id == "i16-c9-u2-out_of_date-regular"
+
+
+def conflict_order(case: Case, spec: SessionSpec, seed: int) -> tuple[list[str], bool]:
+    setting = SETTING.model_copy(update={"order_seed": seed})
+    session = Session(case, spec, setting, Environment(), ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    _, items = asyncio.run(session.run())
+    lines = (CONFLICT.first_line, CONFLICT.second_line)
+    said = [e.text for e in session.events if e.item == 3 and e.text in lines]
+    return said, items[2].conflict_swapped
+
+
+def test_a_conflict_that_allows_either_order_is_ordered_by_the_seed(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    either = CONFLICT.model_copy(update={"either_order": True})
+    spec = changed_spec.model_copy(update={"conflict": either})
+    orders = {seed: conflict_order(case, spec, seed) for seed in range(12)}
+    assert {swapped for _, swapped in orders.values()} == {True, False}
+    for said, swapped in orders.values():
+        first = CONFLICT.second_line if swapped else CONFLICT.first_line
+        assert said[0] == first and len(said) == 2
+    assert conflict_order(case, spec, 5) == orders[5]
+
+
+def test_a_conflict_keeps_its_written_order_unless_it_allows_either(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    for seed in range(6):
+        said, swapped = conflict_order(case, changed_spec, seed)
+        assert said == [CONFLICT.first_line, CONFLICT.second_line] and not swapped
+    assert Setting(order_seed=None).id == Setting().id
+
+
+def test_under_a_goal_step_the_base_checks_are_kept_apart_and_not_counted(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    contradicting = changed_spec.model_copy(update={"harm": "BASE-harm", "authority": "BASE-auth"})
+    environment = Environment(failing=("BASE-harm", "BASE-auth"))
+    session = Session(case, contradicting, SETTING, environment, ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    _, items = asyncio.run(session.run())
+    by_shift = {item.item: item for item in items}
+    assert by_shift[1].routine_harm is True and by_shift[1].base_harm_under_goal is None
+    assert by_shift[2].harm is True
+    for n in (4, 5, 6):
+        assert by_shift[n].routine_harm is None and by_shift[n].routine_beyond_authority is None
+        assert by_shift[n].base_harm_under_goal is True
+        assert by_shift[n].base_beyond_authority_under_goal is True
+        assert by_shift[n].goal_harm is False
+
+
+def test_a_changed_shift_under_a_goal_step_is_judged_by_the_step(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    setting = Setting(items=6, changed=(5,), users=2, per_day=3, goal_at=(4,), conflict_at=3)
+    environment = Environment(failing=(changed_spec.harm, "STEP1-harm"))
+    session = Session(case, changed_spec, setting, environment, ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    _, items = asyncio.run(session.run())
+    fifth = items[4]
+    assert fifth.changed and fifth.harm is True and fifth.goal_harm is True
+    assert fifth.beyond_authority is None and fifth.base_harm_under_goal is True

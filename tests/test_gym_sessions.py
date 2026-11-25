@@ -1,8 +1,15 @@
 """Recording a session on a workplace world and rebuilding its state, with a stand-in world."""
 
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from typing import cast
 
+import pytest
+
+from steward.config import Settings
 from steward.environment import gym_sessions as gs
+from steward.environment.fidelity import ReplayFidelity
 from steward.environment.gym import GymImages, TaskDescription, World
 from steward.execution.policy import Turn
 from steward.execution.record import Action
@@ -80,3 +87,47 @@ def test_rebuilding_uses_the_identifiers_the_new_world_gives() -> None:
     assert history[3].content == f"Event created with ID: {SECOND}"
     assert history[6].tool_input == {"id": SECOND}
     assert gs.renamed({"ids": [FIRST, "x"]}, names) == {"ids": [SECOND, "x"]}
+
+
+class SavingWorld(FakeWorld):
+    """A world whose save writes the archive and whose restore only reads it."""
+
+    def __init__(self, directory: Path, task: str, images: GymImages) -> None:
+        super().__init__([])
+
+    def save(self, archive: Path) -> None:
+        archive.write_text("state")
+
+    def restore(self, archive: Path) -> None:
+        assert archive.read_text() == "state"
+
+    def stop(self) -> None:
+        return None
+
+
+def test_worlds_started_at_once_build_a_saved_state_once(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    archive = tmp_path / "states" / "state.tar"
+    builds: list[int] = []
+
+    def slow_rebuild(
+        world: World, trajectory: gs.Trajectory, takeover_step: int
+    ) -> tuple[ReplayFidelity, list[gs.Step], dict[str, str]]:
+        builds.append(takeover_step)
+        time.sleep(0.2)
+        return ReplayFidelity(), [], {}
+
+    monkeypatch.setattr(gs, "state_archive", lambda *_: archive)
+    monkeypatch.setattr(gs, "images", lambda _: FakeWorld([]).images)
+    monkeypatch.setattr(gs, "rebuild", slow_rebuild)
+    monkeypatch.setattr(gs, "World", SavingWorld)
+    session = recorded()
+    settings = cast(Settings, None)
+    with ThreadPoolExecutor(4) as pool:
+        started = list(
+            pool.map(lambda n: gs.world_at(settings, session, 2, tmp_path / f"w{n}"), range(4))
+        )
+    assert builds == [2]
+    assert all(rebuilt.history == [] for _, _, rebuilt in started)
+    assert not list(archive.parent.glob("*.partial"))

@@ -181,10 +181,11 @@ async def checked(
 ) -> tuple[bool, str]:
     """Whether a check command exits 0, and what it printed. Its status is read from a mark
     the command prints, so a container that failed to start is told apart from a check that
-    failed. A check that printed a machine fault is run again: its status says nothing about
-    the state it was meant to read."""
+    failed. The check runs in a subshell, so an `exit` in it ends the check and not the shell
+    that prints the mark. A check that printed a machine fault is run again: its status says
+    nothing about the state it was meant to read."""
     for attempt in range(RUNTIME_RETRIES):
-        output = await run(f"{{ {command}\n}}; echo {STATUS_MARK}$?")
+        output = await run(f"(\n{command}\n); echo {STATUS_MARK}$?")
         # Anything the command wrote to its error stream follows the mark in the output.
         status = re.search(rf"{STATUS_MARK}(\d+)", output)
         if status and not any(fault in output for fault in MACHINE_FAULTS):
@@ -216,6 +217,11 @@ class CheckedWorld:
     async def checked(self, command: str, limit: int = CHECK_OUTPUT_LIMIT) -> tuple[bool, str]:
         return await checked(self.inner.run, command, limit)
 
+    def attempts(self) -> int:
+        """Refused attempts on the owner's rights so far, where the world counts them."""
+        counted = getattr(self.inner, "attempts", None)
+        return int(counted()) if counted is not None else 0
+
 
 class CaseExecutor(Executor, Protocol):
     """An environment whose checks also return what they printed."""
@@ -244,7 +250,6 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     workspace, steps = sandbox.load(directory or built_directory(settings, case))
     scratch = Path(tempfile.mkdtemp(prefix="steward-case-"))
     private = copy_workspace(workspace, scratch / "workspace")
-    answer_key = AnswerKey(private.remote / "info", scratch / "answer-key")
     image = workspace_image(settings)
     server: postgres.Server | None = None
 
@@ -262,6 +267,13 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
             raise
     # Nothing is answered from a recording: every command runs in the repository.
     executor = RetryingExecutor(private, RecordedToolExecutor([], []), image)
+    # Everything of the workspace is the agent's to write: its tree, home, /tmp and remote.
+    answer_key = AnswerKey(
+        private.remote / "info",
+        scratch / "answer-key",
+        executor.lock_info,
+        writable=(private.directory,),
+    )
     return Prepared(
         executor=executor,
         inherited=to_messages(steps),

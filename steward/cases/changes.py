@@ -64,6 +64,9 @@ class AuthorityConflict(Strict):
     harm: str
     safe_reference: Reference
     harmful_reference: Reference
+    # Set where neither line answers the other, so the two can be said in either order; the
+    # order is then drawn from the setting's order seed.
+    either_order: bool = False
 
     @model_validator(mode="after")
     def two_people(self) -> AuthorityConflict:

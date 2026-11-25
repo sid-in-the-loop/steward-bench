@@ -15,6 +15,7 @@ from steward.config import Settings, load_settings
 from steward.filter.batch import CostGuardError
 
 if TYPE_CHECKING:
+    from steward.cases.session_commands import SessionCase
     from steward.cases.simulator import CachedSimulator
 
 log = logging.getLogger("steward")
@@ -734,6 +735,7 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.commands import cases_root
     from steward.cases.session_commands import (
         build_session,
+        check_benchmark,
         check_changes,
         check_levels,
         check_session,
@@ -745,15 +747,21 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
     for case, spec in load_sessions(settings, args.case):
         if not args.check_only:
             build_session(settings, case, spec)
-        problems = check_session(settings, case, spec)
-        recordings = load_recordings(cases_root(settings) / case.id)
-        problems += check_levels(settings, case, spec, recordings)
-        problems += check_changes(settings, case, spec)
+        warnings: list[str] = []
+        if args.benchmark:
+            problems = check_benchmark(settings, case, spec, args.one_date, args.workers, warnings)
+        else:
+            problems = check_session(settings, case, spec, warnings)
+            recordings = load_recordings(cases_root(settings) / case.id)
+            problems += check_levels(settings, case, spec, recordings)
+            problems += check_changes(settings, case, spec)
         failed += bool(problems)
         print(f"{case.id}: {'ok' if not problems else 'FAILED'}")
         for problem in problems:
             print(f"  {problem}")
-        if args.idle:
+        for warning in warnings:
+            print(f"  warning: {warning}")
+        if args.idle and not args.benchmark:
             for warning in idle_passes(settings, case, spec):
                 print(f"  warning: {warning}")
     return 1 if failed else 0
@@ -765,6 +773,8 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.sessions import EXPERIMENTS, Setting
 
     cases = load_sessions(settings, args.case)
+    if args.level:
+        return run_benchmark(settings, args, cases)
     chosen: dict[str, Setting] = {}
     for name in args.experiment or list(EXPERIMENTS):
         for setting in EXPERIMENTS[name]:
@@ -781,15 +791,78 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
         return 0
     import anthropic
 
-    from steward.cases.simulator import ClaudeSimulator
+    from steward.cases.simulator import SESSION_MODEL, ClaudeSimulator
 
-    simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings))
+    simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), SESSION_MODEL)
     for model in models:
         run_sessions(
             settings, model, cases, list(chosen.values()), args.trials, args.workers, simulator
         )
     used = simulator.input_tokens, simulator.output_tokens
     print(f"simulator: {used[0]} input tokens, {used[1]} output tokens")
+    return 0
+
+
+def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
+    """The benchmark run: the seeded two-day schedule at each level asked for."""
+    from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.session_commands import benchmark_jobs, estimate_usd, run_jobs
+
+    jobs = benchmark_jobs(cases, args.level, args.trials)
+    models = [MODELS[name] for name in args.model]
+    for model in models:
+        dollars = sum(estimate_usd(model, job.setting) for job in jobs)
+        print(f"{model.name}: up to {len(jobs)} sessions, about ${dollars:.2f}")
+    if not args.confirm:
+        print("Add --confirm to run.")
+        return 0
+    import anthropic
+
+    from steward.cases.simulator import SESSION_MODEL, ClaudeSimulator
+
+    simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), SESSION_MODEL)
+    for model in models:
+        run_jobs(settings, model, jobs, args.workers, simulator)
+    used = simulator.input_tokens, simulator.output_tokens
+    print(f"simulator: {used[0]} input tokens, {used[1]} output tokens")
+    return 0
+
+
+def cmd_sim_probe(settings: Settings, args: argparse.Namespace) -> int:
+    """Send the simulator four fixed probes per person who holds a fact, with no agent, and
+    grade the replies by rule."""
+    from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.session_commands import load_sessions
+    from steward.cases.sim_probe import estimate_usd, planned, probe_cases, probe_path, summary
+
+    cases = [
+        (case, spec)
+        for case, spec in load_sessions(settings, args.case)
+        if args.case or (spec.goal is not None and spec.conflict is not None)
+    ]
+    pricing = MODELS[args.simulator_model].pricing
+    probes, unnamed = planned(cases)
+    for task in unnamed:
+        print(f"no name for the thing, P2 and P3 left out: {task}")
+    dollars = estimate_usd(probes, pricing)
+    print(f"{len(cases)} tasks, {probes} probes with {args.simulator_model}, about ${dollars:.2f}")
+    if not args.confirm:
+        print("Add --confirm to run.")
+        return 0
+    import anthropic
+
+    from steward.cases.simulator import ClaudeSimulator
+
+    simulator = ClaudeSimulator(
+        anthropic.Anthropic(), simulator_cache(settings), args.simulator_model
+    )
+    results = probe_cases(cases, simulator, pricing)
+    path = probe_path(settings, args.simulator_model)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(r.model_dump_json() + "\n" for r in results))
+    for line in summary(results):
+        print(line)
+    print(f"written to {path}")
     return 0
 
 
@@ -1549,9 +1622,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--model", action="append", help="default: the three benchmark models")
     sub.add_argument(
         "--simulator-model",
-        default="claude-haiku-5-5",
+        default="claude-sonnet-5-5",
         help="the model that plays the users; an OpenAI model is called through its API with "
-        "the same instructions (default claude-haiku-5-5)",
+        "the same instructions (default claude-sonnet-5-5)",
     )
     sub.add_argument("--level", action="append", choices=["I", "II", "III", "IV", "V"])
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
@@ -1670,6 +1743,17 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="also report the shifts an agent that does nothing would pass",
     )
+    sub.add_argument(
+        "--benchmark",
+        action="store_true",
+        help="check on the benchmark's seeded schedule, trials 0 and 1, in place of the short one",
+    )
+    sub.add_argument(
+        "--one-date",
+        action="store_true",
+        help="with --benchmark, show every shift the session's first date",
+    )
+    sub.add_argument("--workers", type=int, default=1, help="replays run at once per case")
     sub = add("session-run", cmd_session_run, "run models on sessions of several work items")
     sub.add_argument("--model", action="append", required=True)
     sub.add_argument("--case", action="append")
@@ -1680,8 +1764,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="the setting that is varied; all six when left out",
     )
     sub.add_argument("--items", action="append", type=int, help="keep sessions of this length")
+    sub.add_argument(
+        "--level",
+        action="append",
+        type=int,
+        choices=[1, 2, 3],
+        help="run the benchmark's seeded two-day schedule at this level, not the experiments",
+    )
     sub.add_argument("--trials", type=int, default=3)
     sub.add_argument("--workers", type=int, default=2)
+    sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
+    sub.add_argument(
+        "--case",
+        action="append",
+        help="a case id; repeat for several (default: every task with a goal and a conflict)",
+    )
+    sub.add_argument("--simulator-model", default="claude-sonnet-5-5")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("session-table", cmd_session_table, "write one row per work item per session")
     sub.add_argument("--out", type=Path, required=True)

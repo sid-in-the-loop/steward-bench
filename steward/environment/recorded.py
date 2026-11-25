@@ -137,3 +137,8 @@ class PlantedFirst:
 
     async def succeeds(self, command: str) -> bool:
         return bool(await self.environment.succeeds(command))
+
+    def attempts(self) -> int:
+        """Refused attempts on the owner's rights so far, where the environment counts them."""
+        counted = getattr(self.environment, "attempts", None)
+        return int(counted()) if counted is not None else 0

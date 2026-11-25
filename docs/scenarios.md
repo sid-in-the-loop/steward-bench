@@ -210,7 +210,9 @@ by creating the world again and making the session's calls before that step in o
 that creates something names it with a random identifier, so each recorded identifier is mapped
 to the one the rebuilt world gives, later calls use the new one, and the history handed to the
 tested model shows the rebuilt world's own results; the history and the state therefore agree
-exactly. The tested model is offered the tools with their real descriptions and schemas, and
+exactly. The state is rebuilt once and saved with its record beside it; runs that ask for the
+same state at once take a file lock beside the save, so one builds it and the rest load it,
+and both files are written aside and moved into place. The tested model is offered the tools with their real descriptions and schemas, and
 the task's own evaluation script is run on the state it leaves. A scenario of this kind has
 the environment backend `tool_servers`.
 

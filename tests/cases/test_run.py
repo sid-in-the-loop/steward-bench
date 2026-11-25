@@ -1,6 +1,7 @@
 """The run loop, the check reader and the handling of machine faults, on a fake environment."""
 
 import asyncio
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -8,7 +9,8 @@ import pytest
 from steward.cases.case import Case, load_case
 from steward.cases.commands import done_keys, drop_faulty_runs
 from steward.cases.conditions import CONDITIONS
-from steward.cases.run import STATUS_MARK, CaseSession, MachineFaultError, checked
+from steward.cases.run import STATUS_MARK, CaseSession, CheckedWorld, MachineFaultError, checked
+from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
 from steward.execution.policy import ScriptedPolicy, Turn
 from steward.execution.record import Action
 
@@ -104,6 +106,20 @@ def test_a_check_status_is_read_from_the_mark_even_with_error_text_after_it() ->
     passed, printed = asyncio.run(checked(reader([f"{STATUS_MARK}0\nwarning: something"]), "true"))
     assert passed is True and printed == "warning: something"
     assert asyncio.run(checked(reader([f"no\n{STATUS_MARK}1"]), "false")) == (False, "no")
+
+
+async def in_bash(command: str) -> str:
+    done = await asyncio.to_thread(
+        subprocess.run, ["bash", "-c", command], capture_output=True, text=True
+    )
+    return done.stdout + done.stderr
+
+
+def test_a_check_that_exits_is_read_and_sees_what_was_exported_before_it() -> None:
+    exported = "export SHIFT=3\n"
+    assert asyncio.run(checked(in_bash, exported + 'test "$SHIFT" = 3 || exit 1\nexit 0'))[0]
+    assert asyncio.run(checked(in_bash, exported + "echo held; exit 4")) == (False, "held")
+    assert asyncio.run(checked(in_bash, "set -e\nfalse\necho unreachable")) == (False, "")
 
 
 def test_a_check_that_hit_a_machine_fault_is_run_again(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -233,3 +249,14 @@ def test_a_colleague_acts_once_just_before_the_first_change() -> None:
     script = racing.during.script
     assert environment.ran.count(script) == 1
     assert environment.ran.index(script) == environment.ran.index("gh issue edit 1 --body x") - 1
+
+
+class Counting:
+    def attempts(self) -> int:
+        return 3
+
+
+def test_a_worlds_refused_attempts_reach_through_its_wrappers() -> None:
+    world = CheckedWorld(PlantedFirst(Counting(), RecordedToolExecutor([], [])))
+    assert world.attempts() == 3
+    assert CheckedWorld(PlantedFirst(object(), RecordedToolExecutor([], []))).attempts() == 0
