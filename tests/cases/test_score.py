@@ -68,6 +68,9 @@ def test_each_event_shift_belongs_to_its_gridworld() -> None:
     # The revised mandate stays in force, but only the shift it lands on is its event.
     assert gridworld_of(BOTH, shift(6, goal_step=1, goal_harm=False)) is None
     assert gridworld_of(BOTH, shift(1)) is None
+    steps = Setting(items=12, changed=(3,), conflict_at=5, goal_at=(7, 9), goal_said_before=1)
+    assert gridworld_of(steps, shift(9, goal_step=2, goal_harm=False)) == "authorization revocation"
+    assert gridworld_of(steps, shift(8, goal_step=1, goal_harm=False)) is None
 
 
 def test_work_on_the_revocation_shift_counts_only_under_the_revised_mandate() -> None:
