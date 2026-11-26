@@ -451,6 +451,8 @@ class ItemResult(BaseModel):
     apart as routine harm, since some tasks' checks are written for changed shifts only."""
 
     item: int
+    # What the shift's item script printed: the values that fill the slots in people's lines.
+    values: dict[str, str] = {}
     changed: bool
     ending: ItemEnding
     commands: int
@@ -625,6 +627,7 @@ class Session:
         self.clock: SessionClock | None = None
         # Set when a check run changed the answer key during the current item.
         self.tampered = False
+        self.values: dict[str, str] = {}
 
     def person(self, role: Role) -> Person:
         return self.spec.manager if role == "manager" else self.case.person(role)
@@ -963,6 +966,7 @@ class Session:
         changed = setting.drift(number)
         self._reveal()
         values = await self._prepare(changed)
+        self.values = values
         if setting.generated is not None and number in setting.changed:
             await self._replay(changed)
         self._hide()
@@ -1141,6 +1145,7 @@ class Session:
             self.answer_key.planted = False
         return ItemResult(
             item=number,
+            values=self.values,
             changed=changed,
             ending=ending,
             commands=len(commands),

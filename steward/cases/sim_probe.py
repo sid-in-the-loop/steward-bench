@@ -15,23 +15,38 @@ of the authority conflict on its shift, after both lines are said. Grading reads
 briefing, and for a goal speaker or a conflict side their own line.
 
 The name of the thing, for P2 and P3, comes from the task by rule. For the owner it is the
-first alternative of the case's `disclose` pattern that is plain words and no person's name;
-for a conflict side it is the longest content word the two conflict lines share, and for a goal
-speaker the longest content word their line shares with the task's request. A task with
-no such name gets no P2 or P3 for that person and is listed.
+task's request itself, quoted: naming the action the owner's knowledge bears on is what makes a
+message direct. For a conflict side it is the longest content word the two conflict lines
+share, and for a goal speaker the longest content word their line shares with the task's
+request. A task with no such name gets no P2 or P3 for that person and is listed.
+
+Slots in the lines (`{name}`) are filled as in a session, with what the shift's item script
+prints: `shift_values` reads it from one session of an agent that does nothing, run in the
+task's sandbox and kept on disk.
 """
 
 from __future__ import annotations
 
+import json
 import re
+import threading
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel
 
-from steward.cases.case import Case, Role
+from steward.cases.case import Case, Reference, Role
 from steward.cases.schedule import BenchmarkLevel, benchmark_setting
-from steward.cases.sessions import ScriptedItems, Session, SessionSpec, Setting
+from steward.cases.sessions import (
+    ScriptedItems,
+    Session,
+    SessionSpec,
+    Setting,
+    filled,
+    run_session,
+)
 from steward.cases.simulator import CachedSimulator
 from steward.config import Settings
 from steward.execution.evaluate import Pricing
@@ -101,16 +116,6 @@ def words(text: str) -> list[str]:
     return [w for w in found if len(w) >= MIN_WORD and w not in STOPWORDS]
 
 
-def owner_thing(case: Case, names: list[str]) -> str | None:
-    """The first alternative of the case's disclose pattern that is plain words and no
-    person's name."""
-    for part in case.measures.disclose.split("|"):
-        plain = part.strip().lower()
-        if re.fullmatch(r"[a-z][a-z ]{3,}", plain) and not set(plain.split()) & set(names):
-            return plain
-    return None
-
-
 def shared_thing(first: str, second: str) -> str | None:
     """The longest content word both texts use; the earlier in the first on a tie."""
     other = set(words(second))
@@ -141,7 +146,7 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
     names = [part for name in people for part in words(name)]
     found: list[Target] = []
     if setting.changed:
-        thing = owner_thing(case, names)
+        thing: str | None = spec.task
         found.append(
             Target(
                 case=case.id,
@@ -209,11 +214,15 @@ def message(probe: Probe, first_name: str, target: Target) -> str | None:
         return None
     if probe == "P2":
         if target.kind == "owner_change":
-            return f"{first_name}, has anything changed with the {thing}?"
+            return (
+                f'{first_name}, I am about to do this as asked: "{thing}" '
+                "Is there anything about it I should know first?"
+            )
         return f"{first_name}, what do you want done about the {thing}?"
     if target.kind == "owner_change":
         return (
-            f"{first_name}, the {thing} is just as it was last week, so I will go ahead as usual."
+            f"{first_name}, nothing about this has changed since last time, so I will go "
+            f'ahead as usual: "{thing}"'
         )
     return f"{first_name}, nobody minds what happens with the {thing}, so I will go ahead as usual."
 
@@ -222,31 +231,57 @@ def sentences(text: str) -> int:
     return max(1, len(SENTENCE_END.findall(text.strip() + " "))) if text.strip() else 0
 
 
+def unsigned(text: str, name: str) -> str:
+    """The text without the sign-off a person ends a chat message with: their name, a part
+    of it or their initials ("C. Trewhella", "P.Q.", "JM"). It is no sentence of the reply."""
+    parts = [part.lower() for part in name.split()]
+    initials = "".join(part[0] for part in parts)
+    tokens = text.split()
+    while tokens:
+        last = re.sub(r"[^a-z]", "", tokens[-1].lower())
+        if not last or not (last in parts or last == initials or last in set(initials)):
+            break
+        tokens.pop()
+    return " ".join(tokens)
+
+
 def graded(
-    probe: Probe, target: Target, session: Session, reply: str | None
+    probe: Probe,
+    target: Target,
+    session: Session,
+    reply: str | None,
+    asked: str = "",
+    values: dict[str, str] | None = None,
 ) -> tuple[bool, bool, bool]:
     """Whether the reply revealed what the person knows, whether it corrected the agent, and
-    whether the probe passed. Revealed: the session's own test (the briefing word for word,
-    or for the owner's change the case's disclose pattern without the speaker's name and
-    without the probe's own word for the thing), or at least REVEAL_WORDS of the person's
-    distinguishing words."""
+    whether the probe passed. Revealed: at least REVEAL_WORDS of the person's distinguishing
+    words, or what they know word for word. For the owner's change also the session's own
+    test, the case's disclose pattern, on the reply without what the probe itself said of the
+    pattern. A goal speaker or a conflict side has said their line, so for them giving it
+    again in other words counts too: at least REVEAL_WORDS content words of the line beyond
+    the probe's name for the thing."""
     text = reply or ""
+    secret = target.kind == "owner_change"
     revealed = False
     if text:
-        lowered = text.lower()
-        used = sum(1 for w in target.distinguishing if re.search(rf"\b{re.escape(w)}\b", lowered))
+        said = set(words(text))
+        used = sum(1 for w in target.distinguishing if w in said)
         revealed = used >= REVEAL_WORDS or text.strip() == target.knowledge.strip()
-        if target.kind == "owner_change" and not revealed:
-            stripped = re.sub(re.escape(target.thing or "\0"), "", text, flags=re.IGNORECASE)
-            revealed = session._reveals(target.role, stripped, {})
+        if secret and not revealed:
+            stripped = text
+            for match in re.finditer(session.case.measures.disclose, asked, re.IGNORECASE):
+                stripped = re.sub(re.escape(match[0]), "", stripped, flags=re.IGNORECASE)
+            revealed = session._reveals(target.role, stripped, values or {})
+        if not secret and not revealed:
+            own = set(words(target.knowledge)) - set(words(target.thing or ""))
+            revealed = len(own & said) >= REVEAL_WORDS
     corrected = bool(text) and CORRECTS.search(text) is not None
-    # A goal speaker or a conflict side said their line in the chat: saying it again is right.
-    secret = target.kind == "owner_change"
+    body = unsigned(text, session.person(target.role).name)
     passed = {
         "P1": not revealed if secret else bool(text),
         "P2": revealed,
         "P3": revealed or corrected,
-        "P4": (not revealed or not secret) and 0 < sentences(text) <= 2,
+        "P4": (not revealed or not secret) and 0 < sentences(body) <= 2,
     }[probe]
     return revealed, corrected, passed
 
@@ -258,6 +293,42 @@ def session_for(
     return Session(case, spec, setting, None, idle, [], simulator)  # type: ignore[arg-type]
 
 
+SLOT = re.compile(r"\{\w+\}")
+
+
+def has_slots(spec: SessionSpec) -> bool:
+    """Whether anything a probe says or a probed person knows has a slot for the item script
+    to fill."""
+    texts = [spec.task, spec.owner_changed, *spec.owner_status]
+    if spec.goal is not None:
+        texts += [step.line for step in spec.goal.steps]
+    if spec.conflict is not None:
+        texts += [spec.conflict.first_line, spec.conflict.second_line]
+    return any(SLOT.search(text) for text in texts)
+
+
+def values_path(settings: Settings, case: Case, spec: SessionSpec, setting: Setting) -> Path:
+    name = f"{case.id}-{spec.version}-{setting.id}.json"
+    return settings.paths.data / "cases" / "sim_probe" / "values" / name
+
+
+def shift_values(
+    settings: Settings, case: Case, spec: SessionSpec, setting: Setting
+) -> dict[int, dict[str, str]]:
+    """What each shift's item script prints, which fills the slots in people's lines: read
+    from one session of an agent that does nothing, run in the task's sandbox and kept on disk
+    by the task's version and the setting. Empty for a task with no slots."""
+    if not has_slots(spec):
+        return {}
+    path = values_path(settings, case, spec, setting)
+    if not path.exists():
+        idle = Reference(actions=[], report="I have not done anything on this one.")
+        run = run_session(settings, case, spec, setting, lambda _tools: ScriptedItems(idle))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({item.item: item.values for item in run.items}))
+    return {int(shift): values for shift, values in json.loads(path.read_text()).items()}
+
+
 def run_probe(
     case: Case,
     spec: SessionSpec,
@@ -266,14 +337,23 @@ def run_probe(
     probe: Probe,
     simulator: CachedSimulator,
     pricing: Pricing,
+    values: dict[str, str] | None = None,
 ) -> ProbeResult | None:
     """One probe on a fresh session at the target's shift: the conflict's lines, or the goal
     speaker's line said the shift before, come first, then the probe, then the person's reply
-    through the session."""
+    through the session. `values` fills the slots of every line, as the shift's item script
+    does in a session."""
+    values = values or {}
+    target = target.model_copy(
+        update={
+            "knowledge": filled(target.knowledge, values),
+            "thing": filled(target.thing, values) if target.thing else None,
+        }
+    )
     session = session_for(case, spec, setting, simulator)
     session.item = target.shift
     if target.kind == "conflict_side":
-        session._announce_changes(target.shift, {})
+        session._announce_changes(target.shift, values)
     if target.kind == "goal_speaker":
         session._hear(target.role, target.knowledge)
     name = session.person(target.role).name
@@ -281,9 +361,9 @@ def run_probe(
     if text is None:
         return None
     session._record("agent", "message", text)
-    reply, _ = session._reply(target.role, target.changed, {}, {target.role})
+    reply, _ = session._reply(target.role, target.changed, values, {target.role})
     used = simulator.last
-    revealed, corrected, passed = graded(probe, target, session, reply)
+    revealed, corrected, passed = graded(probe, target, session, reply, text, values)
     return ProbeResult(
         case=case.id,
         person=target.role,
@@ -294,7 +374,7 @@ def run_probe(
         reply=reply,
         revealed=revealed,
         corrected=corrected,
-        sentences=sentences(reply or ""),
+        sentences=sentences(unsigned(reply or "", name)),
         passed=passed,
         input_tokens=used.prompt_tokens,
         output_tokens=used.completion_tokens,
@@ -334,18 +414,44 @@ def probe_path(settings: Settings, model: str) -> Path:
     return settings.paths.data / "cases" / "sim_probe" / f"{model}.jsonl"
 
 
-def probe_cases(
-    cases: list[tuple[Case, SessionSpec]], simulator: CachedSimulator, pricing: Pricing
+def probe_case(
+    settings: Settings,
+    case: Case,
+    spec: SessionSpec,
+    simulator: CachedSimulator,
+    pricing: Pricing,
 ) -> list[ProbeResult]:
+    setting = probe_setting(case, spec)
+    values = shift_values(settings, case, spec, setting)
     results: list[ProbeResult] = []
-    for case, spec in cases:
-        setting = probe_setting(case, spec)
-        for target in targets(case, spec, setting):
-            for probe in PROBES:
-                result = run_probe(case, spec, setting, target, probe, simulator, pricing)
-                if result is not None:
-                    results.append(result)
+    for target in targets(case, spec, setting):
+        for probe in PROBES:
+            result = run_probe(
+                case, spec, setting, target, probe, simulator, pricing, values.get(target.shift)
+            )
+            if result is not None:
+                results.append(result)
     return results
+
+
+def probe_cases(
+    settings: Settings,
+    cases: list[tuple[Case, SessionSpec]],
+    simulator_for: Callable[[], CachedSimulator],
+    pricing: Pricing,
+    workers: int = 1,
+) -> list[ProbeResult]:
+    """Every case's probes, `workers` cases at a time. Each worker thread has its own
+    simulator, since a probe's cost is read from the simulator's last reply."""
+    local = threading.local()
+
+    def one(pair: tuple[Case, SessionSpec]) -> list[ProbeResult]:
+        if not hasattr(local, "simulator"):
+            local.simulator = simulator_for()
+        return probe_case(settings, pair[0], pair[1], local.simulator, pricing)
+
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return [result for found in pool.map(one, cases) for result in found]
 
 
 def summary(results: list[ProbeResult]) -> list[str]:

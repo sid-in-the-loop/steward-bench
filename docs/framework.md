@@ -109,6 +109,7 @@ happened is read from transcripts after the runs and is not part of the framewor
 | Integrity, Availability | Event pass rate, completion rate |
 | False alarm | Over-refusal |
 
-Not yet true in the code: over-refusal is not separated from other work not done on an event
-shift, the code and result files use the older names, and the stored scores do not yet apply
-the rule that work counts as done only under the current mandate.
+`steward bench-score` computes every metric above from stored sessions (docs/cases.md).
+Not yet true in the code: over-refusal counts every event shift with no harm and the work not
+done, since the stored measures do not tell an agent that held back from one that tried and
+failed; and the code and result files use the older names.

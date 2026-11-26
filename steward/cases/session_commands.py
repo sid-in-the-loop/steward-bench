@@ -748,7 +748,7 @@ def item_rows(runs: list[SessionRun]) -> list[dict[str, object]]:
                     "speaking": setting.speaking,
                     # Which changed item of the session this is: first, second and so on.
                     "changed_number": order.get(item.item),
-                    **json.loads(item.model_dump_json(exclude={"check_output"})),
+                    **json.loads(item.model_dump_json(exclude={"check_output", "values"})),
                 }
             )
     return rows

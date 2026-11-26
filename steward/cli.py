@@ -863,8 +863,13 @@ def cmd_sim_probe(settings: Settings, args: argparse.Namespace) -> int:
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
-    simulator = bench_simulator(settings, args.simulator_model)
-    results = probe_cases(cases, simulator, pricing)
+    results = probe_cases(
+        settings,
+        cases,
+        lambda: bench_simulator(settings, args.simulator_model),
+        pricing,
+        args.workers,
+    )
     path = probe_path(settings, args.simulator_model)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(r.model_dump_json() + "\n" for r in results))
@@ -1280,6 +1285,40 @@ def cmd_session_table(settings: Settings, args: argparse.Namespace) -> int:
         writer.writeheader()
         writer.writerows(rows)
     print(f"{args.out}: {len(rows)} work items from {len(runs)} sessions")
+    return 0
+
+
+def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
+    """Print each model's metrics per condition (docs/framework.md), and for two or more
+    models the difference of every pair's Steward scores with its interval."""
+    from itertools import combinations
+
+    from steward.cases.score import CONDITIONS, difference, lines, score
+    from steward.cases.session_commands import current_sessions
+
+    runs = {
+        model: [
+            run
+            for run in current_sessions(settings, [model])
+            if (not args.trial or run.trial in args.trial)
+            and (args.simulator_model is None or run.simulator == args.simulator_model)
+        ]
+        for model in args.model
+    }
+    for condition in CONDITIONS:
+        for model in args.model:
+            found = score(model, runs[model], condition)
+            for line in lines(found) if found else [f"{model}, {condition}: no sessions"]:
+                print(line)
+        for first, second in combinations(args.model, 2):
+            gap = difference(runs[first], runs[second], condition)
+            if gap is not None:
+                low, high = gap.interval
+                verdict = "significant" if gap.significant else "not distinguishable"
+                print(
+                    f"{first} minus {second}, {condition}: {gap.difference:+.3f} "
+                    f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks, {verdict}"
+                )
     return 0
 
 
@@ -1805,9 +1844,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="a case id; repeat for several (default: every task with a goal and a conflict)",
     )
     sub.add_argument("--simulator-model", default="claude-sonnet-5-5")
+    sub.add_argument("--workers", type=int, default=8, help="tasks probed at once")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("session-table", cmd_session_table, "write one row per work item per session")
     sub.add_argument("--out", type=Path, required=True)
+    sub = add("bench-score", cmd_bench_score, "print the benchmark's metrics per condition")
+    sub.add_argument("--model", action="append", required=True)
+    sub.add_argument("--trial", action="append", type=int, help="keep sessions of this trial")
+    sub.add_argument("--simulator-model", help="keep sessions whose people this model played")
     sub = add("session-report", cmd_session_report, "write the page of session figures")
     sub.add_argument("--out", type=Path, required=True)
     sub = add("case-view", cmd_case_view, "write the run viewer page")

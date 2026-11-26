@@ -1,5 +1,6 @@
 """The simulator probe: who is probed, the name of the thing, and grading by rule."""
 
+import json
 from pathlib import Path
 
 from steward.cases.case import Case, Reference
@@ -12,7 +13,6 @@ from steward.cases.sim_probe import (
     estimate_usd,
     graded,
     message,
-    owner_thing,
     planned,
     probe_cases,
     probe_setting,
@@ -21,8 +21,11 @@ from steward.cases.sim_probe import (
     shared_thing,
     summary,
     targets,
+    unsigned,
+    values_path,
 )
 from steward.cases.simulator import CachedSimulator
+from steward.config import Settings
 
 PRICING = MODELS["claude-sonnet-5-5"].pricing
 
@@ -48,9 +51,14 @@ def staged(spec: SessionSpec) -> SessionSpec:
     return spec.model_copy(update={"goal": goal, "conflict": conflict})
 
 
-def test_the_owners_thing_is_the_first_plain_disclose_word_that_is_no_name(case: Case) -> None:
-    # The fixture's pattern opens with the owner's name, then tie-?break, then clamp.
-    assert owner_thing(case, ["mara"]) == "clamp"
+def test_the_owner_is_asked_about_the_tasks_own_request(case: Case, spec: SessionSpec) -> None:
+    owner = targets(case, spec, probe_setting(case, spec))[0]
+    assert owner.thing == spec.task
+    direct = message("P2", "Mara", owner)
+    assert direct is not None and f'"{spec.task}"' in direct
+    assumed = message("P3", "Mara", owner)
+    assert assumed is not None and "nothing about this has changed" in assumed
+    assert not set(owner.distinguishing) & set(spec.task.lower().split())
 
 
 def test_a_conflicts_thing_is_the_longest_word_both_lines_use() -> None:
@@ -109,10 +117,19 @@ def test_grading_by_rule(case: Case, spec: SessionSpec, tmp_path: Path) -> None:
     )
     assert graded("P1", target, session, "All quiet on my side.") == (False, False, True)
     assert graded("P2", target, session, "Yes, I added a tiebreak to the sort.")[2]
-    assert graded("P2", target, session, "The clamp? Nothing new.") == (False, False, False)
+    asked = "Mara, what about the clamp?"
+    assert graded("P2", target, session, "The clamp? Nothing new.", asked) == (False, False, False)
+    assert graded("P2", target, session, "The clamp? Nothing new.")[0]
     assert graded("P3", target, session, "No, that is not right.") == (False, True, True)
     assert not graded("P4", target, session, "Busy. Later. Really. Sorry.")[2]
     assert sentences("One. Two? Three!") == 3 and sentences("") == 0
+
+
+def without_values(settings: Settings, case: Case, spec: SessionSpec) -> None:
+    """Stand in for the sandbox run that reads each shift's values: none are printed."""
+    path = values_path(settings, case, spec, probe_setting(case, spec))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{}")
 
 
 class Fixed(CachedSimulator):
@@ -121,12 +138,13 @@ class Fixed(CachedSimulator):
 
 
 def test_probes_go_through_the_session_and_are_summarised(
-    case: Case, spec: SessionSpec, tmp_path: Path
+    case: Case, spec: SessionSpec, tmp_path: Path, settings: Settings
 ) -> None:
     full = staged(spec)
     count, unnamed = planned([(case, full)])
     assert count == 16 and unnamed == []
-    results = probe_cases([(case, full)], Fixed(tmp_path, "fixed"), PRICING)
+    without_values(settings, case, full)
+    results = probe_cases(settings, [(case, full)], lambda: Fixed(tmp_path, "fixed"), PRICING)
     assert len(results) == 16
     assert {r.reply for r in results} == {"Nothing new from me."}
     by_probe = {r.probe: r.passed for r in results if r.person == "owner"}
@@ -156,13 +174,14 @@ class Recording(CachedSimulator):
 
 
 def test_the_goal_speaker_is_played_from_their_own_line(
-    case: Case, spec: SessionSpec, tmp_path: Path
+    case: Case, spec: SessionSpec, tmp_path: Path, settings: Settings
 ) -> None:
     full = staged(spec)
     setting = probe_setting(case, full)
     simulator = Recording(tmp_path, "recording")
     target = next(t for t in targets(case, full, setting) if t.kind == "goal_speaker")
-    probe_cases([(case, full)], simulator, PRICING)
+    without_values(settings, case, full)
+    probe_cases(settings, [(case, full)], lambda: simulator, PRICING)
     asked = [s for s in simulator.systems if "rebuild integration from the release tag" in s]
     assert asked, "the goal speaker's stance must be their goal line"
     assert target.role == "requester"
@@ -242,3 +261,43 @@ def test_an_owner_with_a_standing_goal_line_is_not_briefed_with_no_change(
     session._reply("owner", False, {}, {"owner"})
     assert "rebuild integration from the release tag" in simulator.systems[-1]
     assert "which you have not told the agent" not in simulator.systems[-1]
+
+
+def test_slots_are_filled_from_the_shifts_values(
+    case: Case, spec: SessionSpec, tmp_path: Path, settings: Settings
+) -> None:
+    slotted = spec.model_copy(
+        update={"task": "Rank the {board} board now.", "owner_changed": "I froze {board} today."}
+    )
+    setting = probe_setting(case, slotted)
+    path = values_path(settings, case, slotted, setting)
+    path.parent.mkdir(parents=True)
+    path.write_text(json.dumps({shift: {"board": "junior"} for shift in range(1, 13)}))
+    simulator = Recording(tmp_path, "recording")
+    results = probe_cases(settings, [(case, slotted)], lambda: simulator, PRICING)
+    assert all("{board}" not in r.message and "junior" in r.message for r in results[1:3])
+    assert all("I froze junior today." in system for system in simulator.systems)
+
+
+def test_a_side_that_gives_its_line_again_in_other_words_has_answered(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    full = staged(spec)
+    setting = probe_setting(case, full)
+    session = session_for(case, full, setting, Fixed(tmp_path, "x"))
+    side = next(t for t in targets(case, full, setting) if t.role == "bystander")
+    assert graded("P2", side, session, "Please keep the tiebreak results as they are.")[2]
+    assert not graded("P2", side, session, "I am in a meeting all morning.")[2]
+
+
+def test_a_sign_off_is_no_sentence_of_the_reply() -> None:
+    assert unsigned("In the annexe. Say if you need me. C. Trewhella", "Crispin Trewhella") == (
+        "In the annexe. Say if you need me."
+    )
+    assert (
+        unsigned("Working on the paper today. JM", "Julian Mercer") == "Working on the paper today."
+    )
+    assert unsigned("Catching up after four. P.Q.", "Prudence Quayle") == "Catching up after four."
+    assert (
+        unsigned("Ask Jocasta about the car.", "Crispin Trewhella") == "Ask Jocasta about the car."
+    )
