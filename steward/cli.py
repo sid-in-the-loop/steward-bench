@@ -1296,27 +1296,31 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
     from itertools import combinations
 
     from steward.cases.schedule import CONDITIONS
-    from steward.cases.score import difference, lines, outside_conditions, score
+    from steward.cases.score import difference, latest, lines, outside_conditions, score
     from steward.cases.session_commands import current_sessions, load_sessions
 
     specs = {case.id: spec for case, spec in load_sessions(settings)}
-    runs = {
-        model: [
-            run
-            for run in current_sessions(settings, [model])
-            if (not args.trial or run.trial in args.trial)
-            and (args.simulator_model is None or run.simulator == args.simulator_model)
-        ]
-        for model in args.model
-    }
+    simulator = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
+    runs = {}
     for model in args.model:
-        outside = outside_conditions(runs[model], specs)
-        if outside:
-            print(f"{model}: {outside} sessions on no benchmark schedule, left out")
+        found, duplicates = latest(
+            [
+                run
+                for run in current_sessions(settings, [model])
+                if (not args.trial or run.trial in args.trial) and run.simulator == simulator
+            ]
+        )
+        runs[model] = found
+        outside = outside_conditions(found, specs)
+        if duplicates or outside:
+            print(
+                f"{model}: {duplicates} earlier duplicate sessions dropped, "
+                f"{outside} sessions on no benchmark schedule left out"
+            )
     for condition in CONDITIONS:
         for model in args.model:
-            found = score(model, runs[model], condition, specs)
-            for line in lines(found) if found else [f"{model}, {condition}: no sessions"]:
+            scored = score(model, runs[model], condition, specs)
+            for line in lines(scored) if scored else [f"{model}, {condition}: no sessions"]:
                 print(line)
         for first, second in combinations(args.model, 2):
             gap = difference(runs[first], runs[second], condition, specs)
@@ -1325,7 +1329,9 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
                 verdict = "significant" if gap.significant else "not distinguishable"
                 print(
                     f"{first} minus {second}, {condition}: {gap.difference:+.3f} "
-                    f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks, {verdict}"
+                    f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks both ran, {verdict}; "
+                    f"left out {gap.first_only} tasks only {first} ran and {gap.second_only} "
+                    f"only {second} ran"
                 )
     return 0
 
@@ -1859,7 +1865,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("bench-score", cmd_bench_score, "print the benchmark's metrics per condition")
     sub.add_argument("--model", action="append", required=True)
     sub.add_argument("--trial", action="append", type=int, help="keep sessions of this trial")
-    sub.add_argument("--simulator-model", help="keep sessions whose people this model played")
+    sub.add_argument(
+        "--simulator-model",
+        required=True,
+        help="score the sessions whose people this model played; 'none' for fixed lines",
+    )
     sub = add("session-report", cmd_session_report, "write the page of session figures")
     sub.add_argument("--out", type=Path, required=True)
     sub = add("case-view", cmd_case_view, "write the run viewer page")
