@@ -10,11 +10,13 @@ import pytest
 from steward.cases.case import Case, Reference
 from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
 from steward.cases.schedule import (
+    CONDITIONS,
     GOAL_SAID_BEFORE,
     PER_DAY,
     ROUTINE_BEFORE,
     benchmark_setting,
     change_shifts,
+    conditions_of,
     schedule_seed,
 )
 from steward.cases.sessions import ScriptedItems, Session, SessionRun, SessionSpec, Setting
@@ -22,6 +24,7 @@ from steward.config import Settings
 from steward.execution.policy import Message, Policy, Usage
 
 NOTHING = Reference(actions=[], report="done")
+DRIFT, BOTH = CONDITIONS
 
 
 def step(n: int) -> GoalStep:
@@ -54,10 +57,10 @@ def change_shifts_of(setting: Setting) -> list[int]:
 
 
 def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
-    for steps, level, trial in itertools.product((1, 2, 3), (1, 2, 3), range(60)):
-        setting = benchmark_setting(f"case-{steps}", with_changes(spec, steps), level, trial)
+    for steps, condition, trial in itertools.product((1, 2, 3), CONDITIONS, range(60)):
+        setting = benchmark_setting(f"case-{steps}", with_changes(spec, steps), condition, trial)
         shifts = change_shifts_of(setting)
-        expected = 1 + (steps if level >= 2 else 0) + (1 if level == 3 else 0)
+        expected = 1 + (steps + 1 if condition == BOTH else 0)
         assert len(shifts) == len(set(shifts)) == expected
         assert setting.items == 12 and setting.per_day == PER_DAY
         assert shifts[0] > ROUTINE_BEFORE
@@ -66,14 +69,14 @@ def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
         assert shifts[-1] > PER_DAY
         assert setting.present == ("requester", "owner", "bystander", "manager")
         assert setting.changed[0] == shifts[0]
-        if level == 3:
+        if condition == BOTH:
             assert setting.conflict_at == shifts[1]
         assert setting.cast_seed == setting.order_seed == schedule_seed(f"case-{steps}", trial)
 
 
 def test_every_goal_line_is_said_the_shift_before_its_step_applies(spec: SessionSpec) -> None:
-    for steps, level, trial in itertools.product((1, 2, 3), (2, 3), range(60)):
-        setting = benchmark_setting(f"case-{steps}", with_changes(spec, steps), level, trial)
+    for steps, trial in itertools.product((1, 2, 3), range(60)):
+        setting = benchmark_setting(f"case-{steps}", with_changes(spec, steps), BOTH, trial)
         assert setting.goal_said_before == GOAL_SAID_BEFORE == 1
         said = [n - setting.goal_said_before for n in setting.goal_at]
         assert min(said) > 1
@@ -81,7 +84,7 @@ def test_every_goal_line_is_said_the_shift_before_its_step_applies(spec: Session
         assert not set(said) & set(change_shifts_of(setting))
         # One step applies from the first shift of day 2, said on the last shift of day 1.
         assert PER_DAY + 1 in setting.goal_at
-    assert benchmark_setting("t", with_changes(spec, 1), 1, 0).goal_said_before == 0
+    assert benchmark_setting("t", with_changes(spec, 1), DRIFT, 0).goal_said_before == 0
 
 
 def test_on_the_shift_a_goal_line_is_said_the_rule_before_it_is_scored(
@@ -90,7 +93,7 @@ def test_on_the_shift_a_goal_line_is_said_the_rule_before_it_is_scored(
     from tests.cases.test_sessions import FakeEnvironment
 
     changed = with_changes(spec, 1)
-    setting = benchmark_setting(case.id, changed, 2, 0)
+    setting = benchmark_setting(case.id, changed, BOTH, 0)
     (applies,) = setting.goal_at
     environment = FakeEnvironment(done=True)
     session = Session(case, changed, setting, environment, ScriptedItems(NOTHING), [])  # type: ignore[arg-type]
@@ -106,21 +109,24 @@ def test_the_schedule_is_the_same_for_a_task_and_trial_and_varies_across_them(
     spec: SessionSpec,
 ) -> None:
     full = with_changes(spec, 2)
-    assert benchmark_setting("t", full, 3, 0) == benchmark_setting("t", full, 3, 0)
-    drawn = {tuple(change_shifts_of(benchmark_setting("t", full, 3, n))) for n in range(40)}
+    assert benchmark_setting("t", full, BOTH, 0) == benchmark_setting("t", full, BOTH, 0)
+    drawn = {tuple(change_shifts_of(benchmark_setting("t", full, BOTH, n))) for n in range(40)}
     assert len(drawn) > 1
     firsts = {change_shifts(seed, 1) for seed in range(200)}
     assert {shift for (shift,) in firsts} == set(range(PER_DAY + 1, 12))
 
 
-def test_a_level_needs_the_changes_it_stacks(spec: SessionSpec) -> None:
+def test_a_condition_needs_the_changes_it_has(spec: SessionSpec) -> None:
     with pytest.raises(ValueError):
-        benchmark_setting("t", spec, 2, 0)
+        benchmark_setting("t", spec, BOTH, 0)
     only_goal = with_changes(spec, 1).model_copy(update={"conflict": None})
     with pytest.raises(ValueError):
-        benchmark_setting("t", only_goal, 3, 0)
-    assert benchmark_setting("t", only_goal, 2, 0).conflict_at is None
-    assert benchmark_setting("t", spec, 1, 0).goal_at == ()
+        benchmark_setting("t", only_goal, BOTH, 0)
+    assert (
+        conditions_of(only_goal) == (DRIFT,) and conditions_of(with_changes(spec, 1)) == CONDITIONS
+    )
+    assert benchmark_setting("t", with_changes(spec, 1), DRIFT, 0).goal_at == ()
+    assert benchmark_setting("t", spec, DRIFT, 0).conflict_at is None
 
 
 def test_the_validation_schedule_is_unchanged(spec: SessionSpec) -> None:
@@ -167,7 +173,7 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
         )
 
     monkeypatch.setattr(session_commands, "run_session", fake_run)
-    setting = benchmark_setting(case.id, changed, 3, 0)
+    setting = benchmark_setting(case.id, changed, BOTH, 0)
     found = {
         agent: session_commands.benchmark_problems(
             cast(Settings, None), case, changed, setting, agent, "L3 t0"

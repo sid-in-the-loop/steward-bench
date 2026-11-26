@@ -773,7 +773,7 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.sessions import EXPERIMENTS, Setting
 
     cases = load_sessions(settings, args.case)
-    if args.level:
+    if args.condition:
         return run_benchmark(settings, args, cases)
     chosen: dict[str, Setting] = {}
     for name in args.experiment or list(EXPERIMENTS):
@@ -808,12 +808,14 @@ NO_SIMULATOR = "none"
 
 
 def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
-    """The benchmark run: the seeded two-day schedule at each level asked for. The estimate
-    covers the tested model only; what the simulator spent is printed at the end."""
+    """The benchmark run: the seeded two-day schedule under each condition asked for. The
+    estimate covers the tested model only; what the simulator spent is printed at the end."""
     from steward.cases.commands import MODELS
+    from steward.cases.schedule import SHORT_FORMS
     from steward.cases.session_commands import Budget, benchmark_jobs, estimate_usd, run_jobs
 
-    jobs = benchmark_jobs(cases, args.level, args.trials)
+    conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition)]
+    jobs = benchmark_jobs(cases, conditions, args.trials)
     models = [MODELS[name] for name in args.model]
     for model in models:
         dollars = sum(estimate_usd(model, job.setting) for job in jobs)
@@ -1293,7 +1295,8 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
     models the difference of every pair's Steward scores with its interval."""
     from itertools import combinations
 
-    from steward.cases.score import CONDITIONS, difference, lines, score
+    from steward.cases.schedule import CONDITIONS
+    from steward.cases.score import difference, lines, score
     from steward.cases.session_commands import current_sessions
 
     runs = {
@@ -1814,11 +1817,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub.add_argument("--items", action="append", type=int, help="keep sessions of this length")
     sub.add_argument(
-        "--level",
+        "--condition",
         action="append",
-        type=int,
-        choices=[1, 2, 3],
-        help="run the benchmark's seeded two-day schedule at this level, not the experiments",
+        choices=["sd", "sid"],
+        help="run the benchmark's seeded two-day schedule under this condition, not the "
+        "experiments: sd is State Drift, sid is State and Instruction Drift",
     )
     sub.add_argument("--trials", type=int, default=3)
     sub.add_argument("--workers", type=int, default=2)
@@ -1826,16 +1829,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--simulator-model",
         default="claude-sonnet-5-5",
-        help="who plays the people with --level; 'none' leaves them their fixed lines",
+        help="who plays the people with --condition; 'none' leaves them their fixed lines",
     )
     sub.add_argument(
         "--start",
         type=int,
-        help="with --level, sessions at once to begin with; more are added up to --workers "
+        help="with --condition, sessions at once to begin with; more are added up to --workers "
         "while the provider answers without rate limits",
     )
     sub.add_argument(
-        "--max-usd", type=float, help="with --level, start no session once this is spent"
+        "--max-usd", type=float, help="with --condition, start no session once this is spent"
     )
     sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(

@@ -22,7 +22,7 @@ from steward.cases.levels import Bank, Voice
 from steward.cases.rate_log import log_while, rate_log
 from steward.cases.run import Model, model_policy
 from steward.cases.sandbox import MACHINE_FAULTS
-from steward.cases.schedule import BenchmarkLevel, benchmark_setting
+from steward.cases.schedule import Condition, benchmark_setting, conditions_of
 from steward.cases.sessions import (
     ItemResult,
     ScriptedItems,
@@ -76,20 +76,20 @@ IDLE = Reference(actions=[], report="I have not done anything on this one.")
 
 
 def benchmark_jobs(
-    cases: list[tuple[Case, SessionSpec]], levels: list[BenchmarkLevel], trials: int
+    cases: list[tuple[Case, SessionSpec]], conditions: list[Condition], trials: int
 ) -> list[Job]:
-    """The benchmark run: every case at every level it has the changes for, each trial on its
-    own seeded schedule."""
+    """The benchmark run: every case under every condition it has the changes for, each trial
+    on its own seeded schedule."""
     return [
         Job(
             case=case,
             spec=spec,
-            setting=benchmark_setting(case.id, spec, level, trial),
+            setting=benchmark_setting(case.id, spec, condition, trial),
             trial=trial,
         )
         for case, spec in cases
-        for level in levels
-        if (level < 2 or spec.goal is not None) and (level < 3 or spec.conflict is not None)
+        for condition in conditions
+        if condition in conditions_of(spec)
         for trial in range(trials)
     ]
 
@@ -179,7 +179,7 @@ def check_benchmark(
     warnings: list[str] | None = None,
 ) -> list[str]:
     """Replay the safe reference, the harmful reference and an agent that does nothing on the
-    benchmark's seeded schedule, at every level the task has the changes for, for the trials
+    benchmark's seeded schedule, under every condition the task has the changes for, for the trials
     in BENCHMARK_TRIALS. The safe one must pass harm, authority and done on every shift,
     routine ones included, and meet the final goal; on a shift with a goal step in force its
     harm is the step's, and the base checks are kept apart and not counted. The harmful one
@@ -188,20 +188,18 @@ def check_benchmark(
     passing `done` on a routine shift goes into `warnings`, one line for the task: where a job
     the agent set up earlier carries out the routine, doing nothing is right. `one_date` shows
     every shift the session's first date."""
-    levels: tuple[BenchmarkLevel, ...] = (1, 2, 3)
     runs = [
-        (level, trial, agent)
-        for level in levels
-        if (level < 2 or spec.goal is not None) and (level < 3 or spec.conflict is not None)
+        (condition, trial, agent)
+        for condition in conditions_of(spec)
         for trial in BENCHMARK_TRIALS
         for agent in ("safe", "harmful", "idle")
     ]
 
-    def replay(level: BenchmarkLevel, trial: int, agent: str) -> Replay:
-        setting = benchmark_setting(case.id, spec, level, trial)
+    def replay(condition: Condition, trial: int, agent: str) -> Replay:
+        setting = benchmark_setting(case.id, spec, condition, trial)
         if one_date:
             setting = setting.model_copy(update={"dated_days": False})
-        return benchmark_problems(settings, case, spec, setting, agent, f"L{level} t{trial}")
+        return benchmark_problems(settings, case, spec, setting, agent, f"{condition} t{trial}")
 
     with ThreadPoolExecutor(max(1, workers)) as pool:
         found = list(pool.map(lambda run: replay(*run), runs))

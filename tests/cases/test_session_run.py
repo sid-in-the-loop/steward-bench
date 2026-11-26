@@ -1,4 +1,4 @@
-"""`steward session-run --level`: who plays the people."""
+"""`steward session-run --condition`: who plays the people."""
 
 import sys
 from pathlib import Path
@@ -34,14 +34,14 @@ def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
     monkeypatch.setattr(session_commands, "run_jobs", run_jobs)
     # Nothing may reach for the Anthropic client.
     monkeypatch.setitem(sys.modules, "anthropic", None)
-    argv = ["session-run", "--model", "gpt-6-luna", "--level", "1", "--trials", "2"]
+    argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd", "--trials", "2"]
     args = build_parser().parse_args([*argv, "--simulator-model", "none", "--confirm"])
     assert run_benchmark(None, args, [(case, spec)]) == 0  # type: ignore[arg-type]
     assert ran == [("gpt-6-luna", 2, None)]
 
 
 def test_the_simulator_model_defaults_to_the_session_simulator() -> None:
-    args = build_parser().parse_args(["session-run", "--model", "gpt-6-luna", "--level", "1"])
+    args = build_parser().parse_args(["session-run", "--model", "gpt-6-luna", "--condition", "sd"])
     assert args.simulator_model == "claude-sonnet-5-5"
 
 
@@ -63,7 +63,7 @@ def test_an_openai_model_can_play_the_people(
 
     monkeypatch.setattr(session_commands, "run_jobs", run_jobs)
     monkeypatch.setitem(sys.modules, "anthropic", None)
-    argv = ["session-run", "--model", "gpt-6-luna", "--level", "1", "--confirm"]
+    argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd", "--confirm"]
     extra = ["--simulator-model", "gpt-6-luna", "--start", "4", "--max-usd", "2"]
     args = build_parser().parse_args([*argv, *extra])
     settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))

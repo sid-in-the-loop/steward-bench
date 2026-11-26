@@ -504,12 +504,12 @@ done, and on changed items harm, authority and whether the report disclosed the 
     steward session-build [--case ID]            build the session cases and check them
     steward session-build [--case ID] --benchmark [--one-date] [--workers N]
     steward session-run --model M [--case ID] [--experiment NAME] [--items N] --confirm
-    steward session-run --model M [--case ID] --level 1|2|3 [--trials N] [--simulator-model M|none]
+    steward session-run --model M [--case ID] --condition sd|sid [--trials N] [--simulator-model M|none]
                         [--workers N] [--start N] [--max-usd X] --confirm
     steward session-table --out FILE             one row per work item per session
 
-With `--level` the run uses the benchmark's seeded schedule (below) in place of the
-experiments, and `--simulator-model` names who plays the people (claude-sonnet-5-5 by default);
+With `--condition` the run uses the benchmark's seeded schedule (below) in place of the
+experiments, under State Drift (`sd`) or State and Instruction Drift (`sid`; docs/framework.md), and `--simulator-model` names who plays the people (claude-sonnet-5-5 by default);
 `none` leaves them their fixed lines and makes no simulator calls, enough to exercise the task
 environments. A Claude model plays them through the Messages API and any other model in the
 model list (such as gpt-6-luna) through the OpenAI Responses API, with the same instructions
@@ -535,8 +535,8 @@ plays both sides the two share one log, as they share the provider's limit.
 
 ## Goal changes, authority conflicts, days and casts
 
-These are the harness parts of the scaled benchmark's Level 2 and Level 3 (see
-docs/scaled_benchmark_spec.md); they are separate from the run levels I to V of docs/levels.md.
+These are the harness parts of the benchmark's State and Instruction Drift condition (see
+docs/framework.md; docs/scaled_benchmark_spec.md calls them Level 2 and Level 3); they are separate from the run levels I to V of docs/levels.md.
 The code is in `steward/cases/changes.py` and `steward/cases/casting.py`.
 
 A session form may add two optional fields.
@@ -574,8 +574,9 @@ the final goal; the harmful one must fail each where it applies. The settings ab
 identifiers of settings stored before them unchanged when they are at their defaults.
 
 The benchmark run uses a seeded schedule instead (`steward/cases/schedule.py`): two days of six
-shifts, all four people present, and the changes of the level stacked: Level 1 the
-environment change, Level 2 also the goal's steps, Level 3 also the conflict. The shifts they
+shifts, all four people present, and the changes of the condition: under State Drift the
+environment change, under State and Instruction Drift also the goal's steps and the conflict.
+A task with no goal change or no conflict runs under State Drift only. The shifts they
 land on are drawn evenly from every placement with two routine shifts before the first change,
 a shift with no new change after every change, and at least one change on day 2, with a seed
 from the task id and the trial, so every model and every rerun meets the same schedule. The
@@ -584,7 +585,7 @@ steps). Each goal step's line is said one shift before the step applies, as `che
 runs it and as the lines are written ("from tomorrow's run"); on the shift it is said, the rule
 in force before it still applies and is what is scored, and the references replay the same
 way. A goal step therefore never applies from shift 1, and since changes are two shifts apart
-the shift a line is said on is never itself a change. Where the level allows it, the draw is
+the shift a line is said on is never itself a change. Where the schedule allows it, the draw is
 from the placements in which a goal step applies from the first shift of day 2, its line said
 on the last shift of day 1, so that it must survive the overnight handover in the agent's own
 notes; with one goal step and the conflict that leaves a single placement (shifts 3, 5 and 7).
@@ -606,7 +607,8 @@ triggers, and the tool servers of a Workplace world, keep the real date.
 
 `steward session-build --benchmark` checks a task on the benchmark schedule in place of the
 short one: the safe reference, the harmful reference and an agent that does nothing are
-replayed at every level the task has the changes for, on the schedules of trials 0 and 1. The
+replayed under every condition the task has the changes for, on the schedules of trials 0 and
+1 (up to twelve replays; the former Level 2, a goal change with no conflict, is no longer replayed). The
 references are chosen by the kind of shift (the conflict's on its shift, a goal step's once it
 is in force, the base one otherwise), so they replay at any position. The safe one must pass
 harm, authority and done on every shift, routine ones and the conflict's included (there read

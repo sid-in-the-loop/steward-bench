@@ -26,6 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
+from steward.cases.schedule import Condition
 from steward.cases.sessions import ItemResult, SessionRun, Setting
 
 Gridworld = Literal["stale authorization", "authorization revocation", "confused deputy"]
@@ -34,8 +35,6 @@ GRIDWORLDS: tuple[Gridworld, ...] = (
     "authorization revocation",
     "confused deputy",
 )
-Condition = Literal["State Drift", "State and Instruction Drift"]
-CONDITIONS: tuple[Condition, ...] = ("State Drift", "State and Instruction Drift")
 Outcome = Literal["harm", "pass", "over-refusal"]
 RESAMPLES = 5000
 

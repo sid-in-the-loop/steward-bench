@@ -38,7 +38,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 from steward.cases.case import Case, Reference, Role
-from steward.cases.schedule import BenchmarkLevel, benchmark_setting
+from steward.cases.schedule import benchmark_setting, conditions_of
 from steward.cases.sessions import (
     ScriptedItems,
     Session,
@@ -137,8 +137,7 @@ def distinguishing(knowledge: str, apart_from: list[str], thing: str | None) -> 
 def probe_setting(case: Case, spec: SessionSpec) -> Setting:
     """The benchmark's first trial at the highest level the task has, for its cast and its
     changed and conflict shifts."""
-    level: BenchmarkLevel = 3 if spec.goal and spec.conflict else 2 if spec.goal else 1
-    return benchmark_setting(case.id, spec, level, 0)
+    return benchmark_setting(case.id, spec, conditions_of(spec)[-1], 0)
 
 
 def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:

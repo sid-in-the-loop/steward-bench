@@ -1,8 +1,8 @@
 """The seeded schedule of the benchmark run.
 
-A benchmark session is two days of six shifts with every person present. The kinds of change
-stack as the levels define them: Level 1 has the environment change, Level 2 adds the goal
-change's steps and Level 3 adds the authority conflict. Where the changes land is drawn with a
+A benchmark session is two days of six shifts with every person present, under one of two
+conditions (docs/framework.md): State Drift has the environment change alone, and State and
+Instruction Drift adds the goal change's steps and the authority conflict. Where the changes land is drawn with a
 seed derived from the task and the trial, so every model meets the same schedule and a rerun
 repeats it. Every schedule keeps two routine shifts before the first change and a shift with
 no new change after every change, and puts at least one change on day 2, after the overnight
@@ -14,7 +14,7 @@ Each goal step's line is said one shift before the step applies, as the task's o
 (`changes_setting`) runs it and as the lines are written ("from tomorrow's run"); on the
 shift it is said the rule in force before it still applies and is what is scored. Since
 changes are two shifts apart, the shift a line is said on is never itself a change. Where the
-level allows it, one step is said on the last shift of day 1 and applies from the first of
+schedule allows it, one step is said on the last shift of day 1 and applies from the first of
 day 2, so that it must survive the overnight handover in the agent's own notes.
 """
 
@@ -27,7 +27,10 @@ from typing import Literal
 
 from steward.cases.sessions import SessionSpec, Setting
 
-BenchmarkLevel = Literal[1, 2, 3]
+Condition = Literal["State Drift", "State and Instruction Drift"]
+CONDITIONS: tuple[Condition, ...] = ("State Drift", "State and Instruction Drift")
+# The conditions' short forms, as the command line takes them.
+SHORT_FORMS: dict[str, Condition] = {"sd": "State Drift", "sid": "State and Instruction Drift"}
 DAYS = 2
 PER_DAY = 6
 ROUTINE_BEFORE = 2
@@ -60,15 +63,22 @@ def change_shifts(
     return random.Random(seed).choice(overnight or placements)
 
 
-def benchmark_setting(
-    case_id: str, spec: SessionSpec, level: BenchmarkLevel, trial: int
-) -> Setting:
-    if level >= 2 and spec.goal is None:
-        raise ValueError(f"{case_id}: Level {level} needs a goal change")
-    if level == 3 and spec.conflict is None:
-        raise ValueError(f"{case_id}: Level 3 needs an authority conflict")
-    steps = len(spec.goal.steps) if spec.goal and level >= 2 else 0
-    conflicts = 1 if level == 3 else 0
+def has_instruction_drift(spec: SessionSpec) -> bool:
+    """Whether the task can run under State and Instruction Drift."""
+    return spec.goal is not None and spec.conflict is not None
+
+
+def conditions_of(spec: SessionSpec) -> tuple[Condition, ...]:
+    """The conditions the task has the changes for."""
+    return CONDITIONS if has_instruction_drift(spec) else CONDITIONS[:1]
+
+
+def benchmark_setting(case_id: str, spec: SessionSpec, condition: Condition, trial: int) -> Setting:
+    instructions = condition == "State and Instruction Drift"
+    if instructions and not has_instruction_drift(spec):
+        raise ValueError(f"{case_id}: {condition} needs a goal change and an authority conflict")
+    steps = len(spec.goal.steps) if spec.goal and instructions else 0
+    conflicts = 1 if instructions else 0
     seed = schedule_seed(case_id, trial)
     shifts = change_shifts(seed, 1 + conflicts + steps, goal_steps=steps)
     return Setting(

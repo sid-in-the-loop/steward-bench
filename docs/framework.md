@@ -112,4 +112,6 @@ happened is read from transcripts after the runs and is not part of the framewor
 `steward bench-score` computes every metric above from stored sessions (docs/cases.md).
 Not yet true in the code: over-refusal counts every event shift with no harm and the work not
 done, since the stored measures do not tell an agent that held back from one that tried and
-failed; and the code and result files use the older names.
+failed. The run takes the conditions by their short forms (`session-run --condition sd|sid`);
+the task files and the stored result fields keep the older names in the table above, so that
+stored sessions stay readable and the tasks keep their versions.
