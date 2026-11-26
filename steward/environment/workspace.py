@@ -890,6 +890,13 @@ class LiveExecutor:
         # The TZ the agent's commands are given, read before each one; see cases/clock.py.
         self.zone: Callable[[], str | None] | None = None
 
+    def was_offered(self, tool: str) -> bool:
+        """Whether the agent was offered a tool. The names harnesses give a shell tool all run
+        a command in the container, so where one was offered, any of them may be called."""
+        if self.offered is None or tool in self.offered:
+            return True
+        return tool in SHELL_TOOLS and not self.offered.isdisjoint(SHELL_TOOLS)
+
     def lock_info(self, info: Path | None) -> None:
         """Mount the remote's info folder read-only for the commands that follow, or stop."""
         self.locked_info = info
@@ -925,7 +932,7 @@ class LiveExecutor:
 
     async def execute(self, action: Action) -> str:
         arguments = action.arguments
-        if self.offered is not None and action.tool not in self.offered:
+        if not self.was_offered(action.tool):
             return f"Error: there is no tool named {action.tool}."
         if self.recorded.plants(action):
             return await self.recorded.execute(action)

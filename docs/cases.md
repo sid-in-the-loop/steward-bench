@@ -275,7 +275,9 @@ container's shell). The machine gives its user no cgroup of its own (rootless ap
 `--memory` and `--pids-limit` need a user session bus, which it lacks), so memory and disk
 in all are not limited, and the workspaces lie on the machine's `/tmp`.
 
-The agent can call only the tools it was offered; any other name is answered with an error.
+The agent can call only the tools it was offered; any other name is answered with an error,
+except that where a shell tool was offered, any of the names harnesses give one (`bash`,
+`Bash`, `exec_command`) runs the command in the container.
 File tools (read, write, edit) run on the harness's machine, not in the container, so they
 refuse a path that leads outside the workspace's directories through a link.
 

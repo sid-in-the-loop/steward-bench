@@ -488,9 +488,10 @@ def test_a_tool_that_was_not_offered_is_refused(tmp_path) -> None:
     workspace.tree.mkdir(parents=True, exist_ok=True)
     (workspace.tree / "a.txt").write_text("hello\n")
     executor = ws.LiveExecutor(workspace, RecordedToolExecutor([], []), "image.sif")
-    executor.offered = frozenset({"Bash"})
+    executor.offered = frozenset({"bash"})
     read = Action(tool="Read", arguments={"file_path": "a.txt"})
     assert asyncio.run(executor.execute(read)) == "Error: there is no tool named Read."
+    assert executor.was_offered("Bash") and not executor.was_offered("Write")
     executor.offered = None
     assert "hello" in asyncio.run(executor.execute(read))
 
