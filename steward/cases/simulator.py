@@ -23,7 +23,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import tempfile
 from pathlib import Path
 from typing import Protocol
 
@@ -39,6 +41,8 @@ MODEL = "claude-haiku-5-5"
 SESSION_MODEL = "claude-sonnet-5-5"
 MAX_TOKENS = 1000
 NO_REPLY = "NO_REPLY"
+# The SDK retries twice by default; a long session run meets more overloads than that.
+MAX_RETRIES = 8
 
 # The test for when a person tells what they know, the same in both templates: whether the
 # agent's latest message names the thing their knowledge is about.
@@ -175,16 +179,24 @@ class CachedSimulator:
         key = hashlib.sha1(json.dumps([self.model, system, chat]).encode()).hexdigest()
         stored = self.cache / f"{key}.txt"
         self.last = Usage()
-        if stored.exists():
-            text = stored.read_text()
-        else:
+        text = stored.read_text() if stored.exists() else ""
+        if not text:
             text = self._ask(system, chat)
-            self.cache.mkdir(parents=True, exist_ok=True)
-            stored.write_text(text)
+            # An empty reply is a failed request, not an answer, so it is asked again next time.
+            if text:
+                self._store(stored, text)
         if not text or NO_REPLY in text:
             return None
         # The model sometimes signs the message with the speaker's name.
         return text.removeprefix(f"{person.name}:").strip()
+
+    def _store(self, stored: Path, text: str) -> None:
+        """Write a reply whole or not at all, since workers in parallel share the cache."""
+        self.cache.mkdir(parents=True, exist_ok=True)
+        handle, temporary = tempfile.mkstemp(dir=self.cache, suffix=".tmp")
+        with os.fdopen(handle, "w") as file:
+            file.write(text)
+        os.replace(temporary, stored)
 
 
 class ClaudeSimulator(CachedSimulator):
@@ -192,7 +204,7 @@ class ClaudeSimulator(CachedSimulator):
 
     def __init__(self, client: anthropic.Anthropic, cache: Path, model: str = MODEL) -> None:
         super().__init__(cache, model)
-        self.client = client
+        self.client = client.with_options(max_retries=MAX_RETRIES)
 
     def _ask(self, system: str, chat: list[str]) -> str:
         response = self.client.messages.create(

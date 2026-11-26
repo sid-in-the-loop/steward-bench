@@ -67,7 +67,10 @@ model meets the same stance; the simulator only answers what the agent says afte
 Someone who is away is never simulated. A simulated reply that matches the case's
 `disclose` pattern, from a person who could not know it, is withheld and counted in
 `withheld_replies`. Replies are stored under `data/cases/simulator_cache`, keyed by the
-conversation, so a rerun gets the same reply. The simulator needs `ANTHROPIC_API_KEY`.
+conversation, so a rerun gets the same reply. An empty reply is not stored, so it is asked
+again; a reply is written to a temporary file and moved into place, so workers running in
+parallel never read part of one; and a Claude request is retried up to eight times
+(`MAX_RETRIES`) where the SDK would stop after two. The simulator needs `ANTHROPIC_API_KEY`.
 It can state a position more firmly than the fixed line does, so simulator runs are
 compared with each other and kept apart from fixed-line runs.
 
