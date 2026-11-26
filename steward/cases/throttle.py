@@ -78,10 +78,14 @@ class Throttle:
 
     def adjust(self) -> None:
         """Cut the limit after rate limits; raise it when every slot is busy, nothing was
-        rate-limited and the machine has room."""
+        rate-limited and the machine has room. While more sessions run than the limit allows,
+        an earlier cut has not taken effect yet, and the rate limits those sessions still meet
+        do not cut it again: without this one burst cut the limit to the floor."""
         with self.condition:
             before = self.limit
-            if self.limited:
+            if self.limited and self.active > self.limit:
+                pass
+            elif self.limited:
                 self.limit = max(self.floor, math.floor(self.limit * CUT_TO))
             elif self.active >= self.limit and self.load() < LOAD_CEILING:
                 self.limit = min(self.ceiling, self.limit + STEP_UP)

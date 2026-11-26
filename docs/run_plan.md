@@ -84,7 +84,9 @@ at once, since each spends most of its time waiting on the model.
 `bench-run` finds that number itself. With `--start` below `--workers`, each model begins
 with `--start` sessions at once and, every 30 seconds, adds two while every slot is busy,
 the provider has sent no rate limit since the last check and the load is under 0.85 per CPU;
-a rate limit cuts the number to 70%. Anthropic requests go through their own client, so for
+a rate limit cuts the number to 70%. While more sessions run than the cut number, the cut
+has not taken effect yet and the rate limits they still meet do not cut it again (on the
+first Luna pass, cutting on every window took 18 sessions at once down to 1). Anthropic requests go through their own client, so for
 `claude-haiku-5-5` only the load counts. With `--minutes`, a session is started only if it
 would finish within that many minutes, judged from how long the model's sessions of that
 length have taken so far, so nothing is cut off when the job ends. Sessions start longest

@@ -44,6 +44,22 @@ def test_rate_limits_cut_the_number_at_once_and_are_counted_afresh() -> None:
     assert limited.limit == 1
 
 
+def test_rate_limits_met_before_a_cut_takes_effect_do_not_cut_again() -> None:
+    limited = throttle(start=20, ceiling=30)
+    request = httpx.Request("POST", "https://example.test")
+    limited.active = 20
+    limited.observe(httpx.Response(429, request=request))
+    limited.adjust()
+    assert limited.limit == 14
+    limited.observe(httpx.Response(429, request=request))
+    limited.adjust()
+    assert limited.limit == 14 and limited.limited == 0
+    limited.active = 14
+    limited.observe(httpx.Response(429, request=request))
+    limited.adjust()
+    assert limited.limit == 9
+
+
 def test_a_session_starts_only_if_it_would_finish_before_the_deadline() -> None:
     now = [0.0]
     deadline = Deadline(end=3600.0, clock=lambda: now[0])
