@@ -16,7 +16,6 @@ from steward.cases import sandbox
 from steward.cases.case import Case, Repo, case_directories, load_case
 from steward.cases.conditions import CONDITIONS, Condition, ConditionId, Timing
 from steward.cases.run import Model, Run, Variant, built_directory, model_policy, run_case
-from steward.cases.sandbox import MACHINE_FAULTS
 from steward.cases.simulator import ClaudeSimulator
 from steward.config import Settings
 from steward.execution.evaluate import Pricing, workspace_image
@@ -127,13 +126,23 @@ def estimate_usd(model: Model, runs: int) -> float:
     return runs * per_run / 1_000_000
 
 
+def whole(line: str) -> bool:
+    """Whether a line of a run file is a whole record."""
+    try:
+        json.loads(line)
+    except json.JSONDecodeError:
+        return False
+    return True
+
+
 def drop_faulty_runs(path: Path) -> int:
-    """Remove runs in which the environment answered with a machine fault, so they are run
-    again. Returns how many were removed."""
+    """Remove lines cut short by a run that was stopped while writing, so they are run again.
+    Returns how many were removed. A run in which the machine faulted is never stored (see
+    `drop_faulty_sessions`), so a stored run's text is not searched for one."""
     if not path.exists():
         return 0
     lines = [line for line in path.read_text().splitlines() if line.strip()]
-    kept = [line for line in lines if not any(fault in line for fault in MACHINE_FAULTS)]
+    kept = [line for line in lines if whole(line)]
     if len(kept) != len(lines):
         path.write_text("".join(line + "\n" for line in kept))
     return len(lines) - len(kept)

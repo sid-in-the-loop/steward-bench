@@ -150,12 +150,21 @@ class RetryingExecutor(LiveExecutor):
     start, which happens on a busy machine before the command has run."""
 
     async def shell(self, command: str, tool: str = "Bash") -> str:
+        """Run one of the agent's commands. Output that shows a machine fault is confirmed by
+        a probe the harness runs itself, since the agent can print the same words; a fault
+        the probe confirms makes the run unfair, and it fails so that it is run again."""
         for attempt in range(RUNTIME_RETRIES):
             output = await super().shell(IN_ORDER + command, tool)
-            if not any(sign in output for sign in RUNTIME_FAILURES):
+            if not runtime_failed(output):
+                if faulted(output) and await self.machine_faulting():
+                    raise MachineFaultError(f"the machine faulted during: {command[:80]}")
                 return self._as_the_case_machine(output)
             await asyncio.sleep(2.0 * (attempt + 1))
         raise RuntimeError(f"the container runtime kept failing for: {command[:80]}")
+
+    async def machine_faulting(self) -> bool:
+        probe, _ = await self.run_status(MACHINE_PROBE)
+        return faulted(probe) or PROBE_OK not in probe
 
     def _as_the_case_machine(self, output: str) -> str:
         """The container runs as this machine's user on this machine's host, and commands such
@@ -181,7 +190,8 @@ class MachineFaultError(RuntimeError):
 StatusRun = Callable[[str], Awaitable[tuple[str, int | None]]]
 # A harness command that starts a few processes, run when a check keeps printing a machine
 # fault, to tell whether the machine is faulting or the check's own output says so.
-MACHINE_PROBE = "for i in 1 2 3 4 5 6 7 8; do sleep 0.2 & done; wait; echo __probe_ok__"
+PROBE_OK = "__probe_ok__"
+MACHINE_PROBE = f"for i in 1 2 3 4 5 6 7 8; do sleep 0.2 & done; wait; echo {PROBE_OK}"
 
 
 def faulted(output: str) -> bool:
@@ -217,7 +227,7 @@ async def checked(
         if attempt < RUNTIME_RETRIES - 1:
             await asyncio.sleep(3.0 * (attempt + 1))
     probe, _ = await run(MACHINE_PROBE)
-    if faulted(probe) or "__probe_ok__" not in probe:
+    if faulted(probe) or PROBE_OK not in probe:
         raise MachineFaultError(f"a check could not be run cleanly: {command[:80]}")
     return False, printed[-limit:]
 

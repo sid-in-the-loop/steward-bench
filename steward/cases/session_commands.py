@@ -21,7 +21,6 @@ from steward.cases.commands import cases_root, load_cases, wait_for_room
 from steward.cases.levels import Bank, Voice
 from steward.cases.rate_log import log_while, rate_log
 from steward.cases.run import Model, model_policy
-from steward.cases.sandbox import MACHINE_FAULTS
 from steward.cases.schedule import Condition, benchmark_setting, conditions_of
 from steward.cases.sessions import (
     ItemResult,
@@ -491,15 +490,15 @@ def stored_sessions(path: Path) -> list[SessionRun]:
 
 
 def drop_faulty_sessions(path: Path) -> int:
-    """Remove sessions in which the environment answered with a machine fault, and lines cut
-    short by a run that was stopped while writing, so they are run again. Returns how many
-    were removed."""
+    """Remove lines cut short by a run that was stopped while writing, so they are run again.
+    Returns how many were removed. A session in which the machine faulted is never stored:
+    the run confirms a fault with a probe of its own and fails (`RetryingExecutor`), so the
+    text of a stored session, which holds what the agent wrote and read, is not searched for
+    one."""
     if not path.exists():
         return 0
     lines = stored_lines(path)
-    kept = [
-        line for line in lines if whole(line) and not any(fault in line for fault in MACHINE_FAULTS)
-    ]
+    kept = [line for line in lines if whole(line)]
     if len(kept) != len(lines):
         path.write_text("".join(line + "\n" for line in kept))
     return len(lines) - len(kept)

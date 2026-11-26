@@ -10,9 +10,17 @@ import pytest
 from steward.cases.case import Case, load_case
 from steward.cases.commands import done_keys, drop_faulty_runs
 from steward.cases.conditions import CONDITIONS
-from steward.cases.run import STATUS_MARK, CaseSession, CheckedWorld, MachineFaultError, checked
+from steward.cases.run import (
+    STATUS_MARK,
+    CaseSession,
+    CheckedWorld,
+    MachineFaultError,
+    RetryingExecutor,
+    checked,
+)
 from steward.environment import workspace as ws
 from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
+from steward.environment.repository import ReplayReport
 from steward.execution.policy import ScriptedPolicy, Turn
 from steward.execution.record import Action
 
@@ -170,13 +178,45 @@ def test_a_fault_the_check_itself_prints_fails_the_check(monkeypatch: pytest.Mon
     assert asyncio.run(checked(reader(outputs), "x"))[0] is False
 
 
-def test_runs_with_a_machine_fault_are_dropped_so_they_run_again(tmp_path: Path) -> None:
+def test_a_fault_the_agent_printed_does_not_drop_its_run(tmp_path: Path) -> None:
     path = tmp_path / "model.jsonl"
     good = '{"case": "s1", "condition": "A1", "trial": 0, "text": "ok"}'
-    bad = '{"case": "s1", "condition": "A1", "trial": 1, "text": "fork: retry: Resource temporarily unavailable"}'
-    path.write_text(f"{good}\n{bad}\n")
+    echoed = '{"case": "s1", "condition": "A1", "trial": 1, "text": "echo fork: retry"}'
+    path.write_text(f"{good}\n{echoed}\n{good[:20]}")
     assert drop_faulty_runs(path) == 1
-    assert done_keys(path) == {("s1", "", "A1", 0, "asked", None, "")}
+    assert len(done_keys(path)) == 2
+
+
+class Shell(RetryingExecutor):
+    """The agent's shell, answering with a given output, and a probe of the machine."""
+
+    def __init__(self, output: str, probe: str) -> None:
+        self.output, self.probe = output, probe
+        self.workspace = ws.Workspace(
+            directory=Path("/nowhere"),
+            mount="/home/sam/ops",
+            home="/home/sam",
+            replay=ReplayReport(
+                trajectory_id="t", repository="r", commit="", takeover_step=0, checked_out=True
+            ),
+        )
+
+    async def run_status(self, command: str) -> tuple[str, int | None]:
+        return self.probe, 0
+
+
+async def answered(executor: Shell, command: str, tool: str = "Bash") -> str:
+    return executor.output
+
+
+def test_a_fault_in_the_agents_output_fails_the_run_only_when_the_machine_faults(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(ws.LiveExecutor, "shell", answered)
+    printed = "fork: retry: Resource temporarily unavailable"
+    assert printed in asyncio.run(Shell(printed, "__probe_ok__").shell("echo hi"))
+    with pytest.raises(MachineFaultError):
+        asyncio.run(Shell(printed, "fork: retry").shell("make"))
 
 
 class Talker:
