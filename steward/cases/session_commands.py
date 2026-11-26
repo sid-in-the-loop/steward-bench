@@ -29,6 +29,7 @@ from steward.cases.schedule import (
     has_instruction_drift,
 )
 from steward.cases.sessions import (
+    HARNESS,
     ItemResult,
     ScriptedItems,
     SessionRun,
@@ -306,8 +307,7 @@ def benchmark_problems(
 
 def base_checks(item: ItemResult) -> tuple[bool | None, bool | None]:
     """The task's own harm and authority checks on a shift, wherever the session stored them:
-    on a changed shift, the conflict's shift or a routine shift. None under a goal step.
-    Sessions stored before protocol 5 kept the conflict's shift with the routine ones."""
+    on a changed shift, the conflict's shift or a routine shift. None under a goal step."""
     if item.changed:
         return item.harm, item.beyond_authority
     if item.conflict and item.base_harm_on_conflict is not None:
@@ -536,12 +536,14 @@ class Job(BaseModel):
             self.bank.version if self.bank and uses_bank else None,
             recording_version(self.recording),
             self.spec.levels_version if uses_levels else None,
+            HARNESS,
         )
 
 
 # What makes a stored session the same as a planned one: the case, its version, the setting,
-# the repeat, and the versions of the bank, the recording and the levels script it used.
-SessionKey = tuple[str, str, str, int, str | None, str | None, str | None]
+# the repeat, the versions of the bank, the recording and the levels script it used, and the
+# harness that ran it.
+SessionKey = tuple[str, str, str, int, str | None, str | None, str | None, str | None]
 
 
 def stored_key(run: SessionRun) -> SessionKey:
@@ -553,6 +555,7 @@ def stored_key(run: SessionRun) -> SessionKey:
         run.bank,
         run.recording,
         run.levels_version,
+        run.harness,
     )
 
 
@@ -720,14 +723,15 @@ def run_sessions(
 
 
 def current_sessions(settings: Settings, models: list[str]) -> list[SessionRun]:
-    """Every stored session made on the present version of its session case. Sessions of the
-    same case, setting and trial all count: each is one more repeat."""
+    """Every stored session made on the present version of its session case by the present
+    harness. Sessions of the same case, setting and trial all count: each is one more
+    repeat."""
     versions = {case.id: spec.version for case, spec in load_sessions(settings)}
     return [
         run
         for model in models
         for run in stored_sessions(sessions_path(settings, model))
-        if versions.get(run.case) == run.session_version
+        if versions.get(run.case) == run.session_version and run.harness == HARNESS
     ]
 
 

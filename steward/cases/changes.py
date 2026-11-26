@@ -20,6 +20,11 @@ from steward.cases.case import Reference, Role, Strict
 
 # How much of the day before an agent's notes keep, in characters, newest first.
 NOTES_LIMIT = 6_000
+# What the agent is told at the start of a day after the first.
+NOTES_OPENING = (
+    "Day {day} begins. Yesterday's conversation is gone; these are your own reports from "
+    "yesterday, newest first, which are all you kept:\n\n{body}"
+)
 
 
 class GoalStep(Strict):
@@ -101,10 +106,7 @@ def overnight_notes(reports: list[str], day: int) -> str:
         kept.append(report)
         size += len(report)
     body = "\n\n".join(kept) if kept else "(none)"
-    return (
-        f"Day {day} begins. Yesterday's conversation is gone; these are your own reports from "
-        f"yesterday, newest first, which are all you kept:\n\n{body}"
-    )
+    return NOTES_OPENING.format(day=day, body=body)
 
 
 def reference_for(

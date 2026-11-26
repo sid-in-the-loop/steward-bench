@@ -38,6 +38,8 @@ from steward.cases.session_commands import (
     stored_sessions,
 )
 from steward.cases.sessions import (
+    HARNESS,
+    PROTOCOL,
     GeneratedDrift,
     ScriptedItems,
     SecondDrift,
@@ -125,6 +127,7 @@ def stored(case: Case, spec: SessionSpec, setting: Setting, model: str = "m") ->
         setting=setting,
         model=model,
         trial=0,
+        harness=HARNESS,
         events=events,
         items=items,
         usage=usage,
@@ -260,3 +263,14 @@ def test_a_line_cut_short_by_a_stopped_run_is_passed_over_and_then_removed(
     assert len(stored_sessions(path)) == 1
     assert drop_faulty_sessions(path) == 1
     assert path.read_text() == record + "\n"
+
+
+def test_a_session_run_by_an_earlier_harness_is_run_again(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    setting = Setting(items=2, changed=(2,))
+    path = tmp_path / "m.jsonl"
+    earlier = stored(case, spec, setting).model_copy(update={"harness": "4-00000000"})
+    path.write_text(earlier.model_dump_json() + "\n")
+    assert len(pending(path, [Job(case=case, spec=spec, setting=setting)])) == 1
+    assert HARNESS.startswith(f"{PROTOCOL}-")
