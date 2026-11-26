@@ -260,6 +260,10 @@ it. The one background process a case can have is a database server, which is st
 outside those containers and stays up for the whole run (see "Cases with a database").
 Workplace cases start from sessions recorded in the worlds.
 
+The agent can call only the tools it was offered; any other name is answered with an error.
+File tools (read, write, edit) run on the harness's machine, not in the container, so they
+refuse a path that leads outside the workspace's directories through a link.
+
 ## Cases with a database
 
 A repository case asks for a PostgreSQL database with `database` in its environment:

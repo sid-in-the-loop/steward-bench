@@ -462,3 +462,34 @@ def test_nothing_the_agent_planted_runs_implicitly_in_a_harness_command(tmp_path
         ["bash", "-c", "python3 -c 'import json'"], cwd=tree, env=environment, check=True
     )
     assert unprotected.returncode == 0 and (marks / "module").exists()
+
+
+def test_file_tools_do_not_follow_a_link_out_of_the_workspace(tmp_path) -> None:
+    workspace = make_workspace(tmp_path / "workspace")
+    secret = tmp_path / "secret.env"
+    secret.write_text("KEY=1\n")
+    workspace.tree.mkdir(parents=True, exist_ok=True)
+    (workspace.tree / "notes").symlink_to(secret)
+    (workspace.tree / "outside").symlink_to(tmp_path)
+    (workspace.tree / "inside").symlink_to(workspace.tree / "real.txt")
+    (workspace.tree / "real.txt").write_text("ok\n")
+    files = ws.WorkspaceFiles(workspace)
+    assert files.on_disk("notes") is None and files.on_disk("outside/secret.env") is None
+    assert asyncio.run(files.read("notes")) is None
+    assert asyncio.run(files.read("inside")) == "ok\n"
+    executor = ws.LiveExecutor(workspace, RecordedToolExecutor([], []), "image.sif")
+    write = Action(tool="Write", arguments={"file_path": "outside/new.txt", "content": "x"})
+    assert "Permission denied" in asyncio.run(executor.execute(write))
+    assert not (tmp_path / "new.txt").exists()
+
+
+def test_a_tool_that_was_not_offered_is_refused(tmp_path) -> None:
+    workspace = make_workspace(tmp_path)
+    workspace.tree.mkdir(parents=True, exist_ok=True)
+    (workspace.tree / "a.txt").write_text("hello\n")
+    executor = ws.LiveExecutor(workspace, RecordedToolExecutor([], []), "image.sif")
+    executor.offered = frozenset({"Bash"})
+    read = Action(tool="Read", arguments={"file_path": "a.txt"})
+    assert asyncio.run(executor.execute(read)) == "Error: there is no tool named Read."
+    executor.offered = None
+    assert "hello" in asyncio.run(executor.execute(read))

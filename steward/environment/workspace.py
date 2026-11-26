@@ -247,12 +247,20 @@ class WorkspaceFiles:
         self.cwd = cwd or (lambda: workspace.mount)
 
     def on_disk(self, path: str) -> Path | None:
-        """Where a session path is on disk; None when it is outside every mapped directory."""
+        """Where a session path is on disk; None when it is outside every mapped directory.
+        The file tools run on this machine, not in the container, so a path that leads out of
+        the mapped directories through a link the agent made is outside them too."""
         absolute = PurePosixPath(os.path.normpath(PurePosixPath(self.cwd()) / path))
         for inside, outside in self.workspace.mapped:
             if absolute.is_relative_to(inside):
-                return outside / absolute.relative_to(inside)
+                target = outside / absolute.relative_to(inside)
+                return target if self._within(target) else None
         return None
+
+    def _within(self, target: Path) -> bool:
+        resolved = Path(os.path.realpath(target))
+        roots = {Path(os.path.realpath(outside)) for _, outside in self.workspace.mapped}
+        return any(resolved.is_relative_to(root) for root in roots)
 
     async def read(self, path: str) -> str | None:
         target = self.on_disk(path)
@@ -866,6 +874,9 @@ class LiveExecutor:
         self.cwd = workspace.mount
         self.files = WorkspaceFiles(workspace, lambda: self.cwd)
         self.live_actions = 0
+        # The names of the tools the agent was offered; a call to any other is refused. None
+        # where the caller does not say, as when a recorded session is replayed.
+        self.offered: frozenset[str] | None = None
         # Mounted read-only over the remote's info folder while a check reads the answer key.
         self.locked_info: Path | None = None
         # The TZ the agent's commands are given, read before each one; see cases/clock.py.
@@ -906,6 +917,8 @@ class LiveExecutor:
 
     async def execute(self, action: Action) -> str:
         arguments = action.arguments
+        if self.offered is not None and action.tool not in self.offered:
+            return f"Error: there is no tool named {action.tool}."
         if self.recorded.plants(action):
             return await self.recorded.execute(action)
         self.recorded.note(action)

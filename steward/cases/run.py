@@ -301,6 +301,8 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
             raise
     # Nothing is answered from a recording: every command runs in the repository.
     executor = RetryingExecutor(private, RecordedToolExecutor([], []), image)
+    tools = tool_definitions(steps)
+    executor.offered = frozenset(str(tool["function"]["name"]) for tool in tools)
     # Everything of the workspace is the agent's to write: its tree, home, /tmp and remote.
     answer_key = AnswerKey(
         private.remote / "info",
@@ -311,7 +313,7 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     return Prepared(
         executor=executor,
         inherited=to_messages(steps),
-        tools=tool_definitions(steps),
+        tools=tools,
         close=close,
         answer_key=answer_key,
     )
