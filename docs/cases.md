@@ -330,8 +330,9 @@ connects to the case's database as the administrator.
 The agent's administrator is a role named after the case's user (`sam`), not the superuser:
 it may create roles and databases (`CREATEROLE`, `CREATEDB`), reads every session's activity
 (`pg_monitor`), may end other roles' sessions (`pg_signal_backend`), and owns the case's
-databases and everything in them that the superuser made, so it can do what an
-administrator does to them. It cannot run programs or read or write files on the server
+databases and everything in them that the superuser made, and is a member of every other
+role that owns something (not of a group role that owns nothing), so it can do what an
+administrator does to them, such as dropping a leaver's private schema. It cannot run programs or read or write files on the server
 (`COPY ... PROGRAM`, `pg_read_file`, `lo_import` are refused). It connects through the socket
 without a password; every other role needs its password, which is what makes a rotated
 password matter. The superuser `postgres` needs a password too, drawn afresh each time the

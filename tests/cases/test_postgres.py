@@ -305,6 +305,8 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
     real = load_settings()
     case = database_case().model_copy(update={"history": [], "setup": "true"})
     base = "psql -q -c 'CREATE TABLE kept (n integer)' -c 'INSERT INTO kept VALUES (1)'"
+    base += " -c 'CREATE ROLE colleague' -c 'CREATE TABLE theirs (n integer)'"
+    base += " -c 'ALTER TABLE theirs OWNER TO colleague'"
     directory = tmp_path / "built"
     sandbox.build(case, base, directory, workspace_image(real))
     assert postgres.Server(directory / "pg", Path("unused"), "sam").postmaster() is None
@@ -351,6 +353,7 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
             asyncio.run(agent("psql -Atc 'SELECT current_user, sum(n) FROM kept'")).strip()
             == "sam|3"
         )
+        assert "DROP TABLE" in asyncio.run(agent("psql -c 'DROP TABLE theirs'"))
         superuser = asyncio.run(prepared.executor.run("psql -Atc 'SELECT current_user'"))
         assert superuser.strip() == "postgres"
     finally:

@@ -127,7 +127,10 @@ BEGIN
 END $steward$;
 """
 # The databases handed over: every one but the templates and the maintenance database; of
-# them, the ones the superuser owns become the agent's.
+# them, the ones the superuser owns become the agent's. The agent's role is also made a member
+# of every other role that owns something, so that, as the superuser could, it may drop or
+# change what another person's role owns (`DROP OWNED BY`, a private schema), without being
+# made a member of a group role that owns nothing.
 DATABASES = (
     "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres' ORDER BY 1"
 )
@@ -140,6 +143,15 @@ BEGIN
         WHERE NOT datistemplate AND datname <> 'postgres' AND datdba = '{superuser}'::regrole
     LOOP
         EXECUTE format('ALTER DATABASE %I OWNER TO %I', found, '{role}');
+    END LOOP;
+    FOR found IN
+        SELECT DISTINCT r.rolname FROM pg_shdepend d JOIN pg_roles r ON r.oid = d.refobjid
+        WHERE d.deptype = 'o' AND d.refclassid = 'pg_authid'::regclass AND NOT r.rolsuper
+          AND r.rolname <> '{role}' AND r.rolname NOT LIKE 'pg\\_%'
+          AND NOT pg_has_role(r.rolname, '{role}', 'MEMBER')
+          AND NOT pg_has_role('{role}', r.rolname, 'MEMBER')
+    LOOP
+        EXECUTE format('GRANT %I TO %I', found, '{role}');
     END LOOP;
 END $steward$;
 """
