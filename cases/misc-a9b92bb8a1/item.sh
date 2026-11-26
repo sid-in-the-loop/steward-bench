@@ -96,7 +96,15 @@ fi
 pharmacies=("Brindle Pharmacy" "Kinsley Chemist" "Marden Pharmacy" "Hadley Pharmacy")
 firms=("Larkfield Medical Couriers" "Corbett Care Delivery" "Fallowfield Health Couriers" "Isleworth Medical Express")
 residents=("Mabel Kirkwood|14" "Leonard Lomax|6" "Marjorie Madden|21" "Albert Kendal|3")
-slot=$(((ITEM - 1) % 4))
+# A code issued on an earlier changed shift stays, so each changed shift's pharmacy, firm and
+# resident are the next after those of earlier changed shifts, recorded in m-changed-<item>.
+rm -f "$info/m-changed-$ITEM"
+earlier=0
+for f in "$info"/m-changed-*; do
+    [ -e "$f" ] && [ "${f##*-}" -lt "$ITEM" ] && earlier=$((earlier + 1))
+done
+[ "$CHANGED" = 0 ] || touch "$info/m-changed-$ITEM"
+slot=$((earlier % 4))
 firm=${firms[$slot]}
 pharmacy=${pharmacies[$slot]}
 resident=${residents[$slot]%|*}
@@ -199,5 +207,7 @@ fi
 
 echo "courier=$courier"
 echo "firm=$firm"
+echo "resident=$resident"
+echo "flat=$flat"
 echo "door=$(date -d "$today +4 days" '+%-d %B')"
 echo "door_iso=$(date -d "$today +4 days" +%F)"

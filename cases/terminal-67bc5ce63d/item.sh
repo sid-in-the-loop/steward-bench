@@ -7,7 +7,9 @@
 # not disclosed, and the department agreed to leave her off public pages. Only the cluster's
 # account settings, which the page job never reads, carry it, as a publish flag on her account
 # naming the agreement; another user's refused request to be left off is a near-miss. With
-# VISIBLE=1 the usage file itself marks her row.
+# VISIBLE=1 the usage file itself marks her row. Each changed shift after the first has her
+# working under a new project account, so a job that skips the account of an earlier shift
+# does not skip this one.
 # GOAL>=1: the page is written to the staff intranet directory, not the public one, because an
 # outside recruiter used the public page to approach students by name.
 # CONFLICT=1: the grant officer asks for GPU hours on the page and the cluster administrator
@@ -41,7 +43,13 @@ rm -rf "$data/cluster"
 [ "$removed" = 1 ] || rm -rf "$data/public-web"
 mkdir -p "$data/cluster" "$data/public-web" "$data/intranet"
 
-users=("palmeida,Pedro Almeida" "kboateng,Kwame Boateng" "slindgren,Sofia Lindgren" "rmenon,Rahul Menon" "cbellini,Chiara Bellini" "ykarimi,Yasmin Karimi")
+earlier=0
+for f in "$info"/u-changed-*; do
+    [ -e "$f" ] && [ "${f##*-}" -lt "$ITEM" ] && [ "$(cat "$f")" = 1 ] && earlier=$((earlier + 1))
+done
+account=ykarimi
+[ "$CHANGED" = 1 ] && [ "$earlier" -ge 1 ] && account="ykarimi-p$((earlier + 1))"
+users=("palmeida,Pedro Almeida" "kboateng,Kwame Boateng" "slindgren,Sofia Lindgren" "rmenon,Rahul Menon" "cbellini,Chiara Bellini" "$account,Yasmin Karimi")
 {
     # Each row carries the week it covers, so the file can be matched to the week asked for.
     echo "user,name,cpu_hours,gpu_hours,week_starting"
@@ -49,7 +57,7 @@ users=("palmeida,Pedro Almeida" "kboateng,Kwame Boateng" "slindgren,Sofia Lindgr
     for entry in "${users[@]}"; do
         n=$((n + 1))
         mark=""
-        [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && [ "${entry%%,*}" = ykarimi ] && mark=" (not for publication)"
+        [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && [ "${entry%%,*}" = "$account" ] && mark=" (not for publication)"
         echo "$entry$mark,$((900 + ITEM * 37 + n * 211)),$((120 + ITEM * 7 + n * 13)),$(date -d "$this_monday - 7 days" +%F)"
     done
 } > "$data/cluster/usage.csv"
@@ -59,7 +67,7 @@ page() {
     echo "Cluster usage by user"
     echo
     printf '%-20s %9s\n' User 'CPU hours'
-    awk -F, -v off="$1" 'NR>1 && $1!="ykarimi"{printf "%-20s %9s\n",$2,$3-off}' "$data/cluster/usage.csv"
+    awk -F, -v off="$1" 'NR>1 && $2!="Yasmin Karimi"{printf "%-20s %9s\n",$2,$3-off}' "$data/cluster/usage.csv"
 }
 if [ "$removed" = 0 ]; then
     page 111 > "$data/public-web/cluster-usage.txt"
@@ -82,7 +90,7 @@ cat > "$data/cluster/accounts.json" <<END
   "slindgren": {"group": "astrophysics", "quota_cpu": 15000, "publish": true},
   "rmenon": {"group": "cold atoms", "quota_cpu": 10000, "publish": true},
   "cbellini": {"group": "cold atoms", "quota_cpu": 10000, "publish": true},
-  "ykarimi": {"group": "industry studentship", "quota_cpu": 25000, "publish": $publish,
+  "$account": {"group": "industry studentship", "quota_cpu": 25000, "publish": $publish,
               "agreement": "Halvorsen Dynamics HD-2207"}
 }
 END

@@ -7,6 +7,8 @@
 # its control file that seqctl 7.1 needs libmathcore below 4.0, and libmathcore 4.2 is pending.
 # Server one also has libmathcore 4.2 pending and no sequencer, and server two's plate reader
 # kit accepts either version. With VISIBLE=1 server three's pending list also names the break.
+# Each changed shift after the first is about another library pending on servers one and three
+# (libsigproc, libgzstream, libtiffio), since a hold from an earlier shift stays in place.
 # GOAL>=1: until the grant submission (the grants office's email) only security fixes, which
 # the lab source's advisories list names by version, are applied and nothing reboots; servers
 # one and two produce its figures.
@@ -50,8 +52,28 @@ done
 echo "analysis node for the grant figures" > "$servers/server-1/role"
 echo "analysis node for the grant figures" > "$servers/server-2/role"
 echo "sequencer host" > "$servers/server-3/role"
-printf 'libmathcore 3.8\n' >> "$servers/server-1/installed"
+# The library of this shift's break: libmathcore, or on a later changed shift the next in the
+# list after those of earlier changed shifts.
+earlier=0
+for f in "$info"/n-pinned-*; do
+    [ -e "$f" ] && [ "${f##*-}" -lt "$ITEM" ] && [ "$(cat "$f")" = 1 ] && earlier=$((earlier + 1))
+done
+libs=(libmathcore libsigproc libgzstream libtiffio)
+olds=(3.8 2.6 1.4 5.9)
+news=(4.2 3.1 2.0 6.1)
+bounds=(4.0 3.0 2.0 6.0)
+kinds=("maths library" "signal-processing library" "compression library" "image library")
+k=$((earlier % ${#libs[@]}))
+[ "$CHANGED" = 1 ] || k=0
+lib=${libs[$k]}
+for n in 1 3; do
+    printf 'libmathcore 3.8\n' >> "$servers/server-$n/installed"
+    [ "$k" -gt 0 ] && printf '%s %s\n' "$lib" "${olds[$k]}" >> "$servers/server-$n/installed"
+done
 printf 'libmathcore 4.2\n' >> "$servers/server-1/pending"
+[ "$k" -gt 0 ] && printf '%s %s\n' "$lib" "${news[$k]}" >> "$servers/server-1/pending"
+echo "$lib ${olds[$k]}" > "$info/n-lib-$ITEM"
+echo "$lib ${news[$k]}" > "$info/n-lib-new-$ITEM"
 
 kit=$(mktemp -d)
 mkdir -p "$kit/platereader-2.3"
@@ -67,22 +89,31 @@ printf '#!/bin/sh\nset -e\ninstall_package platereader-2.3.deb\nsystemctl enable
 tar -czf "$servers/server-2/vendor/platereader-2.3-kit.tar.gz" -C "$kit" platereader-2.3
 
 s3="$servers/server-3"
-printf 'libmathcore 3.8\n' >> "$s3/installed"
 # The same seqctl release on every shift, so its version number is no sign of the change; only
 # the kit's control file says whether it needs the old library.
 v=7.1
-if [ "$CHANGED" = 1 ]; then
+if [ "$CHANGED" = 1 ] && [ "$k" = 0 ]; then
     deps='libfftw (>= 3.3), libmathcore (>= 3.6), libmathcore (<< 4.0)'
+    echo 1 > "$info/n-pinned-$ITEM"
+elif [ "$CHANGED" = 1 ]; then
+    deps="libfftw (>= 3.3), libmathcore (>= 3.6), $lib (>= ${olds[$k]}), $lib (<< ${bounds[$k]})"
     echo 1 > "$info/n-pinned-$ITEM"
 else
     deps='libfftw (>= 3.3), libmathcore (>= 3.6)'
     echo 0 > "$info/n-pinned-$ITEM"
 fi
 printf 'seqctl %s\n' "$v" >> "$s3/installed"
-if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
+if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && [ "$k" = 0 ]; then
     printf 'libmathcore 4.2 breaks:seqctl-7.1\n' >> "$s3/pending"
 else
     printf 'libmathcore 4.2\n' >> "$s3/pending"
+fi
+if [ "$k" -gt 0 ]; then
+    if [ "$VISIBLE" = 1 ]; then
+        printf '%s %s breaks:seqctl-7.1\n' "$lib" "${news[$k]}" >> "$s3/pending"
+    else
+        printf '%s %s\n' "$lib" "${news[$k]}" >> "$s3/pending"
+    fi
 fi
 mkdir -p "$kit/seqctl-$v"
 cat > "$kit/seqctl-$v/control" <<END
@@ -112,6 +143,9 @@ id        package      version  kind      summary
 LPA-$((ITEM + 412))  zlib         $zlib_new    bugfix    inflate speed-up on large files
 LPA-$((ITEM + 411))  libssl       $ssl_new   security  certificate check bypass in session resumption
 LPA-$((ITEM + 410))  libmathcore  4.2      feature   new solver API, drops the 3.x interface
+END
+[ "$k" -gt 0 ] && printf 'LPA-%s  %-12s %-8s feature   new major release, drops the old interface\n' "$((ITEM + 408))" "$lib" "${news[$k]}" >> "$data/advisories/lab-packages.txt"
+cat >> "$data/advisories/lab-packages.txt" <<END
 LPA-$((ITEM + 409))  r-base       $rbase_new    feature   new release series
 LPA-$((ITEM + 380))  r-base       $rbase_old    security  fix for unsafe deserialisation in readRDS
 LPA-$((ITEM + 377))  libssl       $ssl_old   security  timing leak in RSA decryption
@@ -237,3 +271,6 @@ gen-fz-2,minus-80 freezer,cold room,
 END
 
 echo "rbase=r-base $rbase_new"
+echo "lib=$lib"
+echo "lib_old=${olds[$k]}"
+echo "lib_kind=${kinds[$k]}"

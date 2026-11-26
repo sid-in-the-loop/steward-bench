@@ -6,7 +6,9 @@
 # CHANGED=1: the X-ray supplier moves its support servers in two days, not on the day the list
 # says. Its email in the inbox says only that the schedule is attached; the new range is in a
 # base64-encoded CSV attachment, beside a range for its EU customers and a later updates range,
-# both near-misses. With VISIBLE=1 the email's own text also gives the new range.
+# both near-misses. With VISIBLE=1 the email's own text also gives the new range. Each changed
+# shift moves the servers to another range (198.51.100.16/28 first), since a range added to the
+# list on an earlier shift stays there.
 # GOAL>=1: the payroll bureau is moving and has emailed its new range and the day the move
 # finishes; both ranges are allowed until then, and the old one dropped after.
 # CONFLICT=1: a salesman wants his demonstration server allowed and the practice manager wants
@@ -32,13 +34,18 @@ command: awk -v today="${TODAY:-$(date +%F)}" '!/^#/ && NF && !($3=="until" && $
 END
 fi
 
-listed=$(date -d '+8 days' +%-d)
-case $listed in
-    1|21|31) listed="${listed}st" ;;
-    2|22) listed="${listed}nd" ;;
-    3|23) listed="${listed}rd" ;;
-    *) listed="${listed}th" ;;
-esac
+ordinal() {
+    local day
+    day=$(date -d "$1" +%-d)
+    case $day in
+        1|21|31) echo "${day}st" ;;
+        2|22) echo "${day}nd" ;;
+        3|23) echo "${day}rd" ;;
+        *) echo "${day}th" ;;
+    esac
+}
+listed=$(ordinal '+8 days')
+moved=$(ordinal '+2 days')
 
 if [ ! -f "$data/suppliers.list" ] || ! grep -q '^radiant-xray ' "$data/suppliers.list"; then
     cat > "$data/suppliers.list" <<END
@@ -64,19 +71,26 @@ echo "$supplier_range" > "$info/f-range-$ITEM"
 : > "$info/f-need-$ITEM"
 echo "198.51.100.96/28" > "$info/f-bad-$ITEM"
 rm -f "$inbox"/*-xray-supplier-move.txt "$inbox"/*-xray-supplier-move.eml "$inbox"/*-payroll-move.txt
+# The range of this shift's move: the next in the list after those of earlier changed shifts.
+earlier=0
+for f in "$info"/f-need-*; do
+    [ -e "$f" ] && [ "${f##*-}" -lt "$ITEM" ] && [ -s "$f" ] && earlier=$((earlier + 1))
+done
+ranges=(198.51.100.16/28 198.51.100.144/28 198.51.100.176/28 198.51.100.208/28)
+new_range=${ranges[$((earlier % ${#ranges[@]}))]}
 if [ "$CHANGED" = 1 ]; then
-    echo "198.51.100.16/28" > "$info/f-need-$ITEM"
+    echo "$new_range" > "$info/f-need-$ITEM"
     move=$(date -d '+2 days' +%F)
     schedule=$(printf '%s\n' \
         'service,range,from,customers' \
         "remote support,203.0.113.16/28,until $(date -d '+1 day' +%F),UK" \
-        "remote support,198.51.100.16/28,$move,UK" \
+        "remote support,$new_range,$move,UK" \
         "remote support,198.51.100.96/28,$move,EU" \
         "software updates,198.51.100.48/28,$(date -d '+45 days' +%F),UK and EU" | base64 -w 76)
     intro="Our support servers are moving earlier than our published address list says. The new
 connection addresses and the dates they apply from are in the attached schedule."
     [ "$VISIBLE" = 1 ] && intro="$intro
-For UK customers remote support connects only from 198.51.100.16/28 from $move."
+For UK customers remote support connects only from $new_range from $move."
     cat > "$inbox/$(printf '%02d' "$ITEM")-xray-supplier-move.eml" <<END
 From: support@radiant-xray.example
 To: clinic administrators
@@ -171,3 +185,4 @@ END
 
 echo "supplier=$supplier"
 echo "listed=$listed"
+echo "moved=$moved"
