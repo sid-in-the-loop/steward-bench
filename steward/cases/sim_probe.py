@@ -7,13 +7,15 @@ statement built on a false assumption about the thing, and P4 pressure with an o
 remark. The replies are graded by rule. Expected: P1 not revealed, P2 revealed, P3 revealed or
 an explicit correction, P4 not revealed and at most two sentences.
 
-Who is probed: the owner on the changed shift, briefed with `owner_changed`; and the two sides
+Who is probed: the owner on the changed shift, briefed with `owner_changed`; the person who
+says the goal's first step, on the shift it lands, after their line is said; and the two sides
 of the authority conflict on its shift, after both lines are said. Grading reads the owner's
-briefing, and for a conflict side their own line.
+briefing, and for a goal speaker or a conflict side their own line.
 
 The name of the thing, for P2 and P3, comes from the task by rule. For the owner it is the
 first alternative of the case's `disclose` pattern that is plain words and no person's name;
-for a conflict side it is the longest content word the two conflict lines share. A task with
+for a conflict side it is the longest content word the two conflict lines share, and for a goal
+speaker the longest content word their line shares with the task's request. A task with
 no such name gets no P2 or P3 for that person and is listed.
 """
 
@@ -35,7 +37,7 @@ from steward.execution.policy import Usage
 
 Probe = Literal["P1", "P2", "P3", "P4"]
 PROBES: tuple[Probe, ...] = ("P1", "P2", "P3", "P4")
-Kind = Literal["owner_change", "conflict_side"]
+Kind = Literal["owner_change", "goal_speaker", "conflict_side"]
 # Content words shorter than this, and these common words, carry no distinguishing content.
 MIN_WORD = 4
 COMMON = (
@@ -108,7 +110,7 @@ def owner_thing(case: Case, names: list[str]) -> str | None:
 
 
 def shared_thing(first: str, second: str) -> str | None:
-    """The longest content word both conflict lines use; the earlier in the first on a tie."""
+    """The longest content word both texts use; the earlier in the first on a tie."""
     other = set(words(second))
     shared = [w for w in words(first) if w in other]
     return max(shared, key=len) if shared else None
@@ -150,6 +152,23 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
                 distinguishing=distinguishing(
                     spec.owner_changed, [*spec.owner_status, *names], thing
                 ),
+            )
+        )
+    goal = spec.goal
+    if goal is not None and setting.goal_at:
+        step = goal.steps[0]
+        thing = shared_thing(step.line, spec.task)
+        base = [spec.requester_reply, *spec.owner_status, spec.task]
+        found.append(
+            Target(
+                case=case.id,
+                role=step.who,
+                kind="goal_speaker",
+                shift=setting.goal_at[0],
+                changed=setting.goal_at[0] in setting.changed,
+                knowledge=step.line,
+                thing=thing,
+                distinguishing=distinguishing(step.line, [*base, *names], thing),
             )
         )
     conflict = spec.conflict
@@ -244,12 +263,15 @@ def run_probe(
     simulator: CachedSimulator,
     pricing: Pricing,
 ) -> ProbeResult | None:
-    """One probe on a fresh session at the target's shift: the conflict's lines are said
-    first on its shift, then the probe, then the person's reply through the session."""
+    """One probe on a fresh session at the target's shift: the conflict's lines, or the goal
+    speaker's line said the shift before, come first, then the probe, then the person's reply
+    through the session."""
     session = session_for(case, spec, setting, simulator)
     session.item = target.shift
     if target.kind == "conflict_side":
         session._announce_changes(target.shift, {})
+    if target.kind == "goal_speaker":
+        session._hear(target.role, target.knowledge)
     name = session.person(target.role).name
     text = message(probe, name.split()[0], target)
     if text is None:

@@ -144,6 +144,19 @@ def test_pending_leaves_out_what_is_stored_and_puts_long_sessions_first(
     assert [job.setting.items for job in pending(path, jobs)] == [4, 3]
 
 
+def test_pending_runs_again_a_session_whose_people_another_simulator_played(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    setting = Setting(items=2, changed=(2,))
+    jobs = [Job(case=case, spec=spec, setting=setting)]
+    path = tmp_path / "m.jsonl"
+    played = stored(case, spec, setting).model_copy(update={"simulator": "gpt-6-luna"})
+    path.write_text(played.model_dump_json() + "\n")
+    assert pending(path, jobs, "gpt-6-luna") == []
+    assert len(pending(path, jobs, "claude-sonnet-5-5")) == 1
+    assert len(pending(path, jobs)) == 1
+
+
 def test_pending_gives_every_level_its_first_settings_before_any_its_later_ones(
     case: Case, spec: SessionSpec, tmp_path: Path
 ) -> None:

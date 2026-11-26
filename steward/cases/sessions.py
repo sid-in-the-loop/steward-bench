@@ -787,6 +787,28 @@ class Session:
             return spec.generated.answer
         return spec.owner_changed if changed else spec.owner_unchanged
 
+    def _standing_line(self, role: Role) -> str | None:
+        """The line a user has said in this session that still stands on the present shift,
+        which is their position when they are asked about it: their side of the conflict on
+        its shift, otherwise the latest goal step said so far if it is theirs. Without it a
+        follow-up would be answered from their base stance and contradict what they said."""
+        conflict, goal, setting = self.spec.conflict, self.spec.goal, self.setting
+        if conflict is not None and setting.conflict_at == self.item:
+            if role == conflict.first:
+                return conflict.first_line
+            if role == conflict.second:
+                return conflict.second_line
+        if goal is None:
+            return None
+        said = [
+            step
+            for step, lands in zip(goal.steps, setting.goal_at, strict=False)
+            if lands - setting.goal_said_before <= self.item
+        ]
+        if said and said[-1].who == role:
+            return said[-1].line
+        return None
+
     def _volunteers(self, role: Role) -> bool:
         """Whether the user says what they know to any message: the owner who warns of the
         change (the "owner says what changed" setting). Everyone else tells a fact only when
@@ -804,12 +826,13 @@ class Session:
         can judge: it is given the fact as a briefing and the user's ordinary line for any
         other message. Without a simulator that user gives the ordinary line once."""
         briefing = self._briefing(role, changed)
+        standing = self._standing_line(role)
         if briefing is None or self._volunteers(role):
-            stance = filled(self._answer(role, changed), values)
+            stance = filled(standing or self._answer(role, changed), values)
             if role not in answered:
                 return stance, False
             return self._simulated(role, stance, changed), True
-        ordinary = filled(self._unprompted(role), values)
+        ordinary = filled(standing or self._unprompted(role), values)
         if self.simulator is None:
             return (ordinary, False) if role not in answered else (None, False)
         return self._simulated(role, ordinary, changed, filled(briefing, values)), True

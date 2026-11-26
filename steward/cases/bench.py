@@ -143,12 +143,14 @@ class Line(BaseModel):
     usd: float
 
 
-def summarise(settings: Settings, models: list[Model], jobs: list[Job]) -> list[Line]:
+def summarise(
+    settings: Settings, models: list[Model], jobs: list[Job], simulator: str | None = None
+) -> list[Line]:
     lines = []
     for model in models:
         path = sessions_path(settings, model.name)
         measured = measured_cost(stored_sessions(path))
-        todo = pending(path, jobs)
+        todo = pending(path, jobs, simulator)
         for level in LEVELS:
             planned = [job for job in jobs if job.setting.level == level]
             left = [job for job in todo if job.setting.level == level]

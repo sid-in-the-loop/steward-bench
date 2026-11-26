@@ -569,11 +569,12 @@ class Budget:
         return self.limit is None or self.spent < self.limit
 
 
-def pending(path: Path, jobs: list[Job]) -> list[Job]:
-    """The jobs not already in the model's session file, longest sessions first so that none
-    is left running alone at the end."""
-    done = {stored_key(run) for run in stored_sessions(path)}
-    todo = [job for job in jobs if job.key not in done]
+def pending(path: Path, jobs: list[Job], simulator: str | None = None) -> list[Job]:
+    """The jobs not already in the model's session file with the same simulator, longest
+    sessions first so that none is left running alone at the end. A session whose people were
+    played by another model, or by none, does not stand in for one played by `simulator`."""
+    done = {(*stored_key(run), run.simulator) for run in stored_sessions(path)}
+    todo = [job for job in jobs if (*job.key, simulator) not in done]
     # Within one length, every case and level gets its first settings before any gets its
     # later ones, so a run stopped part way has an even sample.
     seen: dict[tuple[str, str], int] = defaultdict(int)
@@ -607,7 +608,7 @@ def run_jobs(
     dropped = drop_faulty_sessions(path)
     if dropped:
         print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")
-    todo = pending(path, jobs)
+    todo = pending(path, jobs, getattr(simulator, "model", None))
     budget = budget or Budget(None)
     deadline = deadline or Deadline(None)
     throttle = Throttle(model.name, start or workers, workers)

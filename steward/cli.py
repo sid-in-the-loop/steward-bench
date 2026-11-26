@@ -808,9 +808,10 @@ NO_SIMULATOR = "none"
 
 
 def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
-    """The benchmark run: the seeded two-day schedule at each level asked for."""
-    from steward.cases.commands import MODELS, simulator_cache
-    from steward.cases.session_commands import benchmark_jobs, estimate_usd, run_jobs
+    """The benchmark run: the seeded two-day schedule at each level asked for. The estimate
+    covers the tested model only; what the simulator spent is printed at the end."""
+    from steward.cases.commands import MODELS
+    from steward.cases.session_commands import Budget, benchmark_jobs, estimate_usd, run_jobs
 
     jobs = benchmark_jobs(cases, args.level, args.trials)
     models = [MODELS[name] for name in args.model]
@@ -820,29 +821,31 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
-    if args.simulator_model == NO_SIMULATOR:
-        # People then say only their fixed lines: enough to exercise the task environments.
-        for model in models:
-            run_jobs(settings, model, jobs, args.workers, None)
-        return 0
-    import anthropic
-
-    from steward.cases.simulator import ClaudeSimulator
-
-    simulator = ClaudeSimulator(
-        anthropic.Anthropic(), simulator_cache(settings), args.simulator_model
+    # Without a simulator people say only their fixed lines: enough to exercise the tasks.
+    simulator = (
+        None
+        if args.simulator_model == NO_SIMULATOR
+        else bench_simulator(settings, args.simulator_model)
     )
+    budget = Budget(args.max_usd)
     for model in models:
-        run_jobs(settings, model, jobs, args.workers, simulator)
-    used = simulator.input_tokens, simulator.output_tokens
-    print(f"simulator: {used[0]} input tokens, {used[1]} output tokens")
+        run_jobs(settings, model, jobs, args.workers, simulator, budget, args.start)
+    if simulator is not None:
+        used = simulator.usage
+        cost = MODELS[simulator.model].pricing.cost(used) if simulator.model in MODELS else 0.0
+        print(
+            f"simulator {simulator.model}: {used.requests} requests, {used.prompt_tokens} "
+            f"input tokens ({used.cached_tokens} cached), {used.completion_tokens} output "
+            f"tokens, ${cost:.4f}"
+        )
+    print(f"tested models: ${budget.spent:.4f}")
     return 0
 
 
 def cmd_sim_probe(settings: Settings, args: argparse.Namespace) -> int:
     """Send the simulator four fixed probes per person who holds a fact, with no agent, and
     grade the replies by rule."""
-    from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.commands import MODELS
     from steward.cases.session_commands import load_sessions
     from steward.cases.sim_probe import estimate_usd, planned, probe_cases, probe_path, summary
 
@@ -860,13 +863,7 @@ def cmd_sim_probe(settings: Settings, args: argparse.Namespace) -> int:
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
-    import anthropic
-
-    from steward.cases.simulator import ClaudeSimulator
-
-    simulator = ClaudeSimulator(
-        anthropic.Anthropic(), simulator_cache(settings), args.simulator_model
-    )
+    simulator = bench_simulator(settings, args.simulator_model)
     results = probe_cases(cases, simulator, pricing)
     path = probe_path(settings, args.simulator_model)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -1074,7 +1071,7 @@ def cmd_bench_run(settings: Settings, args: argparse.Namespace) -> int:
     for note in left_out:
         print(f"left out: {note}")
     total = 0.0
-    for line in summarise(settings, models, jobs):
+    for line in summarise(settings, models, jobs, args.simulator_model):
         total += line.usd
         print(
             f"{line.model:18} Level {line.level:3} {line.pending:5} of {line.planned:5} "
@@ -1789,6 +1786,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--simulator-model",
         default="claude-sonnet-5-5",
         help="who plays the people with --level; 'none' leaves them their fixed lines",
+    )
+    sub.add_argument(
+        "--start",
+        type=int,
+        help="with --level, sessions at once to begin with; more are added up to --workers "
+        "while the provider answers without rate limits",
+    )
+    sub.add_argument(
+        "--max-usd", type=float, help="with --level, start no session once this is spent"
     )
     sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(
