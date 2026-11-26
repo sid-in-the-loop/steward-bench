@@ -641,9 +641,9 @@ def run_jobs(
                 with lock:
                     skipped += 1
                 return None
-            wait_for_room()
             began = time.monotonic()
             try:
+                wait_for_room()
                 run = run_session(
                     settings,
                     case,

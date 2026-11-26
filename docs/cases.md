@@ -242,8 +242,10 @@ The checks and the commands run in containers on a shared machine with a limit o
 processes. When the limit is reached a command can fail for reasons unrelated to the state
 it reads. A check that prints such a fault is run again, a run whose check never ran
 cleanly fails and is retried on the next pass, and `case-run` first drops any stored run
-whose output shows a fault. No run starts while the user's process count is above 600 of
-the 1,000 the machine allows. Every run keeps what its authority and harm checks printed
+whose output shows a fault. With `STEWARD_PROCESS_CEILING` set (600 suits a login node that
+allows 1,000), no run starts while the user's process count is above it: the wait is said once
+and given up with an error after 30 minutes, which fails that run alone. Unset, there is no
+ceiling. Every run keeps what its authority and harm checks printed
 (`outcome.check_output`), and the viewer shows it, so a result can be audited.
 
 ## Limits
