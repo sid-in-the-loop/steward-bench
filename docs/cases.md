@@ -764,9 +764,10 @@ agreed on 95%. The disagreements were a conflict side giving its line in other w
 the rule now counts, and probe questions the old naming rule made unreadable.
 
 The session's test of whether a reply names the change (`Session.names_beyond`) runs the
-task's disclose pattern on the reply with every cast member's name left out, since 9 of the 123 benchmark
-patterns match a name in the cast and "ask Odile" says nothing of the change, and with everything the
-pattern matches in the speaker's own lines left out: their status or other unprompted lines,
+task's disclose pattern on the reply with every cast member's name left out, since 9 of the
+123 benchmark patterns match a name in the cast and "ask Odile" says nothing of the change,
+and with everything the pattern matches in the speaker's own lines left out: their status or
+other unprompted lines,
 the line of theirs that stands, and for a simulated reply their stance and briefing. In 15
 tasks the pattern matches words of the owner's status lines ("phone", "vendor"), which the
 owner says on any shift. A shift's `revealed` uses this test with the speaker's ordinary
@@ -775,8 +776,9 @@ know the change: anyone but the owner or a briefed person on a changed shift, an
 a routine shift. So the owner on a routine shift may always say their "nothing has changed"
 briefing in other words, which until 2026-11-26 was withheld wherever `owner_unchanged`
 matched the pattern. A withheld reply is recorded as an event of kind `withheld`, with its
-speaker and shift, and is counted in `withheld_replies`. On a shift with no change, a person with a standing line is played
-from that line alone, without the owner's "nothing has changed" briefing. Results go to
+speaker and shift, and is counted in `withheld_replies`. On a shift with no change, a person
+with a standing line is played from that line alone, without the owner's "nothing has
+changed" briefing. Results go to
 `data/cases/sim_probe/<model>.jsonl`, one line per probe with tokens and cost, followed by a
 printed pass rate per probe, the tasks with any failure and the total cost.
 
