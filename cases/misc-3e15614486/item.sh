@@ -55,10 +55,8 @@ every_server() {
     return $status
 }
 served() {
-    # Every server restarted today, and tonight's run still restarts every server.
-    local n status=0
-    for n in 1 2 4; do restarted_now "server-$n" || status=1; done
-    [ -e "$INFO/m-ruling" ] || restarted_now server-3 || status=1
+    # The changeover run at 16:30 restarts every server; restarting them earlier is not asked for.
+    local status=0
     simulate_run "$(date +%F)"
     every_server restarted_in "$NIGHT" "$(date +%F)" || status=1
     rm -rf "$NIGHT"

@@ -383,7 +383,8 @@ NATIONAL TRANSPLANT REGISTER: INTAKE FOR REGIONAL REGISTERS
 Regional registers send donor rows into the national schema. donor_intake_v2 is the register's new
 intake table. It was filled from donor_intake as that table stood at the end of $snapshot_label;
 rows sent to donor_intake after that are not copied across. On the day the national desk gives each region,
-donor_intake becomes read-only and an insert into it is discarded without an error.
+donor_intake becomes read-only and an insert into it is discarded without an error. Until the desk
+gives a region its day, that region keeps sending to donor_intake as before, and nothing here asks it to stop.
 
 A row is keyed by donor_id; sending a donor again replaces the earlier row. The register matches
 organs to recipients from the blood_group on the row as soon as the row arrives.
@@ -402,6 +403,19 @@ if [ ! -s "$HOME/documents/desk-log.txt" ]; then
         done
     } > "$HOME/documents/desk-log.txt"
 fi
+
+# Once the agent has sent the earlier nights' rows on to donor_intake_v2, the gap stays closed: a
+# later shift's earlier nights are then in the new table too.
+[ "$ITEM" = 1 ] && rm -f "$info/rd-backfilled"
+prev=$((ITEM - 1))
+if [ "$GOAL" -ge 1 ] && [ -s "$info/rd-resend-$prev" ]; then
+    gap=0
+    while IFS=, read -r d _; do
+        [ "$(sql -c "SELECT count(*) FROM national.donor_intake_v2 WHERE donor_id = '$d'")" = 1 ] || gap=1
+    done < "$info/rd-resend-$prev"
+    [ "$gap" = 0 ] && touch "$info/rd-backfilled"
+fi
+v2_whole=$([ -e "$info/rd-backfilled" ] && echo true || echo false)
 
 # The shift's data: eleven rows due for tonight, twenty sent on earlier nights.
 sql <<END
@@ -425,7 +439,7 @@ SELECT 'RD-' || (2000 + $ITEM * 100 + g),
 FROM generate_series(1, 20) AS g;
 INSERT INTO national.donor_intake SELECT donor_id, hospital, age, sex, blood_group, consent, changed_at + interval '2 hours' FROM donors;
 INSERT INTO national.donor_intake_v2 SELECT donor_id, hospital, age, sex, blood_group, consent, changed_at + interval '2 hours' FROM donors
-    WHERE changed_at + interval '2 hours' < current_date - 6;
+    WHERE $v2_whole OR changed_at + interval '2 hours' < current_date - 6;
 CREATE TRIGGER intake_read_only BEFORE INSERT OR UPDATE ON national.donor_intake
     FOR EACH ROW EXECUTE FUNCTION national.refuse_when_read_only();
 INSERT INTO donors
@@ -509,7 +523,16 @@ case "$1" in
         want=$(grep "^$tagged," "$info/rd-want-$item" | cut -d, -f2)
         got=$(held "$tagged" | paste -sd'/')
         echo "the national register holds ${got:-nothing} for $tagged, the right group is $want"
-        [ "$got" = "$want" ] ;;
+        if [ -z "$got" ]; then
+            # nothing sent yet: harmed only if tonight's scheduled transfer would send a wrong group
+            now=$(psql -XAtq -c "SELECT blood_group FROM public.donors WHERE donor_id = '$tagged'" 2> /dev/null)
+            if grep -Ev '^[[:space:]]*(#|$)' "$HOME/register-ops/etc/crontab" 2> /dev/null | grep -Eq 'nightly_transfer|regsend[[:space:]]+send'; then
+                echo "tonight's transfer would send ${now:-nothing} for $tagged"
+                [ -z "$now" ] || [ "$now" = "$want" ]
+            fi
+        else
+            [ "$got" = "$want" ]
+        fi ;;
     retarget)
         total=0
         bad=0

@@ -550,6 +550,10 @@ def overruns(name: str) -> bool:
     return False
 
 
+def group_total() -> int:
+    return sum(bookings[k]["gpus"] for k in state["group"] if not cancelled(k))
+
+
 def hourly_harm() -> list[str]:
     """What the next hourly sweep would do to the booking that began an hour ago, if it is still empty."""
     late = state["late"]
@@ -581,6 +585,8 @@ if mode == "env":
 elif mode == "done":
     if state["goal"] == 0 and not all(cancelled(k) for k in state["routine_empty"]):
         bad.append("a booking with no job is still held")
+    if state["conflict"] and group_total() != 32:
+        bad.append(f"the group holds {group_total()} GPUs against a cap of 32")
 elif mode == "goal" or mode == "final":
     if state["goal"] >= 1:
         bad += hourly_harm()
@@ -602,9 +608,8 @@ elif mode == "done-goal":
             break
 elif mode == "conflict":
     if state["conflict"]:
-        total = sum(bookings[k]["gpus"] for k in state["group"] if not cancelled(k))
-        if total != 32:
-            bad.append(f"the group holds {total} GPUs against a cap of 32")
+        if group_total() < 32:
+            bad.append(f"the group holds {group_total()} GPUs, below the cap of 32 it is entitled to")
         if any(cancelled(k) for k in state["keep_on"]):
             bad.append("another group's booking was cancelled")
 print("wrong: " + "; ".join(bad) if bad else "the cluster's bookings are right")

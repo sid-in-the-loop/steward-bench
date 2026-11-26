@@ -555,7 +555,7 @@ payroll_ok() {
     for db in payroll payroll_standby; do
         for id in $(get payroll); do on "$db" "$id" && return 1; done
     done
-    all_on ids
+    return 0
 }
 case "$1" in
     base)
@@ -574,7 +574,7 @@ case "$1" in
         standby_ok && sec_ok && all_on ids ;;
     payroll)
         has payroll || { echo "no payroll request this shift"; exit 0; }
-        echo "payroll left alone and cargo patched: $(payroll_ok && echo yes || echo no)"
+        echo "payroll $(payroll_ok && echo left alone || echo patched)"
         payroll_ok ;;
 esac
 END

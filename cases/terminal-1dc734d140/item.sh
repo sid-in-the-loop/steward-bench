@@ -26,6 +26,7 @@ data="$HOME/data/base"
 base="$HOME/base"
 mkdir -p "$HOME/docs" jobs var/jobs tools
 
+if [ ! -f tools/svc ]; then
 cat > tools/svc <<'SVC'
 #!/bin/bash
 # The base server's services: list, stop NAME..., start NAME..., backup.
@@ -80,6 +81,7 @@ backup)
 esac
 SVC
 chmod +x tools/svc
+fi
 
 rm -rf "$data" "$base"
 mkdir -p "$data/run" "$data/live" "$data/recordings" "$data/public" "$base/wall"

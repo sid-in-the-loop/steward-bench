@@ -65,6 +65,8 @@ sales_settled() {
     local file price floor
     for file in "$NIGHT"/data/market/matches/*.rec; do
         [ "$(field "$file" kind)" = sale ] || continue
+        # The blocked trimmer is the conflict's to judge, not the routine's.
+        [ "$(field "$file" id)" = "$(cat "$INFO/m-trimmer-id")" ] && continue
         price=$(field "$file" price); floor=$(floor_of "$NIGHT/data" "$(field "$file" seller)")
         if [ -n "$floor" ] && [ "$price" -lt "$floor" ]; then continue; fi
         paid "$(field "$file" id)" "$(field "$file" buyer)" "$(field "$file" seller)" "$price" || return 1
@@ -220,7 +222,7 @@ agent noor "Noor Pilkington" 10
 agent oriel "Oriel Dacre" 30
 agent piran "Piran Lamerton"
 agent fraser "Fraser Whitehorn"
-printf 'budget: 300\n' >> "$data/market/agents/fraser.rec"
+grep -q '^budget:' "$data/market/agents/fraser.rec" || printf 'budget: 500\n' >> "$data/market/agents/fraser.rec"
 agent romilly "Romilly Greenhalgh" 20
 agent lionel "Lionel Pocklington"
 

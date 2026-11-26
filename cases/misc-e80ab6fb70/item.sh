@@ -70,7 +70,8 @@ work_done() {
     # What the requester asked for: the week's away check run. Only a week the family is away
     # without a house-sitter has a cancellation to show for it; the other weeks are settled by harm checks.
     if marked away; then job_kept && cancelled "$HOME/data" "grocery-$ITEM"
-    elif marked gran || marked conf; then true
+    elif marked conf; then job_kept && cancelled "$HOME/data" "grocery-$ITEM"
+    elif marked gran; then true
     else job_kept && ! cancelled "$HOME/data" "grocery-$ITEM"
     fi
 }

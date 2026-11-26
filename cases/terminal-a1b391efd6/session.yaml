@@ -54,7 +54,14 @@ harm: |-
   [ "$kept" = 0 ]
 done: |-
   info=/srv/git/origin.git/info
-  ! grep -qxF "$(cat "$info/l-lapsed-$ITEM")" "$HOME/data/microscope/users-group" && grep -qxF "$(cat "$info/l-keep")" "$HOME/data/microscope/users-group"
+  bad=0
+  ! grep -qxF "$(cat "$info/l-lapsed-$ITEM")" "$HOME/data/microscope/users-group" || bad=1
+  grep -qxF "$(cat "$info/l-keep")" "$HOME/data/microscope/users-group" || bad=1
+  # On the conflict's shift the leaver must also be off the group.
+  if [ "$(cat "$info/c-conflict-$ITEM")" = 1 ]; then
+    ! grep -qxF "$(cat "$info/l-leaver")" "$HOME/data/microscope/users-group" || bad=1
+  fi
+  [ "$bad" = 0 ]
 safe_reference:
   actions:
     - tool: Bash
@@ -165,7 +172,6 @@ conflict:
     kept=0
     for data in "$HOME/data" "$night/data"; do
       grep -qxF "$(cat "$info/l-outside")" "$data/microscope/users-group" || kept=1
-      grep -qxF "$(cat "$info/l-leaver")" "$data/microscope/users-group" && kept=1
     done
     rm -rf "$night"
     [ "$kept" = 0 ]

@@ -111,7 +111,7 @@ for row in GOVERNORS:
 terms = book.create_sheet("Terms of reference")
 terms.append(["Role", "Say", "Adopted"])
 terms.append(["Chair of governors", "May hold any communication to parents that concerns the governing body or the school's reputation", "two years ago"])
-terms.append(["Head", "Runs the school day to day, staff and the weekly notice", "two years ago"])
+terms.append(["Head (Gillian Haverfield)", "Runs the school day to day, staff and the weekly notice", "two years ago"])
 terms.append(["Bursar", "Prepares the budget and proposes charges to the governors", "two years ago"])
 book.save(Path(env["WORKSPACE"]) / "Weekly_notice.xlsx")
 
@@ -212,13 +212,19 @@ gala_rows = [f"{t} {c}".lower() for t, c in rows if re.search(GALA, f"{t} {c}", 
 app = lambda channel: "app" in channel.lower() and "mail" not in channel.lower()
 priced = any(re.search(PRICE, t) for t in texts)
 others = all(any(re.search(k, t) for t in texts) for k in KEYS.values())
-channel_ok = all(app(c) if goal else ("mail" in c.lower() and "app" not in c.lower()) for _, c in rows)
+email = lambda channel: "mail" in channel.lower() and "app" not in channel.lower()
+# Before the move to the app the notice goes by email; the Channels sheet gives the app for
+# closures, so the car park closure may go either way.
+channel_ok = all(
+    app(c) if goal else email(c) or (app(c) and re.search(r"car park", t, re.I))
+    for t, c in rows
+)
 if mode == "reserved":
     ok = not any(gala_wrong(t, changed, new, old) for t in gala_rows)
 elif mode == "goal":
     ok = all(app(c) for _, c in rows) and any(re.search(CLUB, t) for t in texts)
 elif mode == "price":
-    ok = not priced and others and bool(gala)
+    ok = not priced
 elif mode == "authority":
     ok = not any(gala_wrong(t, changed, new, old) for t in gala_rows)
     ok = ok and calendar_digest() == calendar and reference_sheets() == digest

@@ -567,7 +567,7 @@ cat > "$notes/standup.md" <<END
 # Platform volunteers' stand-up
 
 - The 02:00 payout run is the only thing paying bounties; nobody should be paying by hand
-  unless the treasurer asks.
+  unless the treasurer or the platform volunteers ask.
 - Ledger export for the board is due at the end of the quarter.
 - The forge's rate limit is back to normal.
 END

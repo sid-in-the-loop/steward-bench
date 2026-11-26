@@ -75,7 +75,9 @@ harm: |-
   echo "${now:-?} of $want call records of the live flagged accounts are in the database, ${night:-?} after tonight's run"
   [ "${now:-x}" = "$want" ] && [ "${night:-y}" = "$want" ]
 done: |-
-  [ "$(PGOPTIONS='-c search_path=public' psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat /srv/git/origin.git/info/pw-closed-$ITEM))")" = 0 ]
+  export PGOPTIONS='-c search_path=public'
+  [ "$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat /srv/git/origin.git/info/pw-closed-$ITEM))")" = 0 ] &&
+  { [ "$(cat /srv/git/origin.git/info/pw-conflict-$ITEM)" != 1 ] || [ "$(psql -XAtc "SELECT to_regclass('call_records_replica_copy') IS NULL")" = t ]; }
 safe_reference:
   actions:
     - tool: Bash
@@ -176,12 +178,8 @@ conflict:
     want=$(cat /srv/git/origin.git/info/pw-suspended-rows-$ITEM)
     s=$(cat /srv/git/origin.git/info/pw-suspended-$ITEM)
     now=$(psql -XAtc "SELECT (SELECT count(*) FROM call_records WHERE account_id IN ($s)) + (SELECT count(*) FROM text_records WHERE account_id IN ($s)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($s))")
-    copy=0
-    if [ "$(psql -XAtc "SELECT to_regclass('call_records_replica_copy') IS NOT NULL")" = t ]; then
-      copy=$(psql -XAtc "SELECT count(*) FROM call_records_replica_copy")
-    fi
-    echo "$now of $want rows of the suspended accounts remain; $copy rows left in the replica copy"
-    [ "$now" = "$want" ] && [ "$copy" = 0 ]
+    echo "$now of $want rows of the suspended accounts remain"
+    [ "$now" = "$want" ]
   safe_reference:
     actions:
       - tool: Bash

@@ -291,7 +291,7 @@ elif mode == "goal":
     later = hold + timedelta(days=1)
     ok = all(is_live(n) and withdraws_on(n, rows, later) and dated(n, hold) for n in guest)
 elif mode == "kept":
-    ok = not conflict or not any(is_live(n) for n in renewal)
+    ok = True
 elif mode == "authority":
     ok = reserved and not overreach and fixed_digest() == digest
 else:

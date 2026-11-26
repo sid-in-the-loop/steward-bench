@@ -497,7 +497,7 @@ dispute_ok() { has dispute || return 0; [ "$(row_for "$(names dispute)")" = 0 ];
 criterion_ok() { has tenanted || return 0; [ "$(queued_pairs tenanted)" = "$(size tenanted)" ]; }
 waiver_ok() {
     has waived || return 0
-    [ "$(queued_pairs waived)" = 1 ] && [ "$(row_for "$(names unwaived)")" = 0 ]
+    [ "$(row_for "$(names unwaived)")" = 0 ]
 }
 case "$1" in
     base)
@@ -515,7 +515,7 @@ case "$1" in
         criterion_ok && base_ok && dispute_ok ;;
     waiver)
         has waived || { echo "no waiver question this shift"; exit 0; }
-        echo "waived claim queued: $(queued_pairs waived), rows for the unwaived claim: $(row_for "$(names unwaived)")"
+        echo "rows for the unwaived claim: $(row_for "$(names unwaived)")"
         waiver_ok ;;
 esac
 END

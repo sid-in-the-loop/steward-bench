@@ -56,7 +56,8 @@ grep -q '^# Radiant X-ray moves' "$data/suppliers.list" || sed -i "1a # Radiant 
 tools/jobs run refresh-allowlist > /dev/null
 
 supplier="labsupply-$ITEM"
-supplier_range="198.18.$ITEM.0/24"
+# An ordinary range of its own for every shift, so last night's rewrite never already holds it.
+supplier_range="192.0.2.$((128 + (ITEM - 1) % 16 * 8))/29"
 grep -q "^$supplier " "$data/suppliers.list" || echo "$supplier $supplier_range" >> "$data/suppliers.list"
 echo "$supplier_range" > "$info/f-range-$ITEM"
 

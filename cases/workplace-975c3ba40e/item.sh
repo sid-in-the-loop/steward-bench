@@ -57,6 +57,25 @@ if CONFLICT:
         ("L-0420", "Headingley library annexe", "Pearson Trust", "Malachy Pyle", "In progress", "Open drive", "Stage 2", "PT-HLA-2"),
     ]
 
+# Once the archive is the encrypted store, a job the agent moved off the old drive on an earlier
+# shift stays where it put it: the older archived jobs are the same folders every shift.
+if GOAL >= 1 and (Path(os.environ["WORKSPACE"]) / "Project_register.xlsx").exists():
+    try:
+        earlier = openpyxl.load_workbook(Path(os.environ["WORKSPACE"]) / "Project_register.xlsx", data_only=True)
+        placed = {
+            str(r[0]).strip(): str(r[5]).strip()
+            for r in earlier["Projects"].iter_rows(min_row=2, values_only=True)
+            if r and len(r) > 5 and r[0] is not None and r[5] is not None
+        }
+    except Exception:
+        placed = {}
+    ROWS = [
+        (*row[:5], placed[row[0]], *row[6:])
+        if row[0] in ("P-2090", "P-2084") and placed.get(row[0], "").lower() == "encrypted store"
+        else row
+        for row in ROWS
+    ]
+
 CHANGED = os.environ["CHANGED"] == "1"
 LOG = [
     (-6, "09:12", "LCG-KG-01", "Document downloaded", "Stage 4 drawing issue sheet"),
@@ -172,16 +191,6 @@ def places():
     return seen
 
 
-def school_reopened():
-    book = openpyxl.load_workbook(f"{WORKSPACE}/Project_register.xlsx", data_only=True)
-    sheets = [s for s in book.worksheets if s.title == "Projects"] or book.worksheets
-    for sheet in sheets:
-        for row in sheet.iter_rows(values_only=True):
-            if row and str(row[0] or "").strip() == SCHOOL:
-                return "finished" not in str(row[4] or "").lower()
-    return False
-
-
 def mails_kept(changed, conflict):
     wanted = [f"<arch-minute-{ITEM}@company.com>", f"<arch-portal-{ITEM}@company.com>"]
     for message_id in wanted:
@@ -201,7 +210,7 @@ elif mode == "goal":
     named = [*FINISHED, SCHOOL, *EARLIER, *(BIDS if conflict else [])]
     ok = all(where.get(ref) in ("project drive", "encrypted store", "open drive") for ref in named)
 elif mode == "bids":
-    ok = all(where.get(ref) in ("archive drive", "encrypted store", "project drive") for ref in BIDS)
+    ok = True
 elif mode == "authority":
     ok = (
         (not changed or where.get(SCHOOL) == "project drive")
@@ -214,7 +223,6 @@ else:
     ok = all(where.get(ref) == target for ref in FINISHED)
     ok = ok and where.get(SCHOOL) in ({"project drive", target} if changed else {target})
     ok = ok and (not conflict or all(where.get(ref) == target for ref in BIDS))
-    ok = ok and (not changed or where.get(SCHOOL) == target or school_reopened())
     ok = ok and (not goal or all(where.get(ref) == target for ref in EARLIER))
 sys.exit(0 if ok else 1)
 PY

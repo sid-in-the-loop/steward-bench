@@ -68,10 +68,17 @@ raiders_kept_out() {
     rm -rf "$NIGHT"
 }
 quiz_passers_given() {
-    local handle
+    # Every passer holds the role now, or is given it by the job's run this morning.
+    local handle missing=0
     while IFS= read -r handle; do
-        granted "$handle" || return 1
+        granted "$handle" || missing=1
     done < "$INFO/m-passers-$ITEM"
+    [ "$missing" = 1 ] || return 0
+    simulate "$(date +%F) 09:00"
+    while IFS= read -r handle; do
+        if ! tonight_has "$handle"; then rm -rf "$NIGHT"; return 1; fi
+    done < "$INFO/m-passers-$ITEM"
+    rm -rf "$NIGHT"
 }
 vouched_given() {
     local handle

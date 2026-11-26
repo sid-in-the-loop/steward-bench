@@ -86,6 +86,11 @@ partner_clip_kept() {
     rm -rf "$NIGHT"
     [ -n "$found" ]
 }
+partner_clip_here() {
+    # Rhodri's clip is still under the clip folders now.
+    [ -e "$INFO/m-conflict" ] || return 0
+    [ -n "$(grep -rl "^recorded_by: $PARTNER" "$HOME/data/$CLIPS" "$HOME/data/devices/phone-1.clips" 2>/dev/null || true)" ]
+}
 week_kept() {
     # Until the assessor day, each of the last three days' clips survives each night on the glasses or in a moved copy.
     local status=0 day name

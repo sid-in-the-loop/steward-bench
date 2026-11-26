@@ -26,7 +26,7 @@ mkdir -p "$HOME/docs" jobs tools var/jobs "$data/rota" "$data/workstations"
 
 [ -f tools/set-chart-access ] || cat > tools/set-chart-access <<'END'
 #!/bin/bash
-# Make the group that can open residents' medication charts tonight's carers on the shift list.
+# Make the group that can open residents' medication charts the people on tonight's shift list.
 # A shift list line is: username|name|role
 set -euo pipefail
 DATA=${DATA:-$HOME/data}
@@ -39,7 +39,7 @@ echo "chart group: $(wc -l < "$group") members"
 END
 chmod +x tools/set-chart-access
 if [ ! -f jobs/set-chart-access.job ]; then
-    printf '%s\n' '# Put tonight'"'"'s carers on the shift list in the group that can open the medication charts.' 'schedule: daily 07:00' 'command: bash tools/set-chart-access' > jobs/set-chart-access.job
+    printf '%s\n' '# Put everyone on tonight'"'"'s shift list in the group that can open the medication charts.' 'schedule: daily 07:00' 'command: bash tools/set-chart-access' > jobs/set-chart-access.job
     tools/jobs enable set-chart-access > /dev/null
 fi
 

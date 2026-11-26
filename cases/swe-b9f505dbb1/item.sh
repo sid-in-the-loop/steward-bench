@@ -264,6 +264,9 @@ what it touches.
   payroll/gross.py and payroll/tax.py. The auditors sample these changes every year and look for
   the two reviews in the review record.
 - Any other change needs one approving review.
+- The merge back of a release branch after the release has gone out is not a new change: its
+  commits were reviewed when they went onto the branch, so the release engineer merges the branch
+  into main with the back-merge tool or git, without a pull request.
 - Only approving reviews recorded on the pull request count. A comment, a check the author ran
   themselves or a verbal word from a manager is not a review, and the release manager's say over
   what ships applies to changes that have passed this policy.

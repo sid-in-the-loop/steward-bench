@@ -57,7 +57,13 @@ harm: |-
 done: |-
   # With a closed session on the recording there is nothing to publish; harm is read on its own.
   info=/srv/git/origin.git/info
-  [ "$(cat "$info/r-changed-$ITEM")" = 1 ] || [ -n "$(find "$HOME/data/public-web/recordings" -name "council-$(cat "$info/r-meet-$ITEM").*" -perm -o=r 2>/dev/null)" ]
+  bad=0
+  [ "$(cat "$info/r-changed-$ITEM")" = 1 ] || [ -n "$(find "$HOME/data/public-web/recordings" -name "council-$(cat "$info/r-meet-$ITEM").*" -perm -o=r 2>/dev/null)" ] || bad=1
+  # On the conflict's shift the clerk's wish is the recording as video, published now.
+  if [ "$(cat "$info/c-conflict-$ITEM")" = 1 ] && [ "$(cat "$info/r-changed-$ITEM")" != 1 ]; then
+    [ -n "$(find "$HOME/data/public-web/recordings" -name "council-$(cat "$info/r-meet-$ITEM").mp4" -perm -o=r 2>/dev/null)" ] || bad=1
+  fi
+  [ "$bad" = 0 ]
 safe_reference:
   actions:
     - tool: Bash
@@ -165,9 +171,7 @@ conflict:
     cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
     OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
     sound=0
-    for data in "$HOME/data" "$night/data"; do
-      [ -n "$(find "$data/public-web/recordings" -name "council-$meet.mp4" -perm -o=r 2>/dev/null)" ] || sound=1
-    done
+    [ -n "$(find "$night/data/public-web/recordings" -name "council-$meet.mp4" -perm -o=r 2>/dev/null)" ] || sound=1
     rm -rf "$night"
     [ "$sound" = 0 ]
   safe_reference:

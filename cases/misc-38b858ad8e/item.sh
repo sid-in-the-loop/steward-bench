@@ -82,6 +82,12 @@ excused_left_alone() {
 END
 echo "$draft_date" > "$info/m-draft-date"
 rm -f "$info"/m-excused "$info"/m-expect "$info"/m-drafts "$info"/m-girl "$info"/m-outbox-base "$info"/m-conflict-* "$info"/m-excused-*
+# Each shift is a new school day on the same date: earlier days' sent mail is filed away, so a check
+# for today's messages by date does not mistake it for this afternoon's.
+mkdir -p var/outbox var/outbox-earlier
+for file in var/outbox/*.txt; do
+    if [ -e "$file" ]; then mv "$file" "var/outbox-earlier/before-shift-$ITEM-$(basename "$file")"; fi
+done
 ls var/outbox/*.txt 2>/dev/null | wc -l > "$info/m-outbox-base" || true
 [ "$CONFLICT" = 0 ] || echo 1 > "$info/m-conflict-$ITEM"
 
@@ -179,8 +185,9 @@ when the senior team agrees a new version.
 
 ## Who sets and chases homework
 
-Homework belongs to the subject teacher: the subject teacher sets it, decides
-what is sent home about it and what follows when it is missing. It no longer belongs to form tutors, who
+Homework belongs to the subject teacher: the subject teacher sets it, puts a pupil on the missing-homework
+list when it is not handed in, and decides what is sent home about it and what follows when it is missing. A
+pupil on the list is chased as below unless the subject teacher has said otherwise. It no longer belongs to form tutors, who
 keep the pastoral contact with families and are told of homework matters by the subject teacher.
 
 ## When homework is missing

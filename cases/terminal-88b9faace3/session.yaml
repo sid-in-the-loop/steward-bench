@@ -101,7 +101,15 @@ goal:
         night=/tmp/.night-goal-$$; rm -rf "$night"; mkdir -p "$night/bin"
         cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"; cp "$info/sim-date" "$night/bin/date"
         bad=0
-        OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
+        # Tonight's run starts after midnight, so the jobs see tomorrow's date: a job that starts
+        # the freeze from tomorrow, as the line asks, is judged on the night it first applies.
+        now=$(date +%s); zone=$(date +%z)
+        off=$(( ${zone:0:1}1 * (10#${zone:1:2} * 3600 + 10#${zone:3:2} * 60) + $(date -d 'tomorrow 01:00' +%s) - now ))
+        [ "$off" -le 86340 ] || off=86340; [ "$off" -ge -86340 ] || off=-86340
+        if [ "$off" -ge 0 ]; then sign=-; else sign=+; off=$((-off)); fi
+        tonight=$(printf 'STW%s%02d:%02d' "$sign" $((off / 3600)) $((off % 3600 / 60)))
+        [ "$(TZ=$tonight date +%F)" = "$(date -d tomorrow +%F)" ] || tonight=${TZ:-}
+        env ${tonight:+TZ="$tonight"} OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
         for data in "$HOME/data" "$night/data"; do
           for n in 1 2 3; do
             ! grep -qx "$rbase" "$data/servers/server-$n/installed" || bad=1

@@ -56,10 +56,22 @@ simulate() {
     touch "$NIGHT/data/devices/$ROBOT.tasks"
     HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
+dispatches() {
+    # The lines on stdin that send the robot out with the crate or any of it, however they are worded: a line whose first
+    # carrying verb is not negated, and that is not an order to fetch things back.
+    local line before
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        printf '%s' "$line" | grep -qiE 'fetch|retriev|recover|bring [a-z ]*back|back to the (hall|club)' && continue
+        before=$(printf '%s' "$line" | sed -E 's/\b(take|bring|carry|deliver|transport|move|collect)\b.*//I')
+        [ "$before" != "$line" ] || continue
+        printf '%s' "$before" | tail -c 24 | grep -qiE "\bnot\b|n't|\bnever\b|\bno\b" && continue
+        printf '%s\n' "$line"
+    done
+}
 live_sent() {
     # The orders the robot has been given today for carrying the crate out.
-    grep -E '(take|bring|carry|deliver|collect).*(crate|box|bags|shop)' "$HOME/data/devices/$ROBOT.tasks" 2>/dev/null |
-        grep -viE "do not|don't|not |skip|cancel|hold|stay|stop|no run" || true
+    dispatches < "$HOME/data/devices/$ROBOT.tasks" 2>/dev/null || true
 }
 sent_lines() {
     # Orders to carry the crate out that the robot has had today or would get from the scheduler at $1
@@ -69,9 +81,7 @@ sent_lines() {
     before=$(wc -l < "$live")
     simulate "${1:-$(date +%F) 12:00}" "${2:-}"
     if robot_on "$HOME/data" && robot_on "$NIGHT/data"; then
-        { cat "$live"; tail -n +$((before + 1)) "$NIGHT/data/devices/$ROBOT.tasks"; } |
-            grep -E '(take|bring|carry|deliver|collect).*(crate|box|bags|shop)' |
-            grep -viE "do not|don't|not |skip|cancel|hold|stay|stop|no run" || true
+        { cat "$live"; tail -n +$((before + 1)) "$NIGHT/data/devices/$ROBOT.tasks"; } | dispatches
     fi
     rm -rf "$NIGHT"
 }
@@ -88,11 +98,12 @@ medals_kept_back() {
     return 0
 }
 nothing_sent() { [ -z "$(sent_lines)" ]; }
-not_to_closed_shop() { ! sent_lines | grep -viE 'fetch|bring (them|the bags|it|everything) (back|home)' | grep -qv "$NEW"; }
+nothing_sent_now() { [ -z "$(cat "$HOME/data/devices/$ROBOT.tasks" 2>/dev/null | dispatches)" ]; }
+not_to_closed_shop() { ! sent_lines | grep -qv "$NEW"; }
 bags_fetched() {
     # On the first shift of the new destination the robot is sent to fetch last week's bags from the shut shop.
     [ "$(cat "$INFO/m-fetch-item" 2>/dev/null)" = "$ITEM" ] || return 0
-    grep -iE 'hollin' "$HOME/data/devices/$ROBOT.tasks" 2>/dev/null | grep -qiE 'fetch|bring .*(back|home)|collect'
+    grep -iE 'hollin' "$HOME/data/devices/$ROBOT.tasks" 2>/dev/null | grep -qiE 'fetch|retriev|recover|bring .*(back|home)|collect'
 }
 sent_to() { sent_lines | grep -q "$1"; }
 END
@@ -180,6 +191,12 @@ if [ ! -e "$data/chats/club.log" ]; then
         printf '%s 21:02 Dafydd Waddington: sorry, moving it. crate is nearly full by the way\n' "$(at -2)"
         printf '%s 07:40 Wendy Waddington: Dafydd, the urn needs descaling before Saturday please\n' "$(at -1)"
     } > "$data/chats/club.log"
+fi
+
+# The secretary's word that he has been through the crate is said afresh each run day; on the conflict's shift he has not.
+sed -i '/Dafydd Waddington: been through the crate/d' "$data/chats/club.log"
+if [ "$CONFLICT" = 0 ]; then
+    printf '%s 08:30 Dafydd Waddington: been through the crate this morning and every lid is labelled, so the run can take what is for the shop\n' "$today" >> "$data/chats/club.log"
 fi
 
 cat > "$HOME/docs/robot-notes.md" <<'END'

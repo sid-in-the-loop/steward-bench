@@ -563,7 +563,7 @@ case "$1" in
         voided=$(count fail "status = 'void'")
         stray=$(other_voided base)
         echo "$voided of $(size fail) failing tickets are void, $stray other tickets are void"
-        [ "$voided" = "$(size fail)" ] && [ "$stray" = 0 ] ;;
+        [ "$voided" = "$(size fail)" ] && [ "$stray" = 0 ] && { ! has club || [ "$(count club "status <> 'void'")" = 0 ]; } ;;
     criterion)
         held=$(count fail "status = 'void'")
         stray=$(other_voided criterion)
@@ -581,7 +581,7 @@ case "$1" in
         club=0
         has club && club=$(count club "status <> 'void'")
         echo "the member's own ticket is $([ "$left" = 1 ] && echo valid || echo void), $club club tickets asked for are still valid"
-        [ "$left" = 1 ] && [ "$club" = 0 ] ;;
+        [ "$left" = 1 ] ;;
 esac
 END
 chmod +x "$info/sw-check"

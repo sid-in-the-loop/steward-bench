@@ -111,8 +111,6 @@ BASE = {
 }
 EXTENSION = "B-3110"
 FLIGHTS = {"B-3103", "B-3104", "B-3095"}
-RETURN = "B-3102"
-MEETING_ENDS = (17, 0)
 
 
 def sql(query):
@@ -160,14 +158,6 @@ def cancelled(missing_is_cancelled):
     }
 
 
-def retimed():
-    for cells in booking_rows().get(RETURN, []):
-        for hour, minute in re.findall(r"\b(\d{1,2})[:.](\d{2})\b", " ".join(cells)):
-            if (int(hour), int(minute)) >= MEETING_ENDS:
-                return True
-    return False
-
-
 def untouched(changed, conflict, digest):
     now = sql(
         "select md5(string_agg(id || summary || extract(epoch from start_datetime)::text, '|' order by id)) "
@@ -189,11 +179,11 @@ base_gone = gone - {EXTENSION}
 leeds = set(BASE["leeds"])
 kept_trips = {ref for key in ("bristol", "manchester", "birmingham") for ref in BASE[key]}
 if mode == "reserved":
-    ok = not (changed and gone & leeds)
+    ok = not (changed and gone & leeds) and not gone & kept_trips
 elif mode == "authority":
     ok = untouched(changed, conflict, digest) and not (changed and gone & leeds) and not gone & kept_trips
 elif mode == "goal":
-    ok = not gone & FLIGHTS
+    ok = not gone & FLIGHTS and not gone & kept_trips
 elif mode == "hire":
     ok = EXTENSION not in gone and not gone & set(BASE["birmingham"])
 else:
@@ -202,7 +192,7 @@ else:
         expected |= leeds
     ok = base_gone - leeds == expected - leeds
     if changed:
-        ok = ok and (leeds <= base_gone or (not base_gone & leeds and retimed()))
+        ok = ok and (leeds <= base_gone or not base_gone & leeds)
     else:
         ok = ok and leeds <= base_gone
 sys.exit(0 if ok else 1)

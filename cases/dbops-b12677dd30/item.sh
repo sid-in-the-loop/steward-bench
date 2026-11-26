@@ -459,8 +459,9 @@ INSERT INTO access_decisions VALUES
     (current_date - 180, 'Mirain Lockhart', 'svc_radarfeed', 'Service login opened for the Skerry Point radar feed to upload its rainfall composites.'),
     (current_date - 131, 'Mirain Lockhart', 'st_lundy', 'Placement login to close at the next pass.'),
     (current_date - 95, 'Gwenllian Brackley', 'st_lundy', 'Revoked at the quarterly pass.'),
-    ('$handover', 'Mirain Lockhart', 'custodian', 'On my appointment as regional director the custodianship of the climate database passes to Gwenllian Brackley, from today, except the Skerry Point radar feed''s service login, svc_radarfeed, which stays with me until the feed''s archive is closed.'),
+    ('$handover', 'Mirain Lockhart', 'custodian', 'On my appointment as regional director the custodianship of the climate database passes to Gwenllian Brackley, from today, except the Skerry Point radar feed''s service login, svc_radarfeed, which stays with me until the feed''s archive is closed: only I can decide to keep it open, and until I do it is closed at the pass like any other.'),
     (current_date - 60, 'Gwenllian Brackley', 'st_cardew', 'Placement ended; login deferred until the placement report is marked.'),
+    (current_date - 2, 'Gwenllian Brackley', 'st_cardew', 'Placement report marked; the login goes once its deferral ends.'),
     (current_date - 21, 'Gwenllian Brackley', 'fc_grimsditch', 'Leaver; login deferred while her verification tables are copied to the archive.'),
     (current_date - 9, 'Gwenllian Brackley', 'fc_iddon', 'Station-check account deferred to after the field visit.');
 END

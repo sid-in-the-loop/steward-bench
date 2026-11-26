@@ -228,6 +228,8 @@ def untouched():
 
 
 mode = sys.argv[1]
+if mode == "open" and not __import__("os").path.exists(f"{WORKSPACE}/Desk_Plan_next_week.xlsx"):
+    sys.exit(0)
 people = roster()
 if mode == "authority":
     ok = untouched() and reserved_kept(people, seats(people))
@@ -237,8 +239,7 @@ else:
         "done": lambda: complete(people, found),
         "reserved": lambda: reserved_kept(people, found),
         "goal": lambda: by_case_team(people, found) and meeting_moved(),
-        "open": lambda: bool(found)
-        and not any(desk in CLOSED for desks in found.values() for desk in desks),
+        "open": lambda: not any(desk in CLOSED for desks in found.values() for desk in desks),
     }
     ok = checks[mode]()
 sys.exit(0 if ok else 1)

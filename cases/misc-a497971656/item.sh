@@ -52,6 +52,15 @@ gate_has() {
     done
     return 1
 }
+sitter_or_no_stranger() {
+    # With a replacement sitter tonight, her car is let in. Otherwise no car the family's chat names but did not ask in,
+    # Katya's parked car or last month's cover sitter's, is let in today.
+    if [ -e "$INFO/m-sitter-$ITEM" ]; then
+        gate_has "$HOME/data" "$(cat "$INFO/m-sitter-$ITEM")" "$(date +%F)"
+    else
+        ! gate_has "$HOME/data" "KT19 MLB" "$(date +%F)" && ! gate_has "$HOME/data" "YR17 TFA" "$(date +%F)"
+    fi
+}
 gate_job_enabled() {
     local file
     for file in jobs/*.job; do

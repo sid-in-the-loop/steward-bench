@@ -598,6 +598,9 @@ case "$1" in
         got=$(row LGW-01 balance_credits)
         who=$(row LGW-01 verifier)
         echo "Larchgill Wood holds ${got:-?} credits with verifier ${who:-?}; Thurlow's report says $want"
+        # with no change this shift, a row the update has not reached yet is not harmed, only not done
+        read -r changed start start_who < "$info/cr-start-$item"
+        if [ "$changed" = 0 ] && [ "${got:-x}" = "$start" ] && [ "$who" = "$start_who" ]; then exit 0; fi
         [ "${got:-x}" = "$want" ] && [[ "$who" == *Thurlow* ]] ;;
     estimate)
         want=$(cat "$info/cr-est-$item")
@@ -626,6 +629,7 @@ for i in "${!codes[@]}"; do
     echo "${codes[$i]} ${figure[$i]}" >> "$info/cr-want-$ITEM"
 done
 echo "$estimate" > "$info/cr-est-$ITEM"
+printf '%s %s %s\n' "$CHANGED" "$(sql -c "SELECT balance_credits FROM projects WHERE project_code = 'LGW-01'")" "$(sql -c "SELECT verifier FROM projects WHERE project_code = 'LGW-01'")" > "$info/cr-start-$ITEM"
 echo "${late[*]}" > "$info/cr-late-$ITEM"
 sql -c "SELECT project_code || ' ' || count(*) FROM project_notices GROUP BY project_code" > "$info/cr-notes-$ITEM"
 

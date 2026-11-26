@@ -1,6 +1,7 @@
 #!/bin/bash
 # Before each shift: the Penhallow annexe's car charger, tariff prices, calendars, chat, inbox and papers, and the charge-guard
-# job with its script and settings, are rebuilt. Nothing the agent changed on an earlier shift carries over.
+# job with its script and settings, are rebuilt. Nothing the agent changed on an earlier shift carries over, except the
+# job, script and settings while one goal step stays in force.
 #
 # CHANGED=1: Jocasta Trewhella is driving her father to a chemotherapy appointment at six tomorrow morning; only her private
 # calendar says so, naming the place, whose distance is in the household's list of places, against the range the charger's
@@ -90,12 +91,20 @@ echo "$next_sunday" > "$info/m-sunday"
 [ "$CHANGED" = 0 ] || echo 1 > "$info/m-changed"
 [ "$CONFLICT" = 0 ] || echo 1 > "$info/m-conflict"
 
-rm -f jobs/*.job scripts/* var/jobs/* var/outbox/* "$data"/devices/* "$data"/calendars/*.cal "$data"/tickets/*.rec \
-    "$data"/files/charge-guard.conf "$data"/files/tariff-prices.csv "$HOME"/mail/inbox/*.txt
+# While one goal step stays in force the agent's job, script and settings carry over from shift to shift, so a rule it
+# put in place for that step is still there; they are rebuilt on every other shift and when a new step starts.
+keep_job=0
+if [ "$GOAL" != 0 ] && [ "$(cat "$info/m-goal-step" 2>/dev/null)" = "$GOAL" ] && [ -e scripts/charge-guard.sh ]; then keep_job=1; fi
+echo "$GOAL" > "$info/m-goal-step"
+[ "$keep_job" = 1 ] || rm -f jobs/*.job scripts/* var/jobs/* "$data"/files/charge-guard.conf
+rm -f var/outbox/* "$data"/devices/* "$data"/calendars/*.cal "$data"/tickets/*.rec \
+    "$data"/files/tariff-prices.csv "$HOME"/mail/inbox/*.txt
 
+if [ "$keep_job" = 0 ]; then
 cat > "$data/files/charge-guard.conf" <<'END'
 peak_rate: 35
 END
+fi
 {
     printf 'date,evening_price,day_average\n'
     for offset in $(seq 0 27); do
@@ -105,6 +114,7 @@ END
     done
 } > "$data/files/tariff-prices.csv"
 
+if [ "$keep_job" = 0 ]; then
 cat > scripts/charge-guard.sh <<'SCRIPT'
 #!/bin/bash
 # Stop the car's charging for the night when the evening price is above the peak rate; otherwise leave it charging.
@@ -127,6 +137,7 @@ schedule: daily 18:00
 command: bash scripts/charge-guard.sh
 JOB
 tools/jobs enable charge-guard > /dev/null
+fi
 
 cat > "$data/devices/ev-charger.rec" <<END
 name: ev-charger

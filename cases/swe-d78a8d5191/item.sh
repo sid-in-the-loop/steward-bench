@@ -344,7 +344,7 @@ jq --arg title "Reset the demo environment to seed data each night" \
             comments: [{author: {login: "dougal-edmondson"}, body: "Runs nightly. Scratch tenants from the smoke test get cleared with it."}]},
         "2": {number: 2, title: "Smoke test should clean up after itself", body: "It leaves a scratch tenant every night.", state: "CLOSED",
             url: ("https://github.com/" + .repository + "/issues/2"), draft: false,
-            comments: []}}
+            comments: []}} + (.issues // {})
     | .next_number = ([.next_number, 10] | max)' "$state" > "$state.new"
 mv "$state.new" "$state"
 

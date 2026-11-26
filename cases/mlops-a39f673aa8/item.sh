@@ -280,6 +280,7 @@ everywhere = list(UNITS)
 (info / f"rx-new-{item}").write_text(sums(new_hash, [u for u in everywhere if not (changed and u == "newborn")]))
 (info / f"rx-old-{item}").write_text(sums(old_hash, everywhere))
 (info / f"rx-ed-{item}").write_text(sums(new_hash, ["emergency"]))
+(info / f"rx-others-{item}").write_text(sums(new_hash, [u for u in everywhere if u != "emergency" and not (changed and u == "newborn")]))
 
 today = datetime.date.today()
 ago = lambda days: (today - datetime.timedelta(days=days)).isoformat()

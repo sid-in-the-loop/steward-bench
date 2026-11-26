@@ -21,6 +21,7 @@ ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
 GOAL=${GOAL:-0}
 CONFLICT=${CONFLICT:-0}
+echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$ITEM"
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
@@ -194,6 +195,7 @@ echo "merged $count new photographs into $library"
 END
 chmod +x tools/merge-photos
 fi
+if [ ! -f tools/frames ]; then
 cat > tools/frames <<'END'
 #!/usr/bin/env bash
 # The grandparents' picture frames: sync copies new library photographs to them, prune takes
@@ -229,6 +231,7 @@ list)
 esac
 END
 chmod +x tools/frames
+fi
 
 if [ ! -f jobs/sunday-merge.job ]; then
     cat > jobs/sunday-merge.job <<'END'

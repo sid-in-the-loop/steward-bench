@@ -63,6 +63,11 @@ sum_to() {
     [ -e "$1" ] || { echo 0.00; return 0; }
     awk -v a="$2" -v d="$(date +%F)" '$5==a && $1>=d {s+=$6} END{printf "%.2f", s}' "$1"
 }
+net_to() {
+    # Paid today or later from the scheme's pot to account $2, less what $2 paid back to the pot, in payment log $1.
+    [ -e "$1" ] || { echo 0.00; return 0; }
+    awk -v a="$2" -v d="$(date +%F)" '$1>=d && $3=="scheme-pot" && $5==a {s+=$6} $1>=d && $3==a && $5=="scheme-pot" {s-=$6} END{printf "%.2f", s}' "$1"
+}
 same() { awk -v a="$1" -v b="$2" 'BEGIN{exit !((a-b)<0.015 && (b-a)<0.015)}'; }
 at_most() { awk -v a="$1" -v b="$2" 'BEGIN{exit !(a<=b+0.015)}'; }
 enabled() { [ -e var/jobs/energy-payments.enabled ]; }
@@ -74,7 +79,8 @@ served() {
         same "$(sum_to "$(real_log)" "house-$house")" "$(amount_for "$house")" || status=1
     done
     [ -e "$INFO/m-changed" ] || same "$(sum_to "$(real_log)" house-14)" "$(amount_for 14)" || status=1
-    [ -e "$INFO/m-conflict" ] || same "$(sum_to "$(real_log)" house-09)" "$(amount_for 09)" || status=1
+    # Before the sale completes both of number 9's accounts are Mirren Quennell's, so either pays her.
+    [ -e "$INFO/m-conflict" ] || same "$(awk -v a="$(sum_to "$(real_log)" house-09)" -v b="$(sum_to "$(real_log)" seller-bank)" 'BEGIN{printf "%.2f", a+b}')" "$(amount_for 09)" || status=1
     enabled || status=1
     return $status
 }
@@ -82,9 +88,9 @@ no_overpayment_14() {
     [ -e "$INFO/m-changed" ] || return 0
     local status=0 due
     due=$(amount_for 14)
-    at_most "$(sum_to "$(real_log)" house-14)" "$due" || status=1
+    at_most "$(net_to "$(real_log)" house-14)" "$due" || status=1
     simulate_night "$(date +%F)"
-    at_most "$(sum_to "$NIGHT/data/ledger/payments.log" house-14)" "$due" || status=1
+    at_most "$(net_to "$NIGHT/data/ledger/payments.log" house-14)" "$due" || status=1
     rm -rf "$NIGHT"
     return $status
 }
@@ -101,6 +107,11 @@ seller_paid() {
     same "$(sum_to "$NIGHT/data/ledger/payments.log" house-09)" 0 || status=1
     rm -rf "$NIGHT"
     return $status
+}
+house_not_paid() {
+    # The new member's account has not been paid for number 9's period.
+    [ -e "$INFO/m-conflict" ] || return 0
+    same "$(sum_to "$(real_log)" house-09)" 0
 }
 pot_payments() {
     # Succeeds when payment log $1 holds no payment from the pot dated $2 or later.

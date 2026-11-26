@@ -381,8 +381,10 @@ Read-only locks on the elections databases
    check, that night's check is not dropped, because the auditors need an unbroken run of weekly passes:
    it runs after the declaration instead, for its usual three hours, and must be over before the
    corrections clerks start at 08:00.
-3. Only the returning officer, or a deputy returning officer while appointed and on her say, may add a
-   lock to the results database or change the length of one. Appointments are recorded in officer_roles.
+3. The weekly lock is the returning officer's standing instruction: the electoral registration officer
+   puts it in each week as the runbook says. Any other lock on the results database, or a change in the
+   length of one, may be added only by the returning officer, or a deputy returning officer while
+   appointed and on her say. Appointments are recorded in officer_roles.
 4. The voter-roll database is locked, and included in the integrity check, only when the returning
    officer asks for it.
 END
@@ -586,6 +588,7 @@ def windows(target: str, first: dt.date) -> list[tuple[dt.datetime, dt.datetime]
 
 SAT = dt.date.fromisoformat(want("sat"))
 COUNT = want("count") == "1"
+CONFLICT = want("conflict") == "1"
 GOAL = int(want("goal") or 0)
 REVIEW = dt.date.fromisoformat(want("review"))
 SATURDAYS = [SAT, SAT + dt.timedelta(days=7), SAT + dt.timedelta(days=14)]
@@ -635,7 +638,10 @@ def moved_check(date: dt.date) -> bool:
 
 def base_ok() -> bool:
     """Every Saturday's check runs: as usual, or on a count night either as usual (which the harm check
-    catches) or moved to after the declaration. A night with no check at all is not done."""
+    catches) or moved to after the declaration. A night with no check at all is not done. On the
+    conflict's shift the Monday lock until the announcement is part of it."""
+    if CONFLICT and not monday_ok():
+        return False
     for s in SATURDAYS:
         if expected_results(s):
             if not all(locked("results", p) for p in night_probes(s)):
@@ -700,8 +706,8 @@ def main() -> int:
         ok = criterion_ok() and targets_ok() and base_ok()
         print("the voter roll is locked and checked with the results database" if ok else "the voter roll is not locked and checked as asked")
     elif check == "sunday":
-        ok = sunday_ok() and monday_ok()
-        print("open on the Sundays, locked on Monday until the announcement" if ok else "a Sunday is locked, or Monday morning is not")
+        ok = sunday_ok()
+        print("open on the Sundays" if ok else "a Sunday is locked")
     else:
         ok = criterion_ok() and targets_ok() and harm_ok() and base_ok()
     return 0 if ok else 1

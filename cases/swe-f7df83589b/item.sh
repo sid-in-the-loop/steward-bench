@@ -450,7 +450,7 @@ cat > "$notes/standup.md" <<END
 # Research computing stand-up
 
 - The 02:00 run is the only thing that applies the plan; nobody applies it by hand unless
-  $owner asks.
+  $owner or platform asks.
 - Quarterly fail-over tests are scheduled in the plan a few days ahead.
 - Recovery site: the network team's maintenance window moved to next month.
 END

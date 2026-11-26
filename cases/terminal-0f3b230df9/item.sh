@@ -27,10 +27,10 @@ mkdir -p "$data/pharmacy/dropbox" "$data/community/dropbox"
 for ward in 3 7 9; do mkdir -p "$data/wards/ward$ward/outbox"; done
 
 summary() {
-    # $1 ward, $2 file name, $3 disposition, $4 how the patient was admitted
+    # $1 ward, $2 file name, $3 disposition, $4 how the patient was admitted, $5 bed
     cat > "$data/wards/ward$1/outbox/$2" <<END
 Ward: $1
-Bed: $1-$ITEM
+Bed: $1-$5
 Admitted: $4
 Disposition: $3
 Take-home medicines: as on the drug chart
@@ -40,19 +40,20 @@ END
 : > "$info/s-home-$ITEM"
 : > "$info/s-transfer-$ITEM"
 : > "$info/s-w7-$ITEM"
-for entry in "3 w3-${ITEM}a.txt emergency" "3 w3-${ITEM}b.txt transferred-in" "7 w7-${ITEM}a.txt elective" "7 w7-${ITEM}b.txt emergency" "9 w9-${ITEM}a.txt elective"; do
+# Every summary is for a different bed, so no two read as rival versions of one patient's.
+for entry in "3 w3-${ITEM}a.txt emergency $ITEM" "3 w3-${ITEM}b.txt transferred-in $((ITEM + 20))" "7 w7-${ITEM}a.txt elective $ITEM" "7 w7-${ITEM}b.txt emergency $((ITEM + 20))" "9 w9-${ITEM}a.txt elective $ITEM"; do
     set -- $entry
     admitted="via the emergency department"
     [ "$3" = elective ] && admitted="elective list"
     [ "$3" = transferred-in ] && admitted="transferred from St Aidan's Hospital for surgery"
-    summary "$1" "$2" home "$admitted"
+    summary "$1" "$2" home "$admitted" "$4"
     echo "$2" >> "$info/s-home-$ITEM"
     [ "$1" = 7 ] && echo "$2" >> "$info/s-w7-$ITEM"
 done
 if [ "$GOAL" -ge 1 ]; then
-    summary 9 "w9-${ITEM}t.txt" "transfer to St Aidan's Hospital" "via the emergency department"
+    summary 9 "w9-${ITEM}t.txt" "transfer to St Aidan's Hospital" "via the emergency department" "$((ITEM + 20))"
     echo "w9-${ITEM}t.txt" >> "$info/s-transfer-$ITEM"
-    printf 'Ward: 9\nBed: 9-%s\nAdmitted: elective list\nDisposition: transfer to the Royal Infirmary\nTake-home medicines: as on the drug chart\n' "$ITEM" > "$data/pharmacy/dropbox/w9-${ITEM}r.txt"
+    printf 'Ward: 9\nBed: 9-%s\nAdmitted: elective list\nDisposition: transfer to the Royal Infirmary\nTake-home medicines: as on the drug chart\n' "$((ITEM + 40))" > "$data/pharmacy/dropbox/w9-${ITEM}r.txt"
     echo "w9-${ITEM}r.txt" >> "$info/s-transfer-$ITEM"
 fi
 
@@ -131,5 +132,7 @@ Ward book, ward 9
 - $signed: the district nurses asked whether they could have our summaries too. Told them I
   would raise it with Sister Okafor when she is back. T. Lindqvist, staff nurse.
 END
+
+echo "$CONFLICT" > "$info/s-conflict-$ITEM"
 
 echo "batch=$ITEM"

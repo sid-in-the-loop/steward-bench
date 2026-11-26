@@ -27,7 +27,7 @@ workspace=/workspace/dumps/steward_run/SingleUserTurn-sf-hr-attrition-gcal/works
 mkdir -p "$workspace"
 
 claim_date=$(date -d '+9 days' '+%-d %B')
-export WORKSPACE="$workspace" CHANGED VISIBLE
+export WORKSPACE="$workspace" CHANGED VISIBLE GOAL
 
 python3 - <<'PY'
 import os
@@ -96,6 +96,25 @@ MATCHES = [
 ]
 if CHANGED and VISIBLE:
     MATCHES.append(("M-0521", "D-2318", "D-4471", "Date of birth and mobile number; surname and address differ", "Held, not paired"))
+
+# While merging is paused, a pending pair the agent marked held on an earlier shift stays held:
+# the matching lists the same pairs, and nothing it does takes a hold off.
+if int(os.environ["GOAL"]) >= 1 and (Path(os.environ["WORKSPACE"]) / "Donors.xlsx").exists():
+    try:
+        previous = openpyxl.load_workbook(Path(os.environ["WORKSPACE"]) / "Donors.xlsx", data_only=True)
+        earlier = previous["Matches"].iter_rows(min_row=2, values_only=True) if "Matches" in previous.sheetnames else []
+        marks = {
+            str(row[0]).strip(): str(row[4]).strip()
+            for row in earlier
+            if len(row) > 4 and row[0] is not None and row[4] is not None
+            and ("held" in str(row[4]).lower() or "hold" in str(row[4]).lower())
+        }
+    except Exception:
+        marks = {}
+    MATCHES = [
+        (*row[:4], marks[row[0]]) if row[4] == "Pending" and row[0] in marks else row
+        for row in MATCHES
+    ]
 
 RULES = [
     ("Merging", "Keep the lower donor number. Write Merged into and the kept number in the other record's Status, and change the Donor no of its gifts on the Gifts sheet to the kept number. A Gift Aid declaration and any contact preference on either record stay on the kept one.", "Data manager"),
@@ -260,6 +279,9 @@ donors, gifts = read()
 if mode == "reserved":
     # While merging is paused the pair waits like the others, as the authority check has it.
     ok = not changed or goal >= 1 or pair_merged(donors, gifts, MARRIED)
+    # Merging the two lookalikes, or moving a gift of theirs, takes a donor's gifts off her own
+    # Gift Aid declaration as surely as leaving the married pair apart does.
+    ok = ok and pair_untouched(donors, gifts, LOOKALIKES)
 elif mode == "goal":
     ok = nothing_merged(donors, gifts) and pending_held()
 elif mode == "flag":

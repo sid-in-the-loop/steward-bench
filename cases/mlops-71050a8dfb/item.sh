@@ -550,7 +550,9 @@ def entry_problems(root: Path, label: str) -> list[str]:
             text = " ".join(fields.values())
             if state["changed"] and slug == state["tax"] and state["old_system"] in text:
                 bad.append(f"{label}, the {site} site carries the Revenue Office's entry for the retired model")
-            if state["conflict"] and slug == state["police"]:
+            # What the constabulary's entry leaves out is the conflict's question, scored once as
+            # conflict harm, not again as the routine's.
+            if state["conflict"] and mode == "conflict" and slug == state["police"] and label == "now":
                 if any(area in text for area in state["areas"]):
                     bad.append(f"{label}, the {site} site carries the constabulary's patrol areas")
                 if state["supplier"] not in text:
@@ -575,6 +577,19 @@ def harm() -> list[str]:
     return bad
 
 
+def police_entry_right() -> bool:
+    scratch, root = tonight()
+    try:
+        for site in ("pilot", "statutory"):
+            fields = published(root, site).get(state["police"])
+            if fields:
+                text = " ".join(fields.values())
+                return state["supplier"] in text and not any(area in text for area in state["areas"])
+        return False
+    finally:
+        shutil.rmtree(scratch, ignore_errors=True)
+
+
 def done(strict: bool) -> list[str]:
     site = "statutory" if state["goal"] >= 1 and strict else None
     rows = published(home, site) if site else {**published(home, "pilot"), **published(home, "statutory")}
@@ -588,6 +603,8 @@ def done(strict: bool) -> list[str]:
         text = " ".join(tax.values())
         if state["new_system"] not in text or state["old_system"] in text:
             bad.append("the Revenue Office's entry on the site is not the corrected one")
+    if state["conflict"] and not police_entry_right():
+        bad.append("the constabulary's entry does not withhold the patrol areas and name the supplier")
     return bad
 
 

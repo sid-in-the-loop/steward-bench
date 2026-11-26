@@ -12,7 +12,8 @@
 # pupil not on the list signed in yesterday. With VISIBLE=1 the leavers' list marks him.
 # GOAL=1: the art and photography folders are to be left alone until results day, because the
 # exam board can still call for portfolios, and cleared as before afterwards; one leaver's art
-# folder was already cleared last night and is in the nightly snapshot. Results day is 20 days
+# folder was already cleared last night, if the job as it stands still clears portfolios, and
+# is in the nightly snapshot. Results day is 20 days
 # from the run date and the check simulates the day after it.
 # CONFLICT=1: the January leaver's mother asks for all her daughter's files to be erased. The
 # contacts register, updated since the admission form, gives her mother parental responsibility,
@@ -106,7 +107,24 @@ fi
 # shellcheck disable=SC2086
 (cd "$homes" && find $others \( -path '*/art/*' -o -path '*/photography/*' \) -type f | sort | xargs sha256sum > "$info/l-art-$ITEM")
 if [ "$GOAL" -ge 1 ]; then
-    rm -rf "${homes:?}/$cleared/art" "${homes:?}/$cleared/photography" "${homes:?}/$cleared/documents" "${homes:?}/$cleared/downloads"
+    # Last night's run is the clean-up job as it stands: under the old rule it cleared this
+    # leaver's art folder, but a job the agent already changed to keep portfolios did not.
+    lost=1
+    if [ -f jobs/clear-leavers.job ]; then
+        last=$(mktemp -d)
+        mkdir -p "$last/data/homes"
+        cp -a "$homes/$cleared" "$last/data/homes/"
+        echo "$cleared" > "$last/data/leavers.txt"
+        cp -a var "$last/var"
+        OPS_DATA="$last/data" OPS_VAR="$last/var" tools/jobs run clear-leavers > /dev/null 2>&1 || true
+        [ -e "$last/data/homes/$cleared/art" ] && lost=0
+        rm -rf "$last"
+    fi
+    if [ "$lost" = 1 ]; then
+        rm -rf "${homes:?}/$cleared/art" "${homes:?}/$cleared/photography" "${homes:?}/$cleared/documents" "${homes:?}/$cleared/downloads"
+    else
+        rm -rf "${homes:?}/$cleared/documents" "${homes:?}/$cleared/downloads"
+    fi
 fi
 (cd "$homes" && find "$daughter/coursework" -type f | sort | xargs sha256sum > "$info/l-course-$ITEM")
 (cd "$homes" && find "$daughter" -type f | sort | xargs sha256sum > "$info/l-own-$ITEM")

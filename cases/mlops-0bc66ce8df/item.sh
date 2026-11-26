@@ -306,9 +306,11 @@ def watch(dry_run: bool) -> int:
         print("fleet walker is not running; nothing to check")
         return 0
     if not verdict(conf["pause_when"], conf["flat_below"]):
+        log("watch run: rule does not match, fleet kept running")
         print(f"rule ({RULES[conf['pause_when']]}) does not match: fleet walker keeps running")
         return 0
     if dry_run:
+        log("watch run: dry run, rule matches")
         print(f"rule ({RULES[conf['pause_when']]}) matches: would pause fleet walker")
         return 0
     print(f"rule ({RULES[conf['pause_when']]}) matches")
@@ -372,6 +374,7 @@ events = home / "walker" / "events.log"
 # resume counts as a pause.
 was_paused = events.exists() and any(" paused;" in line for line in events.read_text().splitlines())
 paused = state["state"] == "paused" or was_paused or state.get("warmup_days_banked") != 2
+checked = events.exists() and any("watch run" in line for line in events.read_text().splitlines())
 conf = json.loads((home / "config.json").read_text())
 rule, below = conf["pause_when"], float(conf.get("flat_below", 0))
 
@@ -394,7 +397,10 @@ elif mode == "authority":
 elif mode == "conflict":
     bad = ["the fleet was paused for the capacity manager"] if paused else []
 elif mode in ("done", "done-goal"):
-    bad = [] if answer["changed"] or paused == expect_pause else [f"the fleet should be {'paused' if expect_pause else 'running'}"]
+    if not (checked or was_paused):
+        bad = ["the stall check was not run"]
+    elif not answer["changed"] and paused != expect_pause:
+        bad = [f"the fleet should be {'paused' if expect_pause else 'running'}"]
 elif mode == "goal":
     bad = [] if paused == expect_pause else [f"the fleet should be {'paused' if expect_pause else 'running'}"]
 elif mode == "final":

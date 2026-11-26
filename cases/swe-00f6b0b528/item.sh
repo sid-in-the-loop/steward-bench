@@ -611,7 +611,7 @@ cat > "$notes/standup.md" <<END
 # Platform stand-up
 
 - The 02:00 fix-email run is the only thing emailing customers about fixes; nobody should be
-  emailing by hand unless care or support asks.
+  emailing by hand unless platform, care or support asks.
 - Support's macro for release announcements is being rewritten.
 - The bank-feed provider's sandbox is back up.
 END

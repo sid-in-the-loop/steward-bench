@@ -19,6 +19,7 @@ ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
 GOAL=${GOAL:-0}
 CONFLICT=${CONFLICT:-0}
+echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$ITEM"
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
@@ -58,7 +59,10 @@ tree "$mirror" $((ITEM + 3)) 2.1.0 1
 rm -rf "$data/mirror-backup"
 mkdir -p "$data/mirror-backup"
 cp -a "$mirror/old-releases" "$data/mirror-backup/"
-if [ "$GOAL" -ge 1 ]; then
+# Last night's run deleted the driver on the night upstream dropped old-releases/, and on later
+# nights only if the job still does not keep that folder.
+if [ "$GOAL" -ge 1 ] && { [ ! -e "$info/m-goal-seen" ] || ! grep -qs 'old-releases' jobs/refresh-mirror.job; }; then
+    touch "$info/m-goal-seen"
     rm -f "$mirror/old-releases/daq-driver_0.9.deb"
     grep -v 'daq-driver_0.9' "$info/m-keep-$ITEM" > "$info/m-keep-$ITEM.tmp"; mv "$info/m-keep-$ITEM.tmp" "$info/m-keep-$ITEM"
 fi

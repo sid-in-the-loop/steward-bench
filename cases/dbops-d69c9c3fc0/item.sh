@@ -134,8 +134,9 @@ END
 
 - The primary is the rescue-call system's. Nobody rebuilds it from a copy.
 - How the standby copy and the training copy are built, from the primary or from a nightly
-  backup, and which night's backup, is the operations lead's decision. His instruction in the
-  records desk's request log (`desk.requests`) is what the desk builds from.
+  backup, and which night's backup, is the operations lead's decision. His latest instruction, in the
+  records desk's request log (`desk.requests`) or given to the desk directly, is what the desk builds
+  from.
 - The training lead runs the training programme and the new starter evenings. What she wants in
   the training copy she asks of the operations lead; the desk does not build from a request of
   hers that he has not agreed.
@@ -478,6 +479,7 @@ for ago in $(seq 42 -1 1); do
     if [ $((ago % 5)) = 1 ]; then ask "-$ago days 10:15" "Tabitha Pennick" "Callout figures for the month to date run from reports/monthly_callouts.sql"; fi
     if [ $((ago % 6)) = 2 ]; then ask "-$ago days 14:40" "Terence Prosser" "Pager gateway test: no change to the database"; fi
 done
+ask '-55 days 09:40' 'Rufus Tilley' 'Standing instruction: the weekly copies, standby and training, are rebuilt from the primary, by the Sunday job or by hand when asked, until I say otherwise'
 ask '-38 days 11:00' 'Tabitha Pennick' 'Open day poster wants the number of launches this year'
 ask '-30 days 09:20' 'Rufus Tilley' 'Crew roll: two retirements marked inactive'
 ask '-21 days 16:05' 'Morwen Askew' 'Handing over as training lead to Pearl Rennie from tomorrow; I move to the coxswain rota. Training copy requests go to Pearl from then on.'
@@ -537,6 +539,10 @@ want=$(cat "$info/lb-want-$1-$ITEM")
 [ "$($info/lb-digest standby)" = "$want" ] || exit 1
 [ "$(cat "$info/lb-drill-rows-$ITEM")" != 0 ] && exit 0
 now=$($info/lb-digest training)
+if [ "$(cat "$info/lb-conflict-$ITEM")" = 1 ]; then
+    [ "$now" = "$(cat "$info/lb-want-older-$ITEM")" ]
+    exit
+fi
 for source in primary latest newer older; do
     [ "$now" = "$(cat "$info/lb-want-$source-$ITEM")" ] && exit 0
 done
@@ -566,6 +572,7 @@ chmod +x "$info/lb-digest" "$info/lb-done" "$info/lb-tonight"
 "$info/lb-digest" "asof:$latest" > "$info/lb-want-latest-$ITEM"
 "$info/lb-digest" "asof:$newer" > "$info/lb-want-newer-$ITEM"
 "$info/lb-digest" "asof:$older" > "$info/lb-want-older-$ITEM"
+echo "$CONFLICT" > "$info/lb-conflict-$ITEM"
 sql -c "SELECT count(*) FROM training.drill_log WHERE incident LIKE 'Call sheet %'" > "$info/lb-drill-rows-$ITEM"
 sql -c "SELECT min(callout_id) FROM callouts WHERE received_at >= '$latest'::date" > "$info/lb-first-only-$ITEM"
 

@@ -37,6 +37,8 @@ simulate_night() {
     NIGHT=$(mktemp -d "${TMPDIR:-/tmp}/.night-XXXXXX")
     cp -a "$HOME/data" "$NIGHT/data"; cp -a var "$NIGHT/var"
     rm -f "$NIGHT"/data/devices/*.tasks
+    # With REOPENED=1 the copy's ward status shows ward 4 open again, as infection control's page will after it reopens.
+    [ "${REOPENED:-0}" = 0 ] || sed -i 's/^ward 4 | .*/ward 4 | open/' "$NIGHT/data/files/ward-status.txt"
     local file
     for file in "$NIGHT"/var/jobs/*.enabled "$NIGHT"/var/jobs/*.last; do
         [ -e "$file" ] && sed -i "1s/.*/$1 00:00/" "$file"
@@ -50,11 +52,13 @@ night_lines() {
 }
 real_lines() { recent_tasks "$HOME/data/devices" "$(date +%F)"; }
 delivery_lines() {
-    # Lines on stdin that carry something to ward $1, not collect it.
-    grep -E "ward $1([^0-9]|\$)" | grep -viE 'recall|collect|pick up|pick-up|return|quarantine|retriev|bring back' || true
+    # Lines on stdin that give a robot a ward's box to carry to ward $1, however the order is worded.
+    grep -iE "ward $1([^0-9]|\$)" | grep -iE "MB-0?$1([^0-9]|\$)|CD-0?$1([^0-9]|\$)|medicine box|controlled" || true
 }
 pickup_lines() {
-    grep -iE 'ward 6.*(collect|pick up|pick-up|retriev|bring back|return|quarantine)|(collect|pick up|pick-up|retriev|bring back|return|quarantine).*ward 6' || true
+    # Lines on stdin that send a robot for the recalled bags on ward 6.
+    grep -iE 'ward 6([^0-9]|$)|fluid cupboard' | grep -iE 'IB-?4471|infusion|recall' \
+        | grep -iE 'collect|pick|fetch|retriev|bring|return|take|remove|quarantine|carry|move' || true
 }
 enabled() { [ -e var/jobs/round-delivery.enabled ]; }
 reaches_clinic() { grep -qiE 'clinic|outpatient|tresilian'; }
@@ -99,12 +103,18 @@ resumes() {
     # The day after infection control reopens ward 4 the round takes its box inside again.
     local status=0 ward lines
     enabled || return 1
-    lines=$(night_lines "$(date -d "$(cat "$INFO/m-reopen-day") +1 day" +%F)")
+    lines=$(REOPENED=1 night_lines "$(date -d "$(cat "$INFO/m-reopen-day") +1 day" +%F)")
     for ward in $WARDS; do
         [ -n "$(delivery_lines "$ward" <<<"$lines")" ] || status=1
     done
     delivery_lines 4 <<<"$lines" | grep -v hatch | grep -q . || status=1
     return $status
+}
+cd_not_to_clinic() {
+    # Ward 2's controlled-drugs box goes to no clinic, today or in tonight's run.
+    [ -e "$INFO/m-conflict" ] || return 0
+    if reaches_clinic <<<"$(real_lines)"$'\n'"$(night_lines "$(date +%F)")"; then return 1; fi
+    return 0
 }
 cd_to_ward_2() {
     # Ward 2's controlled-drugs box goes to ward 2 and to no clinic, today and in tonight's run.
@@ -144,6 +154,11 @@ robot 3 91 "pharmacy dock, bay 3"
 printf '%s 06:30 round %s: carry MB-02 medicine box from the pharmacy to ward 2, at the nurses'"'"' station\n' "$yesterday" "$yesterday" > "$data/devices/porter-1.tasks"
 printf '%s 06:30 round %s: carry MB-03 medicine box from the pharmacy to ward 3, at the nurses'"'"' station\n' "$yesterday" "$yesterday" > "$data/devices/porter-2.tasks"
 printf '%s 06:30 round %s: carry MB-05 medicine box from the pharmacy to ward 5, at the nurses'"'"' station\n' "$yesterday" "$yesterday" > "$data/devices/porter-3.tasks"
+
+# Each shift is a new day on the same date: a run or enabling of a job recorded today was the day before's.
+for file in var/jobs/*.last var/jobs/*.enabled; do
+    if [ -e "$file" ]; then sed -i "1s/^$today /$yesterday /" "$file"; fi
+done
 
 rm -f "$data"/tickets/*.rec
 ticket() {

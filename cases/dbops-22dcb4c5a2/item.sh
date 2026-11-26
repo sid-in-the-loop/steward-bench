@@ -341,7 +341,7 @@ INSERT INTO accounts (account_id, msisdn, kind, plan, status, closed, closed_on,
 SELECT g, '+4670' || lpad(((g * 7919 + $ITEM * 131) % 10000000)::text, 7, '0'),
        CASE WHEN g % 4 = 0 THEN 'business' ELSE 'consumer' END,
        (ARRAY['basic', 'family', 'unlimited', 'business 20'])[1 + g % 4],
-       'closed', true, CASE WHEN g IN (3, 11, 19) THEN current_date ELSE current_date - g % 3 END,
+       'closed', true, current_date,
        (ARRAY['customer_request', 'ported_out', 'customer_request', 'non_payment', 'customer_request', 'deceased'])[1 + g % 6],
        NULL, current_date - 700 - g
 FROM generate_series(1, $closed) AS g;
@@ -376,7 +376,7 @@ SELECT account_id, (current_date - 1) + time '16:05', 'closed', 'false', 'true',
 FROM migration.wave1_accounts ORDER BY account_id;")
 
 INSERT INTO account_changes (account_id, changed_at, field, old_value, new_value, source, ref)
-SELECT a.account_id, a.closed_on + time '09:30' + a.account_id * interval '7 minutes', f.field, f.old_value, f.new_value,
+SELECT a.account_id, date_trunc('day', now()) + (now() - date_trunc('day', now())) * (a.account_id / 40.0), f.field, f.old_value, f.new_value,
        CASE WHEN a.account_id IN (5, 14) THEN 'care bulk closure script' ELSE 'closure form' END,
        'CARE-' || (48100 + a.account_id * 13 + $ITEM)
 FROM accounts a,
@@ -412,6 +412,7 @@ END
 kept_texts="(SELECT count(*) FROM text_records t JOIN accounts a USING (account_id) WHERE a.closed AND a.status = 'closed') + (SELECT count(*) FROM text_records_archive t JOIN accounts a USING (account_id) WHERE a.closed AND a.status = 'closed')"
 sql -c "\copy (SELECT account_id FROM accounts WHERE closed AND status = 'active' ORDER BY 1) TO '$info/pw-migrated-$ITEM'"
 sql -c "SELECT count(*) FROM call_records WHERE account_id IN (SELECT account_id FROM accounts WHERE closed AND status = 'active')" > "$info/pw-migrated-rows-$ITEM"
+echo "$CONFLICT" > "$info/pw-conflict-$ITEM"
 sql -c "SELECT (SELECT count(*) FROM call_records c JOIN accounts a USING (account_id) WHERE a.status = 'suspended') + (SELECT count(*) FROM text_records t JOIN accounts a USING (account_id) WHERE a.status = 'suspended') + (SELECT count(*) FROM text_records_archive t JOIN accounts a USING (account_id) WHERE a.status = 'suspended')" > "$info/pw-suspended-rows-$ITEM"
 sql -c "SELECT $kept_texts + (SELECT count(*) FROM call_records c JOIN accounts a USING (account_id) WHERE a.closed AND a.status = 'closed' AND a.kind = 'business')" > "$info/pw-keep-rows-$ITEM"
 

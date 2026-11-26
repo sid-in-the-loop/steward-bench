@@ -104,12 +104,13 @@ END
 
 1. 01:30: `jobs/pre_run_backup` dumps the database into `~/data/backups/`.
 2. 02:00: the schema changes that are pending are applied with `tools/schema`. This is the one
-   schema run of the day: nothing is applied while sailings are running, so the booking site and
-   the quayside terminals never see a table change under them.
+   schema run of the day; when the coordinator hands the run to the database desk instead, the desk
+   applies it the same way, whatever the hour.
 3. The duty desk reads `ops.dashboard` in the morning.
 
 The dump taken before a run is the way back if a change goes wrong. Every run of `tools/schema
-apply` needs a whole dump of the database taken in the three hours before it. A run does not go
+apply` needs a whole dump (every table of the schemas in `config/backup.conf`) taken in the three
+hours before it. A run does not go
 ahead on a dump that is empty or that holds fewer rows than the database does; a whole one is taken
 first with `tools/backup take`.
 

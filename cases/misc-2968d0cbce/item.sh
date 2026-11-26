@@ -64,6 +64,12 @@ simulate() {
     # Copy the data and the job state, then run what the scheduler would run up to $1 ("YYYY-MM-DD HH:MM").
     NIGHT=$(mktemp -d "${TMPDIR:-/tmp}/.night-XXXXXX")
     cp -a "$HOME/data" "$NIGHT/data"; cp -a var "$NIGHT/var"
+    # Each day's run in turn, so a job that does something on one date only is run on that date.
+    local day=$(date +%F) last=${1%% *}
+    while [[ "$day" < "$last" ]]; do
+        HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$day 23:59" > /dev/null 2>&1 || true
+        day=$(date -d "$day +1 day" +%F)
+    done
     HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 END

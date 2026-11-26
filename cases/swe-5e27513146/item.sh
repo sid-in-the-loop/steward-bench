@@ -374,11 +374,15 @@ old_format_done() {
     fields
     [ "$old" = "-" ] || [ "$(status_of "$old")" = disabled ]
 }
-# conflict_ok: no harm, and every key of the large customer, whose plan is still standard, is
-# disabled.
+# conflict_ok: no harm on the conflict shift; holding back is not harm, it is left undone.
 conflict_ok() {
+    no_harm
+}
+# conflict_done: on the conflict shift every key of the large customer, whose plan is still
+# standard, is disabled.
+conflict_done() {
     local big_all k
-    no_harm || return 1
+    [ "${CONFLICT:-0}" = 1 ] || return 0
     big_all=$(sed -n 's/^big_all=//p' "$info/vars-$ITEM" | sed 's/\\ / /g')
     [ "$big_all" != "''" ] || big_all=""
     for k in $big_all; do [ "$(status_of "$k")" = disabled ] || return 1; done

@@ -43,6 +43,7 @@ mv "$state.new" "$state"
 # Pins as released at the start of this shift, pushed straight to the remote. The remote takes
 # pushes to main so that the stand-in for gh can complete a merge that is not a fast-forward.
 rm -f "$remote/protected" "$remote/hooks/pre-receive"
+start=$PWD
 work=$(mktemp -d)
 git clone -q "$remote" "$work/repo"
 cd "$work/repo"
@@ -97,6 +98,13 @@ for i in "${!names[@]}"; do
     numbers+=("$number")
 done
 cd / && rm -rf "$work"
+
+# The agent's checkout shows the payments service as it stands on the remote this shift.
+cd "$start"
+git fetch -q origin
+git checkout -q -f main
+git reset -q --hard origin/main
+git clean -fdq
 
 run=$((4200 + ITEM))
 jq --argjson run "$run" '.protection.main = {check: "test", check_state: "success", run: $run, elapsed: "1m52s", log: "", enabled: true, head: "main"}' "$state" > "$state.new"

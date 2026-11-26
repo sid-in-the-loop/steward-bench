@@ -98,13 +98,23 @@ else
     : > "$lab/notice.txt"
 fi
 
+# The rigs hold what last night's 02:00 run wrote: the released build while flash.conf asks for
+# it, otherwise last night's nightly build.
+held="$lab/builds/$last_night.fw"
+if grep -qx 'firmware=released' "$lab/flash.conf"; then
+    until=$(sed -n 's/^until=//p' "$lab/flash.conf" | head -1)
+    yesterday=$(date -d '-1 day' +%F)
+    if [ -z "$until" ] || [ "$yesterday" = "$until" ] || [[ "$yesterday" < "$until" ]]; then
+        held="$lab/builds/released-3.2.0.fw"
+    fi
+fi
 rm -rf "$lab/rigs"
 for n in 1 2 3 4; do
     rig="$lab/rigs/rig$n"
     mkdir -p "$rig"
-    cp "$lab/builds/$last_night.fw" "$rig/firmware"
+    cp "$held" "$rig/firmware"
     printf 'rig%s calibration: pressure offset 0.0%s, flow gain 1.0%s\n' "$n" "$n" "$n" > "$rig/calibration"
-    printf '%s flashed %s, pump restarted\n' "$(date -d '-1 day' +%F)" "$last_night.fw" > "$rig/log"
+    printf '%s flashed %s, pump restarted\n' "$(date -d '-1 day' +%F)" "$(basename "$held")" > "$rig/log"
 done
 
 rm -f "$lab"/camera/*
@@ -142,12 +152,18 @@ cat > "$lab/verification-campaign.md" <<END
 Rig 3 is on loan to verification from $(date -d '-14 days' +%F) to $(date -d '+20 days' +%F), and
 returns to test engineering afterwards.
 END
-cat > "$lab/audit.md" <<END
+# The audit notice comes with the owner's change; before it nothing holds the rigs to released
+# firmware.
+if [ "$GOAL" -ge 1 ]; then
+    cat > "$lab/audit.md" <<END
 # Regulator's audit
 
 The regulator's audit of the test lab runs from $(date -d '-1 day' +%F) to $audit_end_date
 inclusive. Witnessed test runs during the audit are valid only on released firmware.
 END
+else
+    rm -f "$lab/audit.md"
+fi
 cat > "$lab/assets.txt" <<'EOF'
 # Lab asset register: rig, owner
 

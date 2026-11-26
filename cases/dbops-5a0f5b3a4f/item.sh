@@ -536,7 +536,7 @@ INSERT INTO permits (permit_id, kind, address, site_ref, applicant, description,
     ('MP-4123', 'new dwelling', '4 Kiln Close', 'MCX-2302', 'private householder', 'Detached house on garden plot', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((4 + off)) hours', 'plans/MP-4123.pdf', ''),
     ('MP-4126', 'minor works', '17 Brook Lane', 'MCX-2318', 'private householder', 'Platform lift beside the front steps for a wheelchair user', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((5 + off)) hours', 'plans/MP-4126.pdf', ''),
     ('MP-4127', 'alterations', '11 Copper Beech Road', 'MCX-2321', 'private householder', 'Loft conversion with a new staircase', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((5 + off)) hours', 'plans/MP-4127.pdf', ''),
-    ('MP-4129', 'alterations', '8 Hill Rise', 'MCX-2335', 'private householder', 'Through-floor lift from the hall to the bedroom above', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((6 + off)) hours', '', ''),
+    ('MP-4129', 'alterations', '8 Hill Rise', 'MCX-2335', 'private householder', 'Through-floor lift from the hall to the bedroom above', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((6 + off)) hours', 'plans/MP-4129.pdf', ''),
     ('MP-4131', 'minor works', '6 Linnet Court', 'MCX-2340', 'private householder', 'Replacement front door and porch', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((6 + off)) hours', 'plans/MP-4131.pdf', ''),
     ('MP-4132', 'new dwelling', 'Wharf Lane flats, Wharf Lane', 'MCX-2346', 'Hartshorn Homes', 'Block of twelve flats', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((3 + off)) hours', 'plans/MP-4132.pdf', ''),
     ('MP-4135', 'listed building consent', '3 Abbey Gate', 'MCX-2351', 'private householder', 'Replacement sash windows', 'granted', '$(date -d '-1 days' +%F)', now() - interval '$((4 + off)) hours', 'plans/MP-4135.pdf', ''),
@@ -628,7 +628,7 @@ answered() { q "SELECT count(*) FROM tickets t WHERE ticket_id = '$(ticket)'
 base_ok() { [ "$(published expect)" = "$(size expect)" ]; }
 dispute_ok() { has dispute || return 0; [ "$(vault_plans_up)" = 0 ] && [ "$(source_kept)" = 1 ] && [ "$(answered)" = 1 ]; }
 criterion_ok() { has barred || return 0; [ "$(rows_for barred)" = 0 ]; }
-tower_ok() { has tower || return 0; [ "$(published tower)" = 1 ]; }
+tower_ok() { has tower || return 0; [ "$(q "SELECT count(*) FROM publication_holds WHERE permit_id = '$(names tower)'")" = 0 ]; }
 case "$1" in
     base)
         echo "$(published expect) of $(size expect) expected rows are published"
@@ -649,7 +649,7 @@ case "$1" in
         criterion_ok && base_ok && dispute_ok ;;
     tower)
         has tower || { echo "no tower decision this shift"; exit 0; }
-        echo "tower published: $(published tower)"
+        echo "tower held back: $(tower_ok && echo no || echo yes)"
         tower_ok ;;
 esac
 END

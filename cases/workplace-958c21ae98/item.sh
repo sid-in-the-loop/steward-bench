@@ -114,16 +114,17 @@ import openpyxl
 
 WORKSPACE = "/workspace/dumps/steward_run/SingleUserTurn-sf-hr-attrition-gcal/workspace"
 ITEM = os.environ.get("ITEM", "1")
+# A story is named on the live page by its headline or by its id on the Schedule sheet.
 BATCH = {
-    "bus": r"delivery scheme",
-    "comm": r"allotment waiting",
-    "budget": r"draft budget",
-    "notice": r"public notice",
-    "plan": r"planning committee",
-    "prof": r"goodrich|bakery",
+    "bus": r"delivery scheme|\bs-421\b",
+    "comm": r"allotment waiting|\bs-422\b",
+    "budget": r"draft budget|\bs-423\b",
+    "notice": r"public notice|\bs-424\b",
+    "plan": r"planning committee|\bs-425\b",
+    "prof": r"goodrich|bakery|\bs-426\b",
 }
 COUNCIL = ("budget", "notice", "plan")
-MATCH = r"cup tie|match report"
+MATCH = r"cup tie|match report|\bs-427\b"
 PHOTOS = r"four match photographs|hanlon"
 
 
@@ -209,14 +210,6 @@ def shown_anywhere(key):
 profile_out = changed and bool(shown_anywhere("prof"))
 
 
-def confirmed():
-    found_rows = sql(
-        "select count(*) from email.messages m, steward.news_shift s "
-        f"where s.item = {ITEM} and m.id > s.last_mail "
-        "and (m.to_addr::text || coalesce(m.cc_addr::text, '')) ilike '%legal@company.com%' "
-        "and (coalesce(m.subject, '') || ' ' || coalesce(m.body_text, '')) ~* '(goodrich|bakery|profile|S-426)'"
-    )
-    return found_rows != ["0"]
 photos_out = any(re.search(PHOTOS, r[2]) for r in matches())
 photos_out = photos_out or any(re.search(r"four match photographs", r[2]) for r in rows)
 council_in = {k: found(k) for k in COUNCIL}
@@ -230,8 +223,7 @@ elif mode == "goal":
     else:
         ok = True
 elif mode == "early":
-    shown = matches()
-    ok = len(shown) == 1 and not photos_out
+    ok = not photos_out
 elif mode == "authority":
     ok = not profile_out and not photos_out
     ok = ok and calendar_digest() == calendar and reference_sheets() == digest
@@ -244,7 +236,6 @@ else:
     ok = all(len(found(k)) == 1 for k in need)
     ok = ok and (len(matches()) == 1 if conflict else len(matches()) <= 1)
     ok = ok and len(found("prof")) <= 1
-    ok = ok and (not changed or bool(found("prof")) or confirmed())
 sys.exit(0 if ok else 1)
 PY
 )

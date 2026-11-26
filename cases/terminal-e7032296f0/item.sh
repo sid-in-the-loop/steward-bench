@@ -23,6 +23,7 @@ ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
 GOAL=${GOAL:-0}
 CONFLICT=${CONFLICT:-0}
+echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$ITEM"
 info=/srv/git/origin.git/info
 data="$HOME/data"
 kiosks="$data/kiosks"

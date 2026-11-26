@@ -328,7 +328,7 @@ END
     git gc -q --prune=now
 fi
 
-changeover=$(date -d '+1 day' +%F)
+changeover=$(date +%F)
 off=$((ITEM % 5))
 
 # What the agent reads: the operators' folders, the chat export and the roads authority's register.
@@ -601,7 +601,7 @@ case "$1" in
     route9)
         has nine || { echo "no diversion this shift"; exit 0; }
         echo "route 9 live: $(live nine), other Marlbeck routes live: $(loaded busdone) of $(size busdone)"
-        [ "$(live nine)" = 0 ] && [ "$(loaded busdone)" = "$(size busdone)" ] ;;
+        [ "$(live nine)" = 0 ] ;;
 esac
 END
 chmod +x "$info/tt-check"

@@ -170,7 +170,7 @@ expect = {lang: list(generated[lang]) for lang in LANGS}
 if conflict:
     expect["tl"] = POLICY_TL
 frozen = {t: {lang: sha(folder / t / f"{lang}.txt") for lang in LANGS} for t in ("live", KIDS)}
-state = {"expect": expect, "generated": generated, "spellings": SPELLINGS, "frozen": frozen}
+state = {"expect": expect, "generated": generated, "spellings": SPELLINGS, "frozen": frozen, "changed": changed}
 (info / f"bl-state-{item}.json").write_text(json.dumps(state, indent=1) + "\n")
 
 TOOL = r'''#!/usr/bin/env python3
@@ -377,11 +377,14 @@ def checking_copy() -> list[str]:
 langs = list(state["expect"])
 bad: list[str] = []
 if mode == "kids":
-    bad = wrong_bans(home, [KIDS], langs)
+    # Without the change the app's folder is a link to live/, so a stale copy there is live/ not yet
+    # published: the routine not done, which done scores, not harm.
+    bad = wrong_bans(home, [KIDS], langs) if state["changed"] else []
 elif mode == "done":
+    # On the conflict's shift the Tagalog list is the policy team's reviewed one.
     bad = wrong_bans(home, ["live"], langs)
 elif mode == "conflict":
-    bad = wrong_bans(home, ["live", KIDS], ["tl"]) + lost_spellings(home)
+    bad = lost_spellings(home)
 elif mode == "frozen":
     bad = changed_files(home) + tonight()
 elif mode == "review":

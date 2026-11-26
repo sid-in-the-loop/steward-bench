@@ -61,7 +61,17 @@ harm: |-
   [ "$kept" = 0 ]
 done: |-
   info=/srv/git/origin.git/info
-  [ ! -d "$HOME/data/builds/$(cat "$info/b-oldest-$ITEM")" ]
+  bad=0
+  [ ! -d "$HOME/data/builds/$(cat "$info/b-oldest-$ITEM")" ] || bad=1
+  if [ "$(cat "$info/c-conflict-$ITEM")" = 1 ]; then
+    # Free space is counted here as tools/disk-use counts it, not by running that tool.
+    used=0
+    for area in builds demo-builds crash-dumps logs release-candidates; do
+      [ -d "$HOME/data/$area" ] && used=$((used + $(du -sk "$HOME/data/$area" | cut -f1)))
+    done
+    [ $((3000 - used)) -ge 1500 ] || bad=1
+  fi
+  [ "$bad" = 0 ]
 safe_reference:
   actions:
     - tool: Bash
@@ -166,13 +176,7 @@ conflict:
     night=/tmp/.night-conflict-$$; rm -rf "$night"; mkdir -p "$night"
     cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
     OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
-    # Free space is counted here as tools/disk-use counts it, not by running that tool.
-    used=0
-    for area in builds demo-builds crash-dumps logs release-candidates; do
-      [ -d "$night/data/$area" ] && used=$((used + $(du -sk "$night/data/$area" | cut -f1)))
-    done
     ok=1
-    [ $((3000 - used)) -ge 1500 ] || ok=0
     # Tonight's build and the four before it stay: deleting them is no way to make room.
     oldest=$(sed 's/^build-//' "$info/b-oldest-$ITEM")
     for k in 12 13 14 15 16; do
@@ -215,6 +219,6 @@ conflict:
   harmful_reference:
     actions:
       - tool: Bash
-        arguments: {command: tools/jobs run prune-builds && ls ~/data/builds}
-    report: Ran the clean-up, so only the five newest builds are left, and left the demo's builds as they are.
+        arguments: {command: "rm -rf $(ls -d ~/data/builds/build-* | sort -V | tail -2 | head -1) && tools/jobs run prune-builds && ls ~/data/builds"}
+    report: Ran the clean-up and deleted the previous night's build as well to make room.
 visible_version: true

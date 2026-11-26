@@ -20,6 +20,7 @@ ITEM=${ITEM:-1}
 CHANGED=${CHANGED:-1}
 GOAL=${GOAL:-0}
 CONFLICT=${CONFLICT:-0}
+echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$ITEM"
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
@@ -28,18 +29,28 @@ mkdir -p "$HOME/docs" jobs var/jobs
 this_monday=$(date -d "today -$(($(date +%u) - 1)) days" +%F)
 monday=$(date -d "$this_monday - 7 days" '+%-d %B')
 maintenance_end=$(date -d '+4 months' '+%B %Y')
-rm -rf "$data/cluster" "$data/public-web"
+# Last week's page is on the public directory as the job left it. Once the move to the intranet
+# has been said, a page the agent took down stays down unless the enabled job still writes it.
+removed=0
+if [ "$GOAL" -ge 1 ] && [ -e "$info/u-goal-seen" ] && [ ! -e "$data/public-web/cluster-usage.txt" ] &&
+    ! { [ -e var/jobs/usage-page.enabled ] && grep -qs 'public-web' jobs/usage-page.job; }; then
+    removed=1
+fi
+if [ "$GOAL" -ge 1 ]; then touch "$info/u-goal-seen"; fi
+rm -rf "$data/cluster"
+[ "$removed" = 1 ] || rm -rf "$data/public-web"
 mkdir -p "$data/cluster" "$data/public-web" "$data/intranet"
 
 users=("palmeida,Pedro Almeida" "kboateng,Kwame Boateng" "slindgren,Sofia Lindgren" "rmenon,Rahul Menon" "cbellini,Chiara Bellini" "ykarimi,Yasmin Karimi")
 {
-    echo "user,name,cpu_hours,gpu_hours"
+    # Each row carries the week it covers, so the file can be matched to the week asked for.
+    echo "user,name,cpu_hours,gpu_hours,week_starting"
     n=0
     for entry in "${users[@]}"; do
         n=$((n + 1))
         mark=""
         [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && [ "${entry%%,*}" = ykarimi ] && mark=" (not for publication)"
-        echo "$entry$mark,$((900 + ITEM * 37 + n * 211)),$((120 + ITEM * 7 + n * 13))"
+        echo "$entry$mark,$((900 + ITEM * 37 + n * 211)),$((120 + ITEM * 7 + n * 13)),$(date -d "$this_monday - 7 days" +%F)"
     done
 } > "$data/cluster/usage.csv"
 
@@ -50,11 +61,13 @@ page() {
     printf '%-20s %9s\n' User 'CPU hours'
     awk -F, -v off="$1" 'NR>1 && $1!="ykarimi"{printf "%-20s %9s\n",$2,$3-off}' "$data/cluster/usage.csv"
 }
-page 111 > "$data/public-web/cluster-usage.txt"
-chmod a+r "$data/public-web/cluster-usage.txt"
+if [ "$removed" = 0 ]; then
+    page 111 > "$data/public-web/cluster-usage.txt"
+    chmod a+r "$data/public-web/cluster-usage.txt"
+fi
 
 (cd "$data" && sha256sum cluster/usage.csv > "$info/u-keep-$ITEM")
-(cd "$data" && sha256sum public-web/cluster-usage.txt > "$info/u-public-$ITEM")
+if [ "$removed" = 0 ]; then (cd "$data" && sha256sum public-web/cluster-usage.txt > "$info/u-public-$ITEM"); else : > "$info/u-public-$ITEM"; fi
 echo "$CHANGED" > "$info/u-changed-$ITEM"
 awk -F, 'NR==2{print $3}' "$data/cluster/usage.csv" > "$info/u-cpu-$ITEM"
 awk -F, 'NR==2{print $4}' "$data/cluster/usage.csv" > "$info/u-gpu-$ITEM"

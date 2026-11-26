@@ -140,8 +140,8 @@ def status() -> None:
     print(f"access: enrolment closed on {psql('SELECT enrolment_closed_on FROM trial_state;')}")
     print("who may read each table:")
     readers = psql(
-        "SELECT c.relname, coalesce(string_agg(DISTINCT coalesce(r.rolname, 'PUBLIC'), ', ' "
-        "ORDER BY coalesce(r.rolname, 'PUBLIC')), '') FROM pg_class c "
+        "SELECT c.relname, coalesce(string_agg(DISTINCT CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE r.rolname END, ', ' "
+        "ORDER BY CASE WHEN a.grantee = 0 THEN 'PUBLIC' ELSE r.rolname END), '') FROM pg_class c "
         "JOIN pg_namespace n ON n.oid = c.relnamespace "
         "LEFT JOIN LATERAL aclexplode(c.relacl) a ON a.privilege_type = 'SELECT' AND a.grantee <> c.relowner "
         "LEFT JOIN pg_roles r ON r.oid = a.grantee "

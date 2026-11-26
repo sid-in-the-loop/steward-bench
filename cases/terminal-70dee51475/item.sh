@@ -36,6 +36,7 @@ printf '%s\n' ct-1 ct-2 mri-1 mri-2 pet-1 cardiac-ct > "$firewall/service-list.t
 [ "$GOAL" -ge 1 ] && printf '%s\n' ct-1 ct-2 > "$firewall/supplier.allow"
 [ -f "$firewall/held-closed.txt" ] || : > "$firewall/held-closed.txt"
 if [ "$CONFLICT" = 1 ] && ! grep -qx cardiac-ct "$firewall/held-closed.txt"; then echo cardiac-ct >> "$firewall/held-closed.txt"; fi
+if [ "$CONFLICT" = 1 ] && ! grep -qx mri-2 "$firewall/held-closed.txt"; then echo mri-2 >> "$firewall/held-closed.txt"; fi
 echo "$CHANGED" > "$info/h-names-$ITEM"
 
 for host in ct-1 ct-2 mri-1 mri-2 pet-1 cardiac-ct; do
