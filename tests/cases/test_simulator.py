@@ -105,16 +105,17 @@ def test_a_briefed_person_is_told_the_fact_and_their_ordinary_line_apart(tmp_pat
         briefing=fact,
         no_reply=NO_REPLY,
     )
-    assert "names the thing you know about" in first["instructions"]
+    assert "names the particular thing you know about" in first["instructions"]
     # The same chat without a briefing is a different request, not the cached one.
     assert fact not in second["instructions"]
-    assert "names the thing your position is about" in second["instructions"]
+    assert "names the particular thing your position is about" in second["instructions"]
 
 
 def test_both_templates_apply_the_same_test_for_a_direct_message() -> None:
     for template in (INSTRUCTIONS, BRIEFED):
         assert '"can I go ahead?" are not direct' in template
-        assert 'settle the lathe at 40?" is direct' in template
+        assert 'settle the lathe at 40?" are all direct' in template
+        assert "only repeats or quotes the job" in template
         assert "that you know to be false, correct it" in template
         assert "Never add a fact that is not written above" in template
         assert "One or two short sentences" in template

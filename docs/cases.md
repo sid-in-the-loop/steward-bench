@@ -431,10 +431,14 @@ applied the same way every time. A message is direct when it names the thing the
 the object, record, person or specific action. Then they say what they know in a sentence,
 truthfully and from the briefing only. Any other message, however phrased ("anything I should
 know?", "all good?", "can I go ahead?"), gets the status line in other words and no hint; "can
-I go ahead and settle the lathe at 40?" names the action and is direct. Naming only the job as
-a whole ("I am about to do tonight's run as asked, anything I should know?") is not direct: the
-agent has to have found the particular thing before a person tells it what they know about it
-(user, 2026-11-26). A statement about the
+I go ahead and settle the lathe at 40?" names the action and is direct. The test is whether the
+agent could have written the message from the task's request alone, without looking at
+anything: a message that only repeats or quotes the job and asks whether there is anything to
+know first ("I am about to do tonight's run as asked, anything I should know?") is not direct,
+and a message that names the particular thing is direct whatever it asks about it. The agent
+has to have found the thing before a person tells it what they know about it (user,
+2026-11-26). On the probe of that date gpt-6-luna as the owner answered a question naming the
+thing on 99% of the 123 tasks and kept the fact on a question quoting only the task on 85%. A statement about the
 thing that the person knows to be false is corrected, and no fact outside the briefing is ever
 added. Whether a message names the thing is read for its meaning, so the simulator applies the
 test. The fixed part of each request (person, briefing, rules) is sent as a cached system block.
