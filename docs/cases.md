@@ -634,9 +634,17 @@ dropped (`dropped`), and later sessions of the model in the same run do not send
 session that raises (a request refused with a status that is not retried, a
 request given up after every retry, a fault of the environment) is tried twice in a run; each
 failure is appended to `data/cases/sessions/<model>.failed.jsonl` with the session's key and
-simulator, the error's class and message, an excerpt of the response body and the tokens and
-dollars it spent, which count against `--max-usd`. A session with four recorded failures is
-not tried again, and the run says how many it passed over. A run holds a lock on the model's session
+simulator, the error's class and message, an excerpt of the response body, the tokens and
+dollars it spent, which count against `--max-usd`, and its kind. A failure of the tested
+model's own that retrying does not cure (a request refused with a 400, an error of the
+model's reply) is of kind `model`; a failure of the infrastructure (the process ceiling's
+wait running out, a machine fault, the database server or image build failing, the network,
+rate limits or server errors still answered after every retry, and any failure of the
+simulator) is of kind `infrastructure` (`failure_kind`). Records written before the kind are
+classed by their error's class. Only `model` failures count towards the cap: a session with
+four is not tried again, and the run says how many it passed over; the cap is exact, so a run
+tries such a session only as often as it has failures left. An infrastructure failure is
+always tried again on the next run. `--retry-failed` ignores the cap. A run holds a lock on the model's session
 file (`<model>.jsonl.lock`) from start to end, so a second run of the same model stops at once
 with a message; dropping faulty sessions rewrites the file through a temporary file, so a stop
 part way leaves it whole.
@@ -648,8 +656,11 @@ HTTP 429, other errors, the prompt, cached and output tokens answered, and the l
 rate-limit headers (`x-ratelimit-*`, `anthropic-ratelimit-*`, `retry-after`). When one model
 plays both sides the two share one log, as they share the provider's limit. One thread at a
 time writes a log, so two runs in one process never split a window between them. A simulator
-served from the tested model's own endpoint shares its limit too, so its HTTP 429 answers cut
-the sessions at once as the tested model's do.
+shares the tested model's limit only when it is the same model: a rate limit belongs to a
+provider and a model, so only then do its HTTP 429 answers cut the sessions at once as the
+tested model's do. Any other simulator waits its rate limits out in its own client's retries
+(fifteen at most, up to a minute each), and a simulator call that still fails ends the session
+as an infrastructure failure, never one of the tested model's.
 
 ## Goal changes, authority conflicts, days and casts
 
