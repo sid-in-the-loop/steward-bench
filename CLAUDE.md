@@ -36,6 +36,9 @@ brief is met, post a short summary, and wait. Do not start Phase 2.
   deterministic: trajectory_id is `{source}:{native_id}`, candidates are
   `{trajectory_id}#t{step}`.
 - Modules, functions and files are named for what they do.
+- The benchmark's vocabulary is fixed in docs/framework.md. Use those terms and no others in
+  answers, docs, tables and plots. Never coin a new term or a synonym for one of them; if a
+  concept seems to lack a name, ask before naming it.
 
 ## Data
 
