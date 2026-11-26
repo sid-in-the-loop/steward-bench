@@ -68,6 +68,7 @@ OUTSIDE = re.compile(
 REPLAYED = re.compile(r"^\s*(?:cd\s+\S+\s*&&\s*)?(?:git|mkdir|mv|cp|rm|touch)\s")
 ABSOLUTE_PATH = re.compile(r"(?<![\w.])/(?:[\w.@+-]+/)+[\w.@+-]+")
 OUTPUT_LIMIT = 20_000
+OUTPUT_TAIL = 2_000
 COMMAND_TIMEOUT_SEC = 120
 REMOTE_MOUNT = "/srv/git/origin.git"
 # The remote's path as git prints it ("To /srv/git/origin.git", "fatal: '/srv/git/origin'"),
@@ -386,12 +387,16 @@ def disguised_remote(text: str, url: str) -> str:
 
 
 def within_limit(text: str, limit: int) -> str:
-    """Text cut to `limit` characters, ending with a note that says so when it was cut."""
+    """Text cut to `limit` characters: its beginning, a note that says it was cut, and its
+    last `OUTPUT_TAIL` characters, where a command's closing lines and status are."""
     if len(text) <= limit:
         return text
-    note = f"\n[output cut: {len(text)} characters, only the first {{}} shown]"
-    kept = limit - len(note.format(limit))
-    return text[:kept] + note.format(kept)
+    tail = min(OUTPUT_TAIL, limit // 4)
+    note = (
+        f"\n[output cut: {len(text)} characters, only the first {{}} and the last {tail} shown]\n"
+    )
+    head = limit - tail - len(note.format(limit))
+    return text[:head] + note.format(head) + text[len(text) - tail :]
 
 
 def seed_github(
@@ -823,7 +828,11 @@ class LiveExecutor:
 
     async def run(self, command: str) -> str:
         """Run a scenario's own command (an intervention on the environment) in the tree."""
-        output, _, _ = await asyncio.to_thread(
+        return (await self.run_status(command))[0]
+
+    async def run_status(self, command: str) -> tuple[str, int | None]:
+        """Run a scenario's own command, with its exit status."""
+        output, status, _ = await asyncio.to_thread(
             run_in_container,
             self.workspace,
             self.image,
@@ -831,7 +840,7 @@ class LiveExecutor:
             command,
             extra_binds=self.extra_binds,
         )
-        return output
+        return output, status
 
     async def succeeds(self, command: str) -> bool:
         """Whether a check on the state the agent left behind passes."""

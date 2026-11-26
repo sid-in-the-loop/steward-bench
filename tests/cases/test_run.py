@@ -1,6 +1,7 @@
 """The run loop, the check reader and the handling of machine faults, on a fake environment."""
 
 import asyncio
+import re
 import subprocess
 from pathlib import Path
 
@@ -10,6 +11,7 @@ from steward.cases.case import Case, load_case
 from steward.cases.commands import done_keys, drop_faulty_runs
 from steward.cases.conditions import CONDITIONS
 from steward.cases.run import STATUS_MARK, CaseSession, CheckedWorld, MachineFaultError, checked
+from steward.environment import workspace as ws
 from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
 from steward.execution.policy import ScriptedPolicy, Turn
 from steward.execution.record import Action
@@ -93,26 +95,30 @@ def test_a_condition_without_an_informing_line_says_nothing_unasked(case: Case) 
     assert [e.who for e in events if e.kind == "message"] == ["requester"]
 
 
-def reader(outputs: list[str]):
+def reader(outputs: list[str], status: int | None = None):
+    """A runner that answers each command with the next output, with every `MARK` in it
+    replaced by the mark the command prints its status after."""
     left = list(outputs)
 
-    async def read(command: str) -> str:
-        return left.pop(0)
+    async def read(command: str) -> tuple[str, int | None]:
+        found = re.search(rf"echo ({STATUS_MARK}[0-9a-f]+:)", command)
+        mark = found.group(1) if found else ""
+        return left.pop(0).replace("MARK", mark), status
 
     return read
 
 
 def test_a_check_status_is_read_from_the_mark_even_with_error_text_after_it() -> None:
-    passed, printed = asyncio.run(checked(reader([f"{STATUS_MARK}0\nwarning: something"]), "true"))
+    passed, printed = asyncio.run(checked(reader(["MARK0\nwarning: something"]), "true"))
     assert passed is True and printed == "warning: something"
-    assert asyncio.run(checked(reader([f"no\n{STATUS_MARK}1"]), "false")) == (False, "no")
+    assert asyncio.run(checked(reader(["no\nMARK1"]), "false")) == (False, "no")
 
 
-async def in_bash(command: str) -> str:
+async def in_bash(command: str) -> tuple[str, int | None]:
     done = await asyncio.to_thread(
         subprocess.run, ["bash", "-c", command], capture_output=True, text=True
     )
-    return done.stdout + done.stderr
+    return done.stdout + done.stderr, done.returncode
 
 
 def test_a_check_that_exits_is_read_and_sees_what_was_exported_before_it() -> None:
@@ -122,15 +128,46 @@ def test_a_check_that_exits_is_read_and_sees_what_was_exported_before_it() -> No
     assert asyncio.run(checked(in_bash, "set -e\nfalse\necho unreachable")) == (False, "")
 
 
-def test_a_check_that_hit_a_machine_fault_is_run_again(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def no_sleep(_: float) -> None:
+def test_a_check_cannot_print_its_own_passing_status() -> None:
+    forged = f"echo {STATUS_MARK}0; echo {STATUS_MARK}deadbeef:0; exit 1"
+    passed, printed = asyncio.run(checked(in_bash, forged))
+    assert passed is False and f"{STATUS_MARK}0" in printed
+
+
+def test_only_the_last_mark_and_the_exit_status_count() -> None:
+    assert asyncio.run(checked(reader(["MARK0\nMARK1"]), "x"))[0] is False
+    assert asyncio.run(checked(reader(["MARK0"], status=1), "x"))[0] is False
+    assert asyncio.run(checked(reader(["MARK0"], status=0), "x"))[0] is True
+
+
+def test_a_check_whose_status_cannot_be_read_fails() -> None:
+    hung = "Command timed out after 120 seconds."
+    assert asyncio.run(checked(reader([hung], status=124), "sleep 999")) == (False, hung)
+    long = "x" * 30_000 + "\nMARK0"
+    passed, _ = asyncio.run(checked(reader([ws.within_limit(long, ws.OUTPUT_LIMIT)]), "x"))
+    assert passed is True
+
+
+def no_sleep(monkeypatch: pytest.MonkeyPatch) -> None:
+    async def sleep(_: float) -> None:
         return None
 
-    monkeypatch.setattr(asyncio, "sleep", no_sleep)
-    fault = f"fatal: Resource temporarily unavailable\n{STATUS_MARK}128"
-    assert asyncio.run(checked(reader([fault, f"{STATUS_MARK}0"]), "x"))[0] is True
+    monkeypatch.setattr(asyncio, "sleep", sleep)
+
+
+def test_a_check_that_hit_a_machine_fault_is_run_again(monkeypatch: pytest.MonkeyPatch) -> None:
+    no_sleep(monkeypatch)
+    fault = "fatal: Resource temporarily unavailable\nMARK128"
+    assert asyncio.run(checked(reader([fault, "MARK0"]), "x"))[0] is True
     with pytest.raises(MachineFaultError):
-        asyncio.run(checked(reader([fault] * 5), "x"))
+        asyncio.run(checked(reader([fault] * 5 + [fault]), "x"))
+
+
+def test_a_fault_the_check_itself_prints_fails_the_check(monkeypatch: pytest.MonkeyPatch) -> None:
+    no_sleep(monkeypatch)
+    printed = "fork: retry: Resource temporarily unavailable\nMARK0"
+    outputs = [printed] * 5 + ["__probe_ok__"]
+    assert asyncio.run(checked(reader(outputs), "x"))[0] is False
 
 
 def test_runs_with_a_machine_fault_are_dropped_so_they_run_again(tmp_path: Path) -> None:

@@ -393,9 +393,10 @@ def test_the_remote_is_shown_as_github_only_where_git_names_it() -> None:
     ]
 
 
-def test_output_over_the_limit_is_cut_with_a_note_inside_the_limit() -> None:
+def test_output_over_the_limit_keeps_its_beginning_and_end_with_a_note_inside_the_limit() -> None:
     assert ws.within_limit("short", 100) == "short"
-    cut = ws.within_limit("x" * 500, 100)
-    assert len(cut) <= 100
-    assert cut.endswith("[output cut: 500 characters, only the first 45 shown]")
-    assert cut.startswith("x" * 45) and cut.count("x") == 45
+    text = "a" * 30_000 + "last line\n"
+    cut = ws.within_limit(text, 20_000)
+    assert len(cut) <= 20_000
+    assert cut.startswith("a" * 1000) and cut.endswith("last line\n")
+    assert "[output cut: 30010 characters, only the first" in cut

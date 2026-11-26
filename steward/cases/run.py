@@ -7,6 +7,7 @@ import asyncio
 import getpass
 import hashlib
 import re
+import secrets
 import shutil
 import socket
 import subprocess
@@ -166,37 +167,70 @@ class RetryingExecutor(LiveExecutor):
         return output.replace(getpass.getuser(), user)
 
     async def succeeds(self, command: str) -> bool:
-        return await passes(self.run, command)
+        return await passes(self.run_status, command)
 
     async def checked(self, command: str, limit: int = CHECK_OUTPUT_LIMIT) -> tuple[bool, str]:
-        return await checked(self.run, command, limit)
+        return await checked(self.run_status, command, limit)
 
 
 class MachineFaultError(RuntimeError):
     """The machine ran out of processes or threads; the run is not a fair run."""
 
 
+# Run a command and return what it printed and, where the runner knows it, its exit status.
+StatusRun = Callable[[str], Awaitable[tuple[str, int | None]]]
+# A harness command that starts a few processes, run when a check keeps printing a machine
+# fault, to tell whether the machine is faulting or the check's own output says so.
+MACHINE_PROBE = "for i in 1 2 3 4 5 6 7 8; do sleep 0.2 & done; wait; echo __probe_ok__"
+
+
+def faulted(output: str) -> bool:
+    return any(fault in output for fault in MACHINE_FAULTS)
+
+
+def runtime_failed(output: str) -> bool:
+    return any(sign in output for sign in RUNTIME_FAILURES)
+
+
 async def checked(
-    run: Callable[[str], Awaitable[str]], command: str, limit: int = CHECK_OUTPUT_LIMIT
+    run: StatusRun, command: str, limit: int = CHECK_OUTPUT_LIMIT
 ) -> tuple[bool, str]:
-    """Whether a check command exits 0, and what it printed. Its status is read from a mark
-    the command prints, so a container that failed to start is told apart from a check that
-    failed. The check runs in a subshell, so an `exit` in it ends the check and not the shell
-    that prints the mark. A check that printed a machine fault is run again: its status says
-    nothing about the state it was meant to read."""
+    """Whether a check command exits 0, and what it printed. The check runs in a subshell, so
+    an `exit` in it ends the check and not the shell that prints its status after it. That
+    status follows a mark drawn afresh for every call, and only the last mark counts, so
+    nothing the check prints can stand in for it; where the runner reports the exit status as
+    well, both must say 0. A check whose status cannot be read, because it hung or was cut
+    off, fails. A check that printed a machine fault is run again; if it still does and the
+    machine itself is not faulting, the fault came from the check's own output and the check
+    fails."""
+    printed = ""
     for attempt in range(RUNTIME_RETRIES):
-        output = await run(f"(\n{command}\n); echo {STATUS_MARK}$?")
-        # Anything the command wrote to its error stream follows the mark in the output.
-        status = re.search(rf"{STATUS_MARK}(\d+)", output)
-        if status and not any(fault in output for fault in MACHINE_FAULTS):
-            printed = output.replace(status.group(0), "").strip()
-            return status.group(1) == "0", printed[-limit:]
-        await asyncio.sleep(3.0 * (attempt + 1))
-    raise MachineFaultError(f"a check could not be run cleanly: {command[:80]}")
+        mark = f"{STATUS_MARK}{secrets.token_hex(8)}:"
+        script = f"exec 2>&1\n(\n{command}\n); __steward_s=$?; echo {mark}$__steward_s; (exit $__steward_s)"
+        output, exit_status = await run(script)
+        statuses = re.findall(rf"{re.escape(mark)}(\d+)", output)
+        printed = re.sub(rf"{re.escape(mark)}\d+\n?", "", output).strip()
+        unclean = faulted(output) or (not statuses and runtime_failed(output))
+        if not unclean:
+            passed = bool(statuses) and statuses[-1] == "0" and exit_status in (0, None)
+            return passed, printed[-limit:]
+        if attempt < RUNTIME_RETRIES - 1:
+            await asyncio.sleep(3.0 * (attempt + 1))
+    probe, _ = await run(MACHINE_PROBE)
+    if faulted(probe) or "__probe_ok__" not in probe:
+        raise MachineFaultError(f"a check could not be run cleanly: {command[:80]}")
+    return False, printed[-limit:]
 
 
-async def passes(run: Callable[[str], Awaitable[str]], command: str) -> bool:
+async def passes(run: StatusRun, command: str) -> bool:
     return (await checked(run, command))[0]
+
+
+def without_status(run: Callable[[str], Awaitable[str]]) -> StatusRun:
+    async def ran(command: str) -> tuple[str, int | None]:
+        return await run(command), None
+
+    return ran
 
 
 class CheckedWorld:
@@ -212,10 +246,10 @@ class CheckedWorld:
         return await self.inner.run(command)
 
     async def succeeds(self, command: str) -> bool:
-        return await passes(self.inner.run, command)
+        return await passes(without_status(self.inner.run), command)
 
     async def checked(self, command: str, limit: int = CHECK_OUTPUT_LIMIT) -> tuple[bool, str]:
-        return await checked(self.inner.run, command, limit)
+        return await checked(without_status(self.inner.run), command, limit)
 
     def attempts(self) -> int:
         """Refused attempts on the owner's rights so far, where the world counts them."""

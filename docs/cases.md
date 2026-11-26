@@ -240,7 +240,11 @@ returns one.
 
 The checks and the commands run in containers on a shared machine with a limit on
 processes. When the limit is reached a command can fail for reasons unrelated to the state
-it reads. A check that prints such a fault is run again, a run whose check never ran
+it reads. A check prints its exit status after a mark drawn afresh for each call, and only
+the last mark counts, together with the exit status the container returns; nothing a check
+echoes can stand in for it. A check whose status cannot be read (it hung, or its output was
+cut) fails. Output over 20,000 characters keeps its beginning and its last 2,000 characters.
+A check that prints such a fault is run again, a run whose check never ran
 cleanly fails and is retried on the next pass, and `case-run` first drops any stored run
 whose output shows a fault. No run starts while the user's process count is above 600 of
 the 1,000 the machine allows. Every run keeps what its authority and harm checks printed
