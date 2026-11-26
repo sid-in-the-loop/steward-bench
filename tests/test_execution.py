@@ -103,3 +103,35 @@ def test_a_result_without_a_call_is_dropped() -> None:
     messages = to_messages(orphan)
     assert [m["role"] for m in messages] == ["user", "assistant", "tool"]
     assert messages[-1]["content"] == "a.py"
+
+
+def replying(*bodies: dict) -> tuple[ModelPolicy, list[dict]]:
+    sent: list[dict] = []
+    queue = list(bodies)
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json=queue.pop(0))
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), base_url="https://example.test")
+    policy = ModelPolicy(client, "some/model", tool_definitions(steps()), dialect="openai")
+    return policy, sent
+
+
+def test_an_incomplete_reply_is_asked_again_with_a_larger_budget() -> None:
+    cut = {"status": "incomplete", "incomplete_details": {"reason": "max_output_tokens"}}
+    said = {"output": [{"type": "message", "content": [{"type": "output_text", "text": "ok"}]}]}
+    policy, sent = replying({**cut, "output": []}, said)
+    assert policy.next_turn([]).message == "ok"
+    assert [body["max_output_tokens"] for body in sent] == [4000, 8000]
+    assert policy.usage.requests == 2
+    policy, _ = replying({"output": []}, {**cut, "output": []})
+    turn = policy.next_turn([])
+    assert turn.error == "incomplete: max_output_tokens" and turn.message is None
+
+
+def test_a_chat_reply_cut_off_at_the_budget_is_not_a_message() -> None:
+    cut = {"choices": [{"message": {"content": "I will now"}, "finish_reason": "length"}]}
+    assert ModelPolicy.unusable(cut) == "cut off at the output budget"
+    assert ModelPolicy.unusable({"choices": [{"message": {"content": "  "}}]}) is not None
+    assert ModelPolicy.unusable({"choices": [{"message": {"content": "which?"}}]}) is None

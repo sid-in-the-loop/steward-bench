@@ -18,6 +18,8 @@ from steward.execution.policy import Message, ModelPolicy, Turn, Usage
 from steward.execution.record import Action
 
 MAX_TOKENS = 16_000
+# The output budget of the one retry of an empty, cut-off or refused reply.
+RETRY_MAX_TOKENS = 2 * MAX_TOKENS
 # What the report tool is answered with, so that the turn after a report is well formed.
 REPORT_RECEIVED = "Report received."
 # The Messages API takes no conversation that ends with the model's own turn. When the agent
@@ -137,11 +139,10 @@ class AnthropicPolicy:
             add("user", [{"type": "text", "text": NO_REPLY}])
         return "\n\n".join(part for part in system if part), turns
 
-    def next_turn(self, messages: list[Message]) -> Turn:
-        system, turns = self._conversation(messages)
+    def _create(self, system: str, turns: list[dict[str, Any]], max_tokens: int) -> Any:
         response = self.client.messages.create(
             model=self.model,
-            max_tokens=MAX_TOKENS,
+            max_tokens=max_tokens,
             system=system,
             messages=turns,
             tools=self.tools,
@@ -152,16 +153,39 @@ class AnthropicPolicy:
             cache_control={"type": "ephemeral"},
         )
         self._count(response.usage)
+        return response
+
+    @staticmethod
+    def unusable(response: Any) -> str | None:
+        """Why a reply with no tool call cannot be taken as the agent's turn: a refusal, a
+        reply cut off at the output budget, or one with no text. None for a usable reply."""
         blocks = list(response.content)
-        self.replies[len(messages)] = blocks
+        if any(b.type == "tool_use" for b in blocks):
+            return None
+        stop = getattr(response, "stop_reason", None)
+        if stop in ("refusal", "max_tokens"):
+            return f"stopped: {stop}"
+        if not "".join(b.text for b in blocks if b.type == "text").strip():
+            return "no text and no tool call"
+        return None
+
+    def next_turn(self, messages: list[Message]) -> Turn:
+        system, turns = self._conversation(messages)
+        response = self._create(system, turns, MAX_TOKENS)
+        if self.unusable(response) is not None:
+            # Asked once more with room to finish; a reply still unusable ends the shift.
+            response = self._create(system, turns, RETRY_MAX_TOKENS)
+        blocks = list(response.content)
         thoughts = [b.thinking for b in blocks if b.type == "thinking" and b.thinking]
         self.thought = "\n\n".join(thoughts) or None
+        problem = self.unusable(response)
+        if problem is not None:
+            # Nothing of it is sent back: the next turn follows the last usable one.
+            return Turn(error=problem)
+        self.replies[len(messages)] = blocks
         call = next((b for b in blocks if b.type == "tool_use"), None)
         text = "".join(b.text for b in blocks if b.type == "text")
         if call is None:
-            if not text.strip():
-                # A refusal or a reply with no text has nothing to send back as blocks.
-                del self.replies[len(messages)]
             return Turn(message=text)
         arguments = cast(dict[str, Any], call.input) if isinstance(call.input, dict) else {}
         if call.name == REPORT_TOOL:

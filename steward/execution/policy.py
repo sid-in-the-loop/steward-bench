@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, Literal, Protocol
@@ -22,6 +23,8 @@ class Turn(BaseModel):
     action: Action | None = None
     message: str | None = None
     report: str | None = None
+    # Set when the model gave no usable reply even when asked again: why.
+    error: str | None = None
 
 
 class Policy(Protocol):
@@ -60,8 +63,27 @@ class ScriptedPolicy:
 
 
 Dialect = Literal["openrouter", "openai"]
+# How many times the output budget grows for the one retry of an empty or cut-off reply.
+RETRY_BUDGET_FACTOR = 2
 # Sent when supported; a model that rejects one is run without it.
 OPTIONAL_PARAMETERS = ("temperature", "prompt_cache_retention", "prompt_cache_key")
+
+
+# The parameters each model has rejected in this process, so that later sessions of the
+# model do not send them and pay a refused request again.
+_known_drops: dict[str, list[str]] = {}
+_drops_lock = threading.Lock()
+
+
+def known_drops(model: str) -> list[str]:
+    with _drops_lock:
+        return list(_known_drops.get(model, []))
+
+
+def remember_drops(model: str, names: list[str]) -> None:
+    with _drops_lock:
+        known = _known_drops.setdefault(model, [])
+        known += [name for name in names if name not in known]
 
 
 class RunSettings(BaseModel):
@@ -167,7 +189,12 @@ def post_with_retry(
             failures += 1
             continue
         response.raise_for_status()
-        reply: dict[str, Any] = response.json()
+        try:
+            reply: dict[str, Any] = response.json()
+        except ValueError:
+            problem = f"reply is not JSON: {response.text[:200]}"
+            failures += 1
+            continue
         if REPLY_FIELD[path] not in reply:
             problem = f"no {REPLY_FIELD[path]} in reply: {str(reply.get('error'))[:200]}"
             failures += 1
@@ -205,8 +232,10 @@ class ModelPolicy:
         self.provider = provider
         self.dialect = dialect
         self.cache_key = cache_key
-        self.dropped: list[str] = []
+        self.dropped: list[str] = known_drops(model)
         self.usage = Usage()
+        # The output budget of the next request, when it is not the run's own.
+        self.output_budget: int | None = None
 
     @staticmethod
     def wire_messages(messages: list[Message]) -> list[Message]:
@@ -268,12 +297,13 @@ class ModelPolicy:
 
     def request_body(self, messages: list[Message]) -> dict[str, Any]:
         body: dict[str, Any]
+        budget = self.output_budget or self.settings.max_tokens_per_turn
         if self.dialect == "openai":
             body = {
                 "model": self.model,
                 "tools": self.response_tools(),
                 "input": self.response_items(messages),
-                "max_output_tokens": self.settings.max_tokens_per_turn,
+                "max_output_tokens": budget,
                 "temperature": self.settings.temperature,
                 # Session content is not kept on the provider's side.
                 "store": False,
@@ -288,7 +318,7 @@ class ModelPolicy:
                 "model": self.model,
                 "tools": self.tools,
                 "messages": self.wire_messages(messages),
-                "max_tokens": self.settings.max_tokens_per_turn,
+                "max_tokens": budget,
                 "temperature": self.settings.temperature,
             }
             if self.provider:
@@ -312,6 +342,7 @@ class ModelPolicy:
                 if error.response.status_code != 400 or rejected is None:
                     raise
                 self.dropped.append(rejected)
+                remember_drops(self.model, [rejected])
 
     @staticmethod
     def first_call(reply_body: dict[str, Any]) -> tuple[str, str] | None:
@@ -341,9 +372,36 @@ class ModelPolicy:
         ]
         return "".join(parts)
 
+    @classmethod
+    def unusable(cls, reply_body: dict[str, Any]) -> str | None:
+        """Why a reply with no tool call cannot be taken as the agent's turn: it has no text,
+        or it was cut off at the output budget. None for a usable reply."""
+        if cls.first_call(reply_body) is not None:
+            return None
+        if reply_body.get("status") == "incomplete":
+            details = reply_body.get("incomplete_details") or {}
+            return f"incomplete: {details.get('reason') or 'no reason given'}"
+        choices = reply_body.get("choices") or [{}]
+        if choices[0].get("finish_reason") == "length":
+            return "cut off at the output budget"
+        if not cls.reply_text(reply_body).strip():
+            return "no text and no tool call"
+        return None
+
     def next_turn(self, messages: list[Message]) -> Turn:
         reply_body = self.post(messages)
         self.usage.add(reply_body)
+        if self.unusable(reply_body) is not None:
+            # Asked once more with room to finish; a reply still unusable ends the shift.
+            self.output_budget = self.settings.max_tokens_per_turn * RETRY_BUDGET_FACTOR
+            try:
+                reply_body = self.post(messages)
+            finally:
+                self.output_budget = None
+            self.usage.add(reply_body)
+            problem = self.unusable(reply_body)
+            if problem is not None:
+                return Turn(error=problem)
         call = self.first_call(reply_body)
         if call is None:
             return Turn(message=self.reply_text(reply_body))

@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -104,17 +105,39 @@ def check_case(settings: Settings, case: Case) -> list[str]:
     return problems
 
 
-# No run starts while this user's process count is above the ceiling: the login node allows
-# 1,000 processes and threads, and commands fail in confusing ways near that. A compute node
-# has no such cap; STEWARD_PROCESS_CEILING raises the ceiling there.
+# With STEWARD_PROCESS_CEILING set, no run starts while this user's process count is above
+# it: a login node that allows 1,000 processes and threads fails commands in confusing ways
+# near that (600 suits it). Unset, there is no ceiling, as on a compute node, where a fixed
+# one already exceeded would stall every run.
 PROCESS_COUNT = Path("/sys/fs/cgroup/user.slice") / f"user-{os.getuid()}.slice" / "pids.current"
-PROCESS_CEILING = 600
+CEILING_VARIABLE = "STEWARD_PROCESS_CEILING"
+PROCESS_WAIT_SECONDS = 10.0
+# How long a run waits for the count to fall before it gives up.
+PROCESS_WAIT_LIMIT_SECONDS = 1800.0
 
 
-def wait_for_room() -> None:
-    ceiling = int(os.environ.get("STEWARD_PROCESS_CEILING", PROCESS_CEILING))
-    while PROCESS_COUNT.exists() and int(PROCESS_COUNT.read_text()) > ceiling:
-        time.sleep(10)
+class NoRoomError(RuntimeError):
+    """The process count stayed above the ceiling for the whole wait."""
+
+
+def wait_for_room(
+    sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] = print
+) -> None:
+    """Wait while this user's process count is above STEWARD_PROCESS_CEILING, saying so once,
+    and give up with NoRoomError after PROCESS_WAIT_LIMIT_SECONDS."""
+    ceiling = os.environ.get(CEILING_VARIABLE)
+    if not ceiling or not PROCESS_COUNT.exists():
+        return
+    waited = 0.0
+    while (count := int(PROCESS_COUNT.read_text())) > int(ceiling):
+        if waited >= PROCESS_WAIT_LIMIT_SECONDS:
+            raise NoRoomError(
+                f"{count} processes, above {CEILING_VARIABLE}={ceiling}, for {waited:.0f} s"
+            )
+        if not waited:
+            log(f"waiting: {count} processes, above {CEILING_VARIABLE}={ceiling}")
+        sleep(PROCESS_WAIT_SECONDS)
+        waited += PROCESS_WAIT_SECONDS
 
 
 def estimate_usd(model: Model, runs: int) -> float:
@@ -246,8 +269,8 @@ def run_model(
 
     def work(item: tuple[Case, Condition, int]) -> Run | None:
         case, condition, trial = item
-        wait_for_room()
         try:
+            wait_for_room()
             run = run_case(
                 settings,
                 case,

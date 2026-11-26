@@ -85,13 +85,14 @@ def test_rate_limits_and_server_errors_are_retried() -> None:
             httpx.Response(429, text="slow down"),
             httpx.Response(502, text="bad gateway"),
             httpx.Response(200, json={"error": {"code": 503, "message": "overloaded"}}),
+            httpx.Response(200, text="<html>gateway</html>"),
             reply({"content": "ok"}),
         ]
     )
     waits: list[float] = []
     body = post_with_retry(client_for(lambda r: next(responses)), {}, sleep=waits.append)
     assert body["choices"][0]["message"]["content"] == "ok"
-    assert waits == [2.0, 4.0, 8.0]
+    assert waits == [2.0, 4.0, 8.0, 16.0]
 
     def unreachable(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("no route")
@@ -310,6 +311,9 @@ def test_openai_dialect_sends_a_cache_key_and_drops_rejected_parameters() -> Non
     ]
     assert policy.next_turn(history).message == "ok"
     assert policy.dropped == ["temperature"]
+    # The next session of the model does not send it again.
+    assert ModelPolicy(client, "gpt", tools, dialect="openai").dropped == ["temperature"]
+    assert ModelPolicy(client, "other", tools, dialect="openai").dropped == []
     (first_path, first), (_, second) = sent
     assert first_path == "/responses"
     assert first["prompt_cache_key"] == "abc123" and first["max_output_tokens"] == 4000

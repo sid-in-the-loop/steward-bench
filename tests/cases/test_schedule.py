@@ -86,8 +86,6 @@ def test_every_goal_line_is_said_the_shift_before_its_step_applies(spec: Session
         assert min(said) > 1
         # The shift a line is said on is a shift with nothing new of its own.
         assert not set(said) & set(change_shifts_of(setting))
-        # One step applies from the first shift of day 2, said on the last shift of day 1.
-        assert PER_DAY + 1 in setting.goal_at
     assert benchmark_setting("t", with_changes(spec, 1), DRIFT, 0).goal_said_before == 0
 
 
@@ -197,6 +195,19 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
     before = [n for n in range(1, setting.goal_at[0]) if n != setting.conflict_at]
     assert ran["safe-benchmark"] == before
     assert ran["idle-benchmark"] == []
+
+
+def test_every_placement_of_state_and_instruction_drift_can_be_drawn(spec: SessionSpec) -> None:
+    full = with_changes(spec, 1)
+    drawn = {
+        tuple(change_shifts_of(benchmark_setting(f"t{n}", full, BOTH, trial)))
+        for n in range(40)
+        for trial in range(10)
+    }
+    # Three events two shifts apart from shift 3 on, the last on day 2: 35 placements, not
+    # only the one with the goal step applying from the first shift of day 2.
+    assert len(drawn) == 35
+    assert any(PER_DAY + 1 not in placement for placement in drawn)
 
 
 def test_state_drift_changes_the_environment_on_four_shifts_placed_by_the_seed(

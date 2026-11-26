@@ -775,6 +775,7 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     cases = load_sessions(settings, args.case)
     if args.condition:
         return run_benchmark(settings, args, cases)
+    trials = EXPERIMENT_TRIALS if args.trials is None else args.trials
     chosen: dict[str, Setting] = {}
     for name in args.experiment or list(EXPERIMENTS):
         for setting in EXPERIMENTS[name]:
@@ -784,8 +785,8 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     models = [MODELS[name] for name in args.model]
     for model in models:
         each = sum(estimate_usd(model, setting) for setting in chosen.values())
-        count = len(cases) * len(chosen) * args.trials
-        print(f"{model.name}: up to {count} sessions, about ${each * len(cases) * args.trials:.2f}")
+        count = len(cases) * len(chosen) * trials
+        print(f"{model.name}: up to {count} sessions, about ${each * len(cases) * trials:.2f}")
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
@@ -795,9 +796,7 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
     simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), SESSION_MODEL)
     for model in models:
-        run_sessions(
-            settings, model, cases, list(chosen.values()), args.trials, args.workers, simulator
-        )
+        run_sessions(settings, model, cases, list(chosen.values()), trials, args.workers, simulator)
     used = simulator.input_tokens, simulator.output_tokens
     print(f"simulator: {used[0]} input tokens, {used[1]} output tokens")
     return 0
@@ -805,31 +804,62 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
 # The value of --simulator-model that runs sessions with nobody played by a model.
 NO_SIMULATOR = "none"
+# Trials of each experiment setting when --trials is not given; the benchmark runs one.
+EXPERIMENT_TRIALS = 3
+# What a benchmark run may spend without --max-usd, the tested models and the simulator
+# together.
+BENCHMARK_MAX_USD = 25.0
 
 
 def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
     """The benchmark run: the seeded two-day schedule under each condition asked for. The
-    estimate covers the tested model only; what the simulator spent is printed at the end."""
+    estimate covers the tested model's sessions not yet stored; the limit covers the tested
+    models and the simulator together, and what the simulator spent is printed at the end."""
     from steward.cases.commands import MODELS
     from steward.cases.schedule import SHORT_FORMS
-    from steward.cases.session_commands import Budget, benchmark_jobs, estimate_usd, run_jobs
+    from steward.cases.session_commands import (
+        BENCHMARK_TRIALS,
+        Budget,
+        benchmark_jobs,
+        estimate_usd,
+        pending,
+        run_jobs,
+        sessions_path,
+    )
 
+    trials = 1 if args.trials is None else args.trials
+    if not 1 <= trials <= len(BENCHMARK_TRIALS):
+        print(
+            f"Refused: validation replays trials {', '.join(map(str, BENCHMARK_TRIALS))} only, "
+            f"so the benchmark runs 1 to {len(BENCHMARK_TRIALS)} trials, not {trials}",
+            file=sys.stderr,
+        )
+        return 2
     conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition)]
-    jobs = benchmark_jobs(cases, conditions, args.trials)
+    jobs = benchmark_jobs(cases, conditions, trials)
     models = [MODELS[name] for name in args.model]
+    played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
+    limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
     for model in models:
-        dollars = sum(estimate_usd(model, job.setting) for job in jobs)
-        print(f"{model.name}: up to {len(jobs)} sessions, about ${dollars:.2f}")
+        todo = pending(sessions_path(settings, model.name), jobs, played_by)
+        dollars = sum(estimate_usd(model, job.setting) for job in todo)
+        print(
+            f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
+            "for the tested model"
+        )
+    print(f"limit ${limit:.2f} for the tested models and the simulator together")
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
     # Without a simulator people say only their fixed lines: enough to exercise the tasks.
-    simulator = (
-        None
-        if args.simulator_model == NO_SIMULATOR
-        else bench_simulator(settings, args.simulator_model)
-    )
-    budget = Budget(args.max_usd)
+    simulator = None if played_by is None else bench_simulator(settings, played_by)
+
+    def simulator_spent() -> float:
+        if simulator is None or simulator.model not in MODELS:
+            return 0.0
+        return MODELS[simulator.model].pricing.cost(simulator.usage)
+
+    budget = Budget(limit, others=simulator_spent)
     for model in models:
         run_jobs(settings, model, jobs, args.workers, simulator, budget, args.start)
     if simulator is not None:
@@ -1296,31 +1326,42 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
     from itertools import combinations
 
     from steward.cases.schedule import CONDITIONS
-    from steward.cases.score import difference, lines, score
-    from steward.cases.session_commands import current_sessions
+    from steward.cases.score import difference, latest, lines, outside_conditions, score
+    from steward.cases.session_commands import current_sessions, load_sessions
 
-    runs = {
-        model: [
-            run
-            for run in current_sessions(settings, [model])
-            if (not args.trial or run.trial in args.trial)
-            and (args.simulator_model is None or run.simulator == args.simulator_model)
-        ]
-        for model in args.model
-    }
+    specs = {case.id: spec for case, spec in load_sessions(settings)}
+    simulator = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
+    runs = {}
+    for model in args.model:
+        found, duplicates = latest(
+            [
+                run
+                for run in current_sessions(settings, [model])
+                if (not args.trial or run.trial in args.trial) and run.simulator == simulator
+            ]
+        )
+        runs[model] = found
+        outside = outside_conditions(found, specs)
+        if duplicates or outside:
+            print(
+                f"{model}: {duplicates} earlier duplicate sessions dropped, "
+                f"{outside} sessions on no benchmark schedule left out"
+            )
     for condition in CONDITIONS:
         for model in args.model:
-            found = score(model, runs[model], condition)
-            for line in lines(found) if found else [f"{model}, {condition}: no sessions"]:
+            scored = score(model, runs[model], condition, specs)
+            for line in lines(scored) if scored else [f"{model}, {condition}: no sessions"]:
                 print(line)
         for first, second in combinations(args.model, 2):
-            gap = difference(runs[first], runs[second], condition)
+            gap = difference(runs[first], runs[second], condition, specs)
             if gap is not None:
                 low, high = gap.interval
                 verdict = "significant" if gap.significant else "not distinguishable"
                 print(
                     f"{first} minus {second}, {condition}: {gap.difference:+.3f} "
-                    f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks, {verdict}"
+                    f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks both ran, {verdict}; "
+                    f"left out {gap.first_only} tasks only {first} ran and {gap.second_only} "
+                    f"only {second} ran"
                 )
     return 0
 
@@ -1798,7 +1839,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--benchmark",
         action="store_true",
-        help="check on the benchmark's seeded schedule, trials 0 and 1, in place of the short one",
+        help="check on the benchmark's seeded schedule, trials 0 and 1, with mixed agents under "
+        "State Drift, in place of the short one",
     )
     sub.add_argument(
         "--one-date",
@@ -1823,7 +1865,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the benchmark's seeded two-day schedule under this condition, not the "
         "experiments: sd is State Drift, sid is State and Instruction Drift",
     )
-    sub.add_argument("--trials", type=int, default=3)
+    sub.add_argument(
+        "--trials",
+        type=int,
+        help="trials of each session: 3 for the experiments; with --condition 1, and at most "
+        "the trials validation replays (2)",
+    )
     sub.add_argument("--workers", type=int, default=2)
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub.add_argument(
@@ -1838,7 +1885,10 @@ def build_parser() -> argparse.ArgumentParser:
         "while the provider answers without rate limits",
     )
     sub.add_argument(
-        "--max-usd", type=float, help="with --condition, start no session once this is spent"
+        "--max-usd",
+        type=float,
+        help="with --condition, start no session once the tested models and the simulator "
+        f"have spent this much (default {BENCHMARK_MAX_USD:.0f})",
     )
     sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(
@@ -1854,7 +1904,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("bench-score", cmd_bench_score, "print the benchmark's metrics per condition")
     sub.add_argument("--model", action="append", required=True)
     sub.add_argument("--trial", action="append", type=int, help="keep sessions of this trial")
-    sub.add_argument("--simulator-model", help="keep sessions whose people this model played")
+    sub.add_argument(
+        "--simulator-model",
+        required=True,
+        help="score the sessions whose people this model played; 'none' for fixed lines",
+    )
     sub = add("session-report", cmd_session_report, "write the page of session figures")
     sub.add_argument("--out", type=Path, required=True)
     sub = add("case-view", cmd_case_view, "write the run viewer page")
