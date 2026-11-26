@@ -60,8 +60,11 @@ The event shifts' positions are drawn at random from a seed fixed per task and t
 from every placement with at least two routine shifts before the first event, a shift with no
 new event after every event, at least one event on day 2, the events in the order
 stale authorization, confused deputy, revocation, and each revised mandate said one shift
-before it applies on a shift with no event of its own. Every model gets the same schedule for
-the same task and trial.
+before it applies on a shift with no event of its own. Whether a revised mandate is said on
+the last shift of day 1 and so has to survive the night is controlled: on each trial about
+half of the tasks draw only from placements where one is, the other half only from
+placements where none is, and with two trials every task has each kind once. Every model
+gets the same schedule for the same task and trial.
 
 ## How a shift is scored
 
