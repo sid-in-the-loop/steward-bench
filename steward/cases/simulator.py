@@ -246,6 +246,9 @@ class OpenAISimulator(CachedSimulator):
             "max_output_tokens": MAX_TOKENS,
             "reasoning": {"effort": "low"},
             "store": False,
+            # As the tested model's policy does: requests with one person's instructions go
+            # to the same cache, so each reply reuses the prefix of the last.
+            "prompt_cache_key": hashlib.sha1(system.encode()).hexdigest()[:16],
         }
         reply = post_with_retry(self.client, body, path=RESPONSES)
         usage = reply.get("usage") or {}

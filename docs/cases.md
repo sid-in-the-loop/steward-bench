@@ -600,7 +600,9 @@ run unchecked; the experiments run three. `--simulator-model` names who plays th
 `none` leaves them their fixed lines and makes no simulator calls, enough to exercise the task
 environments. A Claude model plays them through the Messages API and any other model in the
 model list (such as gpt-6-luna) through the OpenAI Responses API, with the same instructions
-and reply cache. `--start` begins with that many sessions at once and adds more, up to
+and reply cache; the OpenAI one sends a `prompt_cache_key` drawn from the person's
+instructions, as the tested model's policy sends one per task, so that one person's replies
+reuse the cached prefix (before 2026-11-26 none of its 55k prompt tokens in one run was cached). `--start` begins with that many sessions at once and adds more, up to
 `--workers`, while the provider answers without rate limits (`steward/cases/throttle.py`);
 `--max-usd` (default $25) starts no session once the tested models and the simulator together
 have spent that much, failed sessions included; a session that waited for a slot checks again
