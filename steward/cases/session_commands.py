@@ -567,6 +567,21 @@ def check_levels(
     return problems
 
 
+# What the simulator is assumed to use per 12-shift session, from gpt-6-luna playing the
+# people on 2026-11-26: 64 requests at about 13,600 prompt tokens each, none cached, and an
+# assumed 150 output tokens a reply.
+SIMULATOR_REQUESTS = 64 / 12
+SIMULATOR_PROMPT = 13_600
+SIMULATOR_OUTPUT = 150
+
+
+def estimate_simulator_usd(simulator: Model, setting: Setting) -> float:
+    """A rough cost of the simulator's requests in one session."""
+    price = simulator.pricing
+    per_request = SIMULATOR_PROMPT * price.prompt + SIMULATOR_OUTPUT * price.completion
+    return setting.items * SIMULATOR_REQUESTS * per_request / 1_000_000
+
+
 def estimate_usd(model: Model, setting: Setting) -> float:
     """A rough cost of one session, from the assumed growth of the conversation."""
     requests = setting.items * ITEM_REQUESTS
@@ -1038,9 +1053,10 @@ def run_held(
         shared.event_hooks = {**hooks, "response": [*hooks["response"], throttle.observe]}
     stop = threading.Event()
     throttle.run_adjusting(stop)
-    logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop)]
+    logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop, model.name)]
     if played_by and played_by != model.name:
-        logged.append(log_while(rate_log(settings, played_by), lambda: (0, 0), stop))
+        played = rate_log(settings, played_by)
+        logged.append(log_while(played, lambda: (0, 0), stop, model.name))
     try:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             finished = [r for r in pool.map(work, todo) if r is not None]

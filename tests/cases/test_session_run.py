@@ -293,6 +293,19 @@ def test_the_estimate_matches_the_measured_benchmark_session() -> None:
     setting = Setting(items=12, changed=(3, 5, 8, 11), per_day=6)
     dollars = session_commands.estimate_usd(MODELS["gpt-6-luna"], setting)
     assert dollars == pytest.approx(0.0163, abs=0.0005)
+    # 64 requests at 13,600 prompt tokens and 150 output tokens at gpt-6-luna's prices.
+    played = session_commands.estimate_simulator_usd(MODELS["gpt-6-luna"], setting)
+    assert played == pytest.approx(64 * (13_600 * 0.10 + 150 * 0.50) / 1e6)
+
+
+def test_the_benchmark_estimate_prints_the_simulator_beside_it(
+    case: Case, full: SessionSpec, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd"]
+    args = build_parser().parse_args([*argv, "--simulator-model", "gpt-6-luna"])
+    assert run_benchmark(settings, args, [(case, full)]) == 0
+    assert "for the simulator gpt-6-luna" in capsys.readouterr().out
 
 
 def test_the_benchmark_estimate_covers_only_the_sessions_still_to_run(

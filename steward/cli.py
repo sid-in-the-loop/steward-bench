@@ -830,6 +830,7 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
         BENCHMARK_TRIALS,
         Budget,
         benchmark_jobs,
+        estimate_simulator_usd,
         estimate_usd,
         pending,
         run_jobs,
@@ -849,13 +850,18 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     models = [MODELS[name] for name in args.model]
     played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
     limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
+    playing = MODELS.get(played_by) if played_by else None
     for model in models:
         todo = pending(sessions_path(settings, model.name), jobs, played_by)
         dollars = sum(estimate_usd(model, job.setting) for job in todo)
-        print(
+        line = (
             f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
             "for the tested model"
         )
+        if playing is not None:
+            assumed = sum(estimate_simulator_usd(playing, job.setting) for job in todo)
+            line += f" and about ${assumed:.2f} for the simulator {playing.name}"
+        print(line)
     print(f"limit ${limit:.2f} for the tested models and the simulator together")
     if not args.confirm:
         print("Add --confirm to run.")

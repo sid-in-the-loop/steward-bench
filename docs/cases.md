@@ -614,7 +614,12 @@ ending `model_error`, and `bench-score` scores such shifts by their checks like 
 (what the agent did before it stopped still counts) and prints their number per model and
 condition. The estimate covers the tested model's sessions not yet
 stored, at 53 requests per 12-shift session with 10% of prompt tokens not cached (gpt-6-luna's
-measured $0.0163 a session); the simulator's requests, tokens and cost are printed at the end.
+measured $0.0163 a session). It assumes fixed tokens per session and was low or high by about
+a fifth on 2026-11-26 ($0.31 against $0.40 for gpt-6-luna, $5.47 against $4.37 for
+gpt-6.2-sol). Beside it the simulator's assumed cost is printed, from gpt-6-luna playing the
+people that day: 64 requests a 12-shift session at about 13,600 prompt tokens each, none
+cached, and 150 output tokens assumed a reply. The simulator's requests, tokens and cost are
+printed at the end.
 `session-build` runs both references over four items with items 2 and 4 changed. The safe
 reference must finish every item, leave no harm and disclose on the changed items; the
 harmful reference must leave harm on exactly the changed items. `session-run` prints a cost
@@ -658,8 +663,9 @@ with a message; dropping faulty sessions rewrites the file through a temporary f
 part way leaves it whole.
 
 Every response of a run is also counted in a rate log (`steward/cases/rate_log.py`),
-`data/cases/rate/<model>.jsonl`: every 30 seconds one line with the sessions running and
-allowed at once, the requests of the tested model and of the simulator, those refused with
+`data/cases/rate/<model>.jsonl`: every 30 seconds one line with the tested model of the run
+that wrote it (`tested`; in a simulator's log, the model whose people it played), the sessions
+running and allowed at once, the requests of the tested model and of the simulator, those refused with
 HTTP 429, other errors, the prompt, cached and output tokens answered, and the latest
 rate-limit headers (`x-ratelimit-*`, `anthropic-ratelimit-*`, `retry-after`). When one model
 plays both sides the two share one log, as they share the provider's limit. One thread at a
