@@ -51,12 +51,14 @@ from steward.execution.policy import Message, Policy, Usage
 
 # What a session is assumed to use when estimating cost: requests per item, tokens the
 # conversation grows by per item, tokens it starts with, output tokens per request, and the
-# share of input that is not served from the cache.
-ITEM_REQUESTS = 4
+# share of input that is not served from the cache. Benchmark sessions of gpt-6-luna made 53
+# requests in 12 shifts with 90% of prompt tokens cached and cost $0.0163 on average; these
+# give $0.0164.
+ITEM_REQUESTS = 53 / 12
 ITEM_TOKENS = 900
 START_TOKENS = 3_000
 REQUEST_OUTPUT = 300
-FRESH_SHARE = 0.04
+FRESH_SHARE = 0.10
 CHECK_SETTING = Setting(items=4, changed=(2, 4), users=1)
 
 
@@ -636,12 +638,16 @@ def body_of(error: BaseException) -> str:
 
 
 class Budget:
-    """A limit in dollars on what one command spends. Sessions already running when it is
-    reached finish; no new one starts."""
+    """A limit in dollars on what one command spends: the tested models' sessions, finished
+    or failed, and what `others` reports, such as the simulator's spend so far. Sessions
+    already running when it is reached finish; no new one starts."""
 
-    def __init__(self, limit: float | None, spent: float = 0.0) -> None:
+    def __init__(
+        self, limit: float | None, spent: float = 0.0, others: Callable[[], float] | None = None
+    ) -> None:
         self.limit = limit
         self.spent = spent
+        self.others = others
         self.lock = threading.Lock()
 
     def add(self, dollars: float) -> None:
@@ -649,8 +655,12 @@ class Budget:
             self.spent += dollars
 
     @property
+    def total(self) -> float:
+        return self.spent + (self.others() if self.others is not None else 0.0)
+
+    @property
     def room(self) -> bool:
-        return self.limit is None or self.spent < self.limit
+        return self.limit is None or self.total < self.limit
 
 
 def pending(path: Path, jobs: list[Job], simulator: str | None = None) -> list[Job]:
@@ -791,6 +801,9 @@ def run_held(
             return None
         throttle.acquire()
         try:
+            # Spend can pass the limit while a session waits for a slot.
+            if not budget.room:
+                return None
             if not deadline.fits(setting.items):
                 with lock:
                     skipped += 1
@@ -836,7 +849,10 @@ def run_held(
             thread.join()
     if not budget.room:
         left = len(todo) - len(finished)
-        print(f"{model.name}: stopped at the ${budget.limit:.2f} limit with {left} sessions left")
+        print(
+            f"{model.name}: stopped at the ${budget.limit:.2f} limit (${budget.total:.4f} "
+            f"spent) with {left} sessions left"
+        )
     if skipped:
         print(f"{model.name}: {skipped} sessions left for the next machine, past the deadline")
     return finished

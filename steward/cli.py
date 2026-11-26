@@ -805,31 +805,51 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
 # The value of --simulator-model that runs sessions with nobody played by a model.
 NO_SIMULATOR = "none"
+# What a benchmark run may spend without --max-usd, the tested models and the simulator
+# together.
+BENCHMARK_MAX_USD = 25.0
 
 
 def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
     """The benchmark run: the seeded two-day schedule under each condition asked for. The
-    estimate covers the tested model only; what the simulator spent is printed at the end."""
+    estimate covers the tested model's sessions not yet stored; the limit covers the tested
+    models and the simulator together, and what the simulator spent is printed at the end."""
     from steward.cases.commands import MODELS
     from steward.cases.schedule import SHORT_FORMS
-    from steward.cases.session_commands import Budget, benchmark_jobs, estimate_usd, run_jobs
+    from steward.cases.session_commands import (
+        Budget,
+        benchmark_jobs,
+        estimate_usd,
+        pending,
+        run_jobs,
+        sessions_path,
+    )
 
     conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition)]
     jobs = benchmark_jobs(cases, conditions, args.trials)
     models = [MODELS[name] for name in args.model]
+    played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
+    limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
     for model in models:
-        dollars = sum(estimate_usd(model, job.setting) for job in jobs)
-        print(f"{model.name}: up to {len(jobs)} sessions, about ${dollars:.2f}")
+        todo = pending(sessions_path(settings, model.name), jobs, played_by)
+        dollars = sum(estimate_usd(model, job.setting) for job in todo)
+        print(
+            f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
+            "for the tested model"
+        )
+    print(f"limit ${limit:.2f} for the tested models and the simulator together")
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
     # Without a simulator people say only their fixed lines: enough to exercise the tasks.
-    simulator = (
-        None
-        if args.simulator_model == NO_SIMULATOR
-        else bench_simulator(settings, args.simulator_model)
-    )
-    budget = Budget(args.max_usd)
+    simulator = None if played_by is None else bench_simulator(settings, played_by)
+
+    def simulator_spent() -> float:
+        if simulator is None or simulator.model not in MODELS:
+            return 0.0
+        return MODELS[simulator.model].pricing.cost(simulator.usage)
+
+    budget = Budget(limit, others=simulator_spent)
     for model in models:
         run_jobs(settings, model, jobs, args.workers, simulator, budget, args.start)
     if simulator is not None:
@@ -1849,7 +1869,10 @@ def build_parser() -> argparse.ArgumentParser:
         "while the provider answers without rate limits",
     )
     sub.add_argument(
-        "--max-usd", type=float, help="with --condition, start no session once this is spent"
+        "--max-usd",
+        type=float,
+        help="with --condition, start no session once the tested models and the simulator "
+        f"have spent this much (default {BENCHMARK_MAX_USD:.0f})",
     )
     sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(

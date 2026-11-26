@@ -1,6 +1,7 @@
 """`steward session-run --condition`: who plays the people."""
 
 import sys
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -11,15 +12,15 @@ import steward.cases.session_commands as session_commands
 from steward.cases.case import Case
 from steward.cases.run import Model
 from steward.cases.session_commands import Job
-from steward.cases.sessions import SessionSpec
+from steward.cases.sessions import HARNESS, SessionRun, SessionSpec, Setting
 from steward.cases.simulator import OpenAISimulator
 from steward.cli import build_parser, run_benchmark
 from steward.config import Paths, Settings
-from steward.execution.policy import Message, Policy
+from steward.execution.policy import Message, Policy, Usage
 
 
 def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
-    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec, tmp_path: Path
 ) -> None:
     ran: list[tuple[str, int, object]] = []
 
@@ -39,7 +40,8 @@ def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
     monkeypatch.setitem(sys.modules, "anthropic", None)
     argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd", "--trials", "2"]
     args = build_parser().parse_args([*argv, "--simulator-model", "none", "--confirm"])
-    assert run_benchmark(None, args, [(case, full)]) == 0  # type: ignore[arg-type]
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    assert run_benchmark(settings, args, [(case, full)]) == 0
     assert ran == [("gpt-6-luna", 2, None)]
 
 
@@ -145,3 +147,88 @@ def test_a_session_that_keeps_failing_is_logged_with_its_spend_and_given_up(
     monkeypatch.setattr(session_commands, "run_session", lambda *a: pytest.fail("tried again"))
     session_commands.run_jobs(settings, model, jobs, 1)
     assert len(log.read_text().splitlines()) == session_commands.FAILURE_LIMIT
+
+
+def test_the_budget_counts_what_others_spent() -> None:
+    spent = [0.0]
+    budget = session_commands.Budget(1.0, others=lambda: spent[0])
+    budget.add(0.6)
+    assert budget.room and budget.total == 0.6
+    spent[0] = 0.5
+    assert not budget.room and budget.total == 1.1
+
+
+def test_a_session_waiting_for_a_slot_does_not_start_past_the_limit(
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec, tmp_path: Path
+) -> None:
+    from steward.cases.commands import MODELS
+
+    started: list[int] = []
+
+    def run_session(
+        settings: object, case: Case, spec: SessionSpec, setting: object, *a: object
+    ) -> SessionRun:
+        started.append(1)
+        time.sleep(0.3)
+        return SessionRun.model_validate(
+            {
+                "case": case.id,
+                "session_version": spec.version,
+                "setting": setting,
+                "model": "gpt-6-luna",
+                "trial": 0,
+                "events": [],
+                "items": [],
+                "usage": Usage(),
+                "cost_usd": 5.0,
+            }
+        )
+
+    monkeypatch.setattr(session_commands, "run_session", run_session)
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    jobs = session_commands.benchmark_jobs([(case, full)], ["State Drift"], 2)
+    budget = session_commands.Budget(1.0)
+    # Two workers but one slot: the second job passes the first check and waits for the slot.
+    session_commands.run_jobs(settings, MODELS["gpt-6-luna"], jobs, 2, budget=budget, start=1)
+    assert started == [1] and budget.spent == 5.0
+
+
+def test_the_estimate_matches_the_measured_benchmark_session() -> None:
+    from steward.cases.commands import MODELS
+
+    setting = Setting(items=12, changed=(3, 5, 8, 11), per_day=6)
+    dollars = session_commands.estimate_usd(MODELS["gpt-6-luna"], setting)
+    assert dollars == pytest.approx(0.0163, abs=0.0005)
+
+
+def test_the_benchmark_estimate_covers_only_the_sessions_still_to_run(
+    monkeypatch: pytest.MonkeyPatch,
+    case: Case,
+    full: SessionSpec,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    jobs = session_commands.benchmark_jobs([(case, full)], ["State Drift"], 2)
+    stored = SessionRun.model_validate(
+        {
+            "case": case.id,
+            "session_version": full.version,
+            "setting": jobs[0].setting,
+            "model": "gpt-6-luna",
+            "trial": 0,
+            "harness": HARNESS,
+            "events": [],
+            "items": [],
+            "usage": Usage(),
+            "cost_usd": 0.0,
+        }
+    )
+    path = session_commands.sessions_path(settings, "gpt-6-luna")
+    path.parent.mkdir(parents=True)
+    path.write_text(stored.model_dump_json() + "\n")
+    argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd", "--trials", "2"]
+    args = build_parser().parse_args([*argv, "--simulator-model", "none"])
+    assert run_benchmark(settings, args, [(case, full)]) == 0
+    printed = capsys.readouterr().out
+    assert "1 of 2 sessions to run" in printed and "limit $25.00" in printed
