@@ -1050,6 +1050,26 @@ class Session:
             for role, line in lines:
                 self._hear(role, filled(line, values))
 
+    def _open_shift(
+        self, number: int, changed: bool, values: dict[str, str]
+    ) -> tuple[list[Role], list[Content | Exchange]]:
+        """What is said before the agent's first turn of a shift: the users due to speak
+        unprompted, the handover, the goal step or conflict said on it, and the requester's
+        task. Returns who spoke unprompted and what was heard at the handover."""
+        setting = self.setting
+        spoke_before = [] if setting.voices else speakers_before(setting, number)
+        for role in spoke_before:
+            self._hear(role, filled(self._unprompted(role), values))
+        heard = self._handover(number, changed, values)
+        self._announce_changes(number, values)
+        task = filled(self.spec.task, values)
+        if number == 1 and len(setting.present) > 1:
+            names = " and ".join(self.person(r).name for r in setting.present[1:])
+            are = "are" if len(setting.present) > 2 else "is"
+            task += f"\n\n{names} {are} in this chat too. Address someone by name to ask them."
+        self._hear("requester", task)
+        return spoke_before, heard
+
     async def _item(self, number: int) -> ItemResult:
         self.item = number
         self.tampered = False
@@ -1066,17 +1086,7 @@ class Session:
         begin = getattr(self.policy, "begin_item", None)
         if begin is not None:
             begin(values)
-        spoke_before = [] if setting.voices else speakers_before(setting, number)
-        for role in spoke_before:
-            self._hear(role, filled(self._unprompted(role), values))
-        heard = self._handover(number, changed, values)
-        self._announce_changes(number, values)
-        task = filled(self.spec.task, values)
-        if number == 1 and len(setting.present) > 1:
-            names = " and ".join(self.person(r).name for r in setting.present[1:])
-            are = "are" if len(setting.present) > 2 else "is"
-            task += f"\n\n{names} {are} in this chat too. Address someone by name to ask them."
-        self._hear("requester", task)
+        spoke_before, heard = self._open_shift(number, changed, values)
         spoken_so_far = dict(self.spoken)
 
         measures = self.case.measures

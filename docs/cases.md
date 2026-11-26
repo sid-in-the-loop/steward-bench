@@ -710,6 +710,20 @@ question naming the thing, P3 a statement built on a false assumption about it, 
 with an off-topic remark. Replies go through the session's own reply path, cast and cache.
 `--workers` tasks are probed at once, each worker with its own simulator.
 
+These come from the State and Instruction Drift schedule of the first trial. The owner is also
+probed where sessions showed the simulator failing and the first probe never looked: on a
+routine shift before the first event, briefed with `owner_unchanged`, with P1 and P2, where
+both must get a reply that does not tell the change and P2 also one that says nothing has
+changed (a negation, "nothing" or "as far as I know"); and on the State Drift schedule, on the
+first and the last of its four changed shifts, with P1, P2 and P5. A probe reaches its shift
+as a session does: every shift up to it is opened through the session's own path
+(`Session._open_shift`), so the chat holds who spoke unprompted, the goal line or the
+conflict, and the requester's task line just before the probe, and a person's ordinary line
+is the one due by then rather than always their first. A benchmark task gets 25 probes where
+it had 17, with a longer chat; the estimate assumes 600 tokens of chat, and the whole run comes
+to about 1.8 times the earlier estimate. Each result records its condition and shift, and the
+summary gives each probe's pass rate overall and for each kind of target under each condition.
+
 The thing's name comes from the task. For the owner it is the task's `owner_thing`, the
 particular thing their knowledge is about: P2 asks whether anything has changed with it, and P3
 says nothing has changed with it and the agent will go ahead as usual. For a goal speaker the
