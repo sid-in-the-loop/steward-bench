@@ -545,7 +545,13 @@ for resuming and for `bench-score` alike. Protocol 5 began with the harness vers
 session stored before it is out of date; the tasks' own versions did not change. The longest sessions are run first, so
 that none is left running alone at the end. A rate-limited request waits at least as long as
 the provider asks, up to a minute at a time and fifteen times, before the session is given up;
-a session given up is run again on the next pass. A run holds a lock on the model's session
+a session given up is run again on the next pass. A reply that is not JSON is retried like a
+server error. A session that raises (a request refused with a status that is not retried, a
+request given up after every retry, a fault of the environment) is tried twice in a run; each
+failure is appended to `data/cases/sessions/<model>.failed.jsonl` with the session's key and
+simulator, the error's class and message, an excerpt of the response body and the tokens and
+dollars it spent, which count against `--max-usd`. A session with four recorded failures is
+not tried again, and the run says how many it passed over. A run holds a lock on the model's session
 file (`<model>.jsonl.lock`) from start to end, so a second run of the same model stops at once
 with a message; dropping faulty sessions rewrites the file through a temporary file, so a stop
 part way leaves it whole.

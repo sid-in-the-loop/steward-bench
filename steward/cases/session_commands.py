@@ -47,7 +47,7 @@ from steward.cases.simulator import Simulator
 from steward.cases.throttle import Deadline, Throttle
 from steward.config import Settings
 from steward.execution.evaluate import workspace_image
-from steward.execution.policy import Message, Policy
+from steward.execution.policy import Message, Policy, Usage
 
 # What a session is assumed to use when estimating cost: requests per item, tokens the
 # conversation grows by per item, tokens it starts with, output tokens per request, and the
@@ -590,6 +590,51 @@ def stored_key(run: SessionRun) -> SessionKey:
     )
 
 
+# How many times one run tries a session that fails, and how many failures recorded in the
+# model's failed-session log stop it being tried again.
+SESSION_ATTEMPTS = 2
+FAILURE_LIMIT = 4
+# How much of a failed request's response body is kept.
+BODY_EXCERPT = 500
+
+
+class FailedSession(BaseModel):
+    """A session that raised before it finished: what failed and what it had spent."""
+
+    key: list[str | int | None]
+    simulator: str | None
+    error: str
+    message: str
+    body: str
+    usage: Usage
+    cost_usd: float
+
+
+def failed_path(settings: Settings, model: str) -> Path:
+    return settings.paths.data / "cases" / "sessions" / f"{model}.failed.jsonl"
+
+
+def failures_of(path: Path) -> dict[tuple[object, ...], int]:
+    """How many times each session key and simulator is recorded as failed."""
+    counts: dict[tuple[object, ...], int] = defaultdict(int)
+    for line in stored_lines(path):
+        if whole(line):
+            failed = FailedSession.model_validate_json(line)
+            counts[(*failed.key, failed.simulator)] += 1
+    return dict(counts)
+
+
+def body_of(error: BaseException) -> str:
+    """An excerpt of the response a failed request got, where the error carries one."""
+    response = getattr(error, "response", None)
+    if isinstance(response, httpx.Response):
+        try:
+            return response.text[:BODY_EXCERPT]
+        except httpx.ResponseNotRead:
+            return ""
+    return ""
+
+
 class Budget:
     """A limit in dollars on what one command spends. Sessions already running when it is
     reached finish; no new one starts."""
@@ -663,7 +708,21 @@ def run_held(
     dropped = drop_faulty_sessions(path)
     if dropped:
         print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")
-    todo = pending(path, jobs, getattr(simulator, "model", None))
+    played_by = getattr(simulator, "model", None)
+    failures_path = failed_path(settings, model.name)
+    failed_before = failures_of(failures_path)
+    todo = []
+    given_up = 0
+    for job in pending(path, jobs, played_by):
+        if failed_before.get((*job.key, played_by), 0) >= FAILURE_LIMIT:
+            given_up += 1
+        else:
+            todo.append(job)
+    if given_up:
+        print(
+            f"{model.name}: {given_up} sessions not tried again after {FAILURE_LIMIT} failures; "
+            f"see {failures_path}"
+        )
     budget = budget or Budget(None)
     deadline = deadline or Deadline(None)
     throttle = Throttle(model.name, start or workers, workers)
@@ -677,6 +736,54 @@ def run_held(
     )
     skipped = 0
 
+    def failed(job: Job, policies: list[Policy], error: Exception) -> None:
+        """Record a failed session, with what its policy spent, and count the spend."""
+        usage = getattr(policies[-1], "usage", Usage()) if policies else Usage()
+        cost = model.pricing.cost(usage)
+        budget.add(cost)
+        record = FailedSession(
+            key=list(job.key),
+            simulator=played_by,
+            error=type(error).__name__,
+            message=str(error)[:BODY_EXCERPT],
+            body=body_of(error),
+            usage=usage,
+            cost_usd=cost,
+        )
+        with lock, failures_path.open("a") as out:
+            out.write(record.model_dump_json() + "\n")
+        print(
+            f"failed {job.case.id} {job.setting.id} trial {job.trial}: "
+            f"{type(error).__name__}: {error} (${cost:.4f} spent)"
+        )
+
+    def attempt(job: Job) -> SessionRun | None:
+        policies: list[Policy] = []
+        made = model_policy(client, model, job.case)
+
+        def policy_for(tools: list[Message]) -> Policy:
+            policies.append(made(tools))
+            return policies[-1]
+
+        try:
+            wait_for_room()
+            return run_session(
+                settings,
+                job.case,
+                job.spec,
+                job.setting,
+                policy_for,
+                model.name,
+                job.trial,
+                model.pricing,
+                simulator,
+                job.bank,
+                job.recording,
+            )
+        except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
+            failed(job, policies, error)
+            return None
+
     def work(job: Job) -> SessionRun | None:
         nonlocal skipped
         case, setting = job.case, job.setting
@@ -689,26 +796,12 @@ def run_held(
                     skipped += 1
                 return None
             began = time.monotonic()
-            try:
-                wait_for_room()
-                run = run_session(
-                    settings,
-                    case,
-                    job.spec,
-                    setting,
-                    model_policy(client, model, case),
-                    model.name,
-                    job.trial,
-                    model.pricing,
-                    simulator,
-                    job.bank,
-                    job.recording,
-                )
-            except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
-                print(
-                    f"failed {case.id} {setting.id} trial {job.trial}: "
-                    f"{type(error).__name__}: {error}"
-                )
+            run = None
+            for _ in range(SESSION_ATTEMPTS):
+                run = attempt(job)
+                if run is not None or not budget.room:
+                    break
+            if run is None:
                 return None
         finally:
             throttle.release()
@@ -731,7 +824,6 @@ def run_held(
     stop = threading.Event()
     throttle.run_adjusting(stop)
     logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop)]
-    played_by = getattr(simulator, "model", None)
     if played_by and played_by != model.name:
         logged.append(log_while(rate_log(settings, played_by), lambda: (0, 0), stop))
     try:

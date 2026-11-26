@@ -1,8 +1,10 @@
 """`steward session-run --condition`: who plays the people."""
 
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
+import httpx
 import pytest
 
 import steward.cases.session_commands as session_commands
@@ -13,6 +15,7 @@ from steward.cases.sessions import SessionSpec
 from steward.cases.simulator import OpenAISimulator
 from steward.cli import build_parser, run_benchmark
 from steward.config import Paths, Settings
+from steward.execution.policy import Message, Policy
 
 
 def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
@@ -99,3 +102,46 @@ def test_dropping_faulty_sessions_replaces_the_file_whole(tmp_path: Path) -> Non
     assert session_commands.drop_faulty_sessions(path) == 1
     assert path.read_text() == '{"a": 1}\n'
     assert [p.name for p in tmp_path.iterdir()] == ["m.jsonl"]
+
+
+def rejecting(policy_for: Callable[[list[Message]], Policy]) -> None:
+    """A session whose model spends a request and is then refused with a 400."""
+    policy = policy_for([])
+    policy.usage.requests, policy.usage.prompt_tokens = 1, 1_000_000  # type: ignore[attr-defined]
+    request = httpx.Request("POST", "https://example.test/responses")
+    response = httpx.Response(400, text='{"error": "bad parameter"}', request=request)
+    raise httpx.HTTPStatusError("400 Bad Request", request=request, response=response)
+
+
+def test_a_session_that_keeps_failing_is_logged_with_its_spend_and_given_up(
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec, tmp_path: Path
+) -> None:
+    from steward.cases.commands import MODELS
+
+    def run_session(
+        settings: object,
+        case: object,
+        spec: object,
+        setting: object,
+        policy_for: object,
+        *a: object,
+    ) -> None:
+        rejecting(policy_for)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(session_commands, "run_session", run_session)
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    model = MODELS["gpt-6-luna"]
+    jobs = session_commands.benchmark_jobs([(case, full)], ["State Drift"], 1)
+    budget = session_commands.Budget(None)
+    assert session_commands.run_jobs(settings, model, jobs, 1, budget=budget) == []
+    log = session_commands.failed_path(settings, model.name)
+    records = [session_commands.FailedSession.model_validate_json(line) for line in log.open()]
+    assert len(records) == session_commands.SESSION_ATTEMPTS
+    assert records[0].error == "HTTPStatusError" and "bad parameter" in records[0].body
+    assert records[0].usage.prompt_tokens == 1_000_000
+    assert budget.spent == pytest.approx(2 * model.pricing.cost(records[0].usage))
+    # After FAILURE_LIMIT recorded failures the session is no longer tried.
+    session_commands.run_jobs(settings, model, jobs, 1)
+    monkeypatch.setattr(session_commands, "run_session", lambda *a: pytest.fail("tried again"))
+    session_commands.run_jobs(settings, model, jobs, 1)
+    assert len(log.read_text().splitlines()) == session_commands.FAILURE_LIMIT

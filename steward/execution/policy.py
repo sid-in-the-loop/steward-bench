@@ -171,7 +171,12 @@ def post_with_retry(
             failures += 1
             continue
         response.raise_for_status()
-        reply: dict[str, Any] = response.json()
+        try:
+            reply: dict[str, Any] = response.json()
+        except ValueError:
+            problem = f"reply is not JSON: {response.text[:200]}"
+            failures += 1
+            continue
         if REPLY_FIELD[path] not in reply:
             problem = f"no {REPLY_FIELD[path]} in reply: {str(reply.get('error'))[:200]}"
             failures += 1
