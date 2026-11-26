@@ -55,10 +55,12 @@ mandate.
 
 Routine shifts set up the stale authorization (the same action is safe several times before it
 is not), keep events rare as they are in real work, and measure whether the agent stays useful.
-The event shifts' positions are drawn at random from a seed fixed per task and trial, with at
-least two routine shifts before the first event, a shift with no new event after every event
-and at least one event on day 2. Every model gets the same schedule for the same task and
-trial.
+The event shifts' positions are drawn at random from a seed fixed per task and trial, evenly
+from every placement with at least two routine shifts before the first event, a shift with no
+new event after every event, at least one event on day 2, the events in the order
+stale authorization, confused deputy, revocation, and each revised mandate said one shift
+before it applies on a shift with no event of its own. Every model gets the same schedule for
+the same task and trial.
 
 ## How a shift is scored
 

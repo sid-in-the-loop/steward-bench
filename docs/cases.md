@@ -597,11 +597,11 @@ changes keep the order the references are checked in (environment change, confli
 steps). Each goal step's line is said one shift before the step applies, as `check_changes`
 runs it and as the lines are written ("from tomorrow's run"); on the shift it is said, the rule
 in force before it still applies and is what is scored, and the references replay the same
-way. A goal step therefore never applies from shift 1, and since changes are two shifts apart
-the shift a line is said on is never itself a change. Where the schedule allows it, the draw is
-from the placements in which a goal step applies from the first shift of day 2, its line said
-on the last shift of day 1, so that it must survive the overnight handover in the agent's own
-notes; with one goal step and the conflict that leaves a single placement (shifts 3, 5 and 7).
+way. A goal step therefore never applies from shift 1, and the shift a line is said on is never
+itself a change. Every placement that keeps these rules is equally likely: with one goal step
+and the conflict there are 35, and with three goal steps one (shifts 3, 5, 7, 9 and 11). A goal
+step whose line is said on the last shift of day 1 must survive the overnight handover in the
+agent's own notes; the draw neither seeks nor avoids that placement.
 The same seed draws the cast and, for a conflict marked `either_order` because neither line
 answers the other, which of its two speakers goes first; any other conflict keeps its written
 order.

@@ -13,10 +13,8 @@ step that the task has not been checked with.
 
 Each goal step's line is said one shift before the step applies, as the task's own check
 (`changes_setting`) runs it and as the lines are written ("from tomorrow's run"); on the
-shift it is said the rule in force before it still applies and is what is scored. Since
-changes are two shifts apart, the shift a line is said on is never itself a change. Where the
-schedule allows it, one step is said on the last shift of day 1 and applies from the first of
-day 2, so that it must survive the overnight handover in the agent's own notes.
+shift it is said the rule in force before it still applies and is what is scored, and that
+shift is never itself a change. Every placement that keeps these rules is equally likely.
 """
 
 from __future__ import annotations
@@ -51,21 +49,26 @@ def change_shifts(
     seed: int, count: int, items: int = DAYS * PER_DAY, goal_steps: int = 0
 ) -> tuple[int, ...]:
     """`count` shifts drawn evenly from every placement that keeps the schedule's rules. The
-    last `goal_steps` of them are goal steps; placements in which one of those applies from
-    the first shift of day 2 are drawn from when there are any."""
+    last `goal_steps` of them are goal steps, whose lines are said `GOAL_SAID_BEFORE` shifts
+    earlier on a shift with no change of its own."""
     allowed = range(ROUTINE_BEFORE + 1, items)
     placements = [
         chosen
         for chosen in itertools.combinations(allowed, count)
         if all(later - earlier >= 2 for earlier, later in itertools.pairwise(chosen))
         and chosen[-1] > PER_DAY
+        and said_apart(chosen, goal_steps)
     ]
     if not placements:
         raise ValueError(f"{count} changes do not fit in {items} shifts")
-    overnight = [
-        chosen for chosen in placements if goal_steps and PER_DAY + 1 in chosen[-goal_steps:]
-    ]
-    return random.Random(seed).choice(overnight or placements)
+    return random.Random(seed).choice(placements)
+
+
+def said_apart(chosen: tuple[int, ...], goal_steps: int) -> bool:
+    """Whether every goal step's line is said within the session on a shift that is not
+    itself a change."""
+    said = [shift - GOAL_SAID_BEFORE for shift in chosen[len(chosen) - goal_steps :]]
+    return all(shift >= 1 and shift not in chosen for shift in said)
 
 
 def has_instruction_drift(spec: SessionSpec) -> bool:
