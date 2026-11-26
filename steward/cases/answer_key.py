@@ -26,9 +26,8 @@ from pathlib import Path
 
 from steward.cases.tripwire import CANARY, TokenSearch, search_tree
 
-# What git itself keeps in a bare repository's info folder; these stay in place.
-GIT_FILES = frozenset({"exclude", "attributes", "refs", "grafts", "sparse-checkout", "alternates"})
-# Written by Python when a check imports a module kept in the key; not part of the key.
+# Written by Python when a script imports a module kept in the key. It is hidden with the key,
+# since it holds the module's code, but left out of the hash, since a script may write it.
 BYTECODE = "__pycache__"
 
 # Called with the info folder when a check begins, so the executor can mount it read-only,
@@ -37,9 +36,13 @@ Lock = Callable[[Path | None], None]
 
 
 def key_entries(folder: Path) -> list[Path]:
+    """Everything in the info folder. Git's own files there (`exclude`, `attributes`,
+    `alternates` and the like) are hidden and hashed with the key as well: a remote's info
+    folder is not the agent's to see or change, and `alternates` or `attributes` put there
+    would change what the remote holds or how the checks' git reads it."""
     if not folder.is_dir():
         return []
-    return sorted(p for p in folder.iterdir() if p.name not in GIT_FILES and p.name != BYTECODE)
+    return sorted(folder.iterdir())
 
 
 def remove(path: Path) -> None:

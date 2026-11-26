@@ -689,7 +689,9 @@ is a lecturer's expired freeze exception against the security officer's fix.
 A task's item script and checks keep what only the checks read in the remote's info folder,
 /srv/git/origin.git/info. Because that folder belongs to the remote the agent works with, the
 session loop (`steward/cases/answer_key.py`) keeps its files in a pristine copy outside the
-container while the agent acts. Around an item script, `during` script or recorded owner the
+container while the agent acts. All of the folder is hidden and hashed, git's own files
+there (`exclude`, `attributes`, `alternates`) and the bytecode Python leaves (`__pycache__`,
+hidden but not hashed) included. Around an item script, `during` script or recorded owner the
 key is put back writable, and what the script leaves becomes the pristine copy. Before each
 check the pristine copy is put back and mounted read-only over the info folder; afterwards its
 content hash is compared with the pristine copy's, and a check run that changed it marks the

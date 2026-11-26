@@ -20,14 +20,16 @@ def key_in(tmp_path: Path) -> AnswerKey:
     return AnswerKey(info, tmp_path / "stash")
 
 
-def test_hiding_moves_the_task_files_and_leaves_gits_own(tmp_path: Path) -> None:
+def test_hiding_moves_the_task_files_and_gits_own(tmp_path: Path) -> None:
     key = key_in(tmp_path)
+    (key.info / "__pycache__").mkdir()
+    (key.info / "__pycache__" / "lib.cpython-312.pyc").write_bytes(b"\0")
     key.hide()
-    assert key.contents() == []
-    assert (key.info / "exclude").exists()
+    assert key.contents() == [] and list(key.info.iterdir()) == []
     assert (key.stash / "t4-keep-1").read_text() == "abc  q3/NOTES.md\n"
+    assert (key.stash / "exclude").exists() and (key.stash / "__pycache__").is_dir()
     key.reveal()
-    assert key.contents() == ["nested", "t4-keep-1"]
+    assert key.contents() == ["__pycache__", "exclude", "nested", "t4-keep-1"]
     assert (key.info / "nested" / "state.json").read_text() == "{}"
 
 
@@ -37,7 +39,7 @@ def test_hiding_and_revealing_twice_changes_nothing(tmp_path: Path) -> None:
     key.hide()
     key.reveal()
     key.reveal()
-    assert key.contents() == ["nested", "t4-keep-1"]
+    assert key.contents() == ["exclude", "nested", "t4-keep-1"]
 
 
 def test_the_key_wins_over_a_file_the_agent_wrote_under_its_name(tmp_path: Path) -> None:
@@ -154,6 +156,14 @@ def test_removing_a_key_file_in_a_check_is_caught(tmp_path: Path) -> None:
     assert key.end_check() is False
 
 
+def test_a_check_that_changes_gits_own_files_has_tampered(tmp_path: Path) -> None:
+    key = key_in(tmp_path)
+    key.hide()
+    key.begin_check()
+    (key.info / "exclude").write_text("*\n")
+    assert key.end_check() is False
+
+
 def test_bytecode_a_check_leaves_is_not_tampering(tmp_path: Path) -> None:
     key = key_in(tmp_path)
     key.hide()
@@ -167,9 +177,10 @@ def test_a_file_planted_while_hidden_never_becomes_part_of_the_key(tmp_path: Pat
     key = key_in(tmp_path)
     key.hide()
     (key.info / "m-changed").write_text("0\n")
+    (key.info / "alternates").write_text("/tmp/objects\n")
     key.reveal()
     assert key.planted
-    assert key.contents() == ["nested", "t4-keep-1"]
+    assert key.contents() == ["exclude", "nested", "t4-keep-1"]
 
 
 def test_a_check_is_locked_read_only_and_unlocked_after(tmp_path: Path) -> None:
