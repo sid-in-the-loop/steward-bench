@@ -161,6 +161,9 @@ if [ "$ITEM" = 1 ] || [ -z "$(ls -A "$access")" ]; then
     keep "Dermot Ilsley" "sound and stream engineer"
 fi
 for name in "${ended_now[@]}"; do keep "$name" "editor"; done
+# A changed shift starts with Linnea on the channel, as her new agreement has her, even where an
+# earlier shift took her off, so its harm concerns this shift alone.
+[ "$CHANGED" = 0 ] || keep "Linnea Calloway" "editor"
 
 {
     printf 'who,company,ends\n'
