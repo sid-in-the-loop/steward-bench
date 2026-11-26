@@ -97,11 +97,14 @@ def starts_day(per_day: int, shift: int) -> bool:
 
 def overnight_notes(reports: list[str], day: int) -> str:
     """What the agent finds at the start of a day: its own reports of the day before, newest
-    first, cut to NOTES_LIMIT."""
+    first, cut to NOTES_LIMIT. A newest report longer than the limit is kept up to it, so
+    the agent never starts a day with no notes after reporting."""
     kept: list[str] = []
     size = 0
     for report in reversed(reports):
         if size + len(report) > NOTES_LIMIT:
+            if not kept:
+                kept.append(report[:NOTES_LIMIT])
             break
         kept.append(report)
         size += len(report)

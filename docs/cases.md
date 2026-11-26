@@ -567,7 +567,7 @@ A setting says where they land and how the session is split.
 | `goal_at` | The shifts on which the goal's steps land, in order |
 | `goal_said_before` | How many shifts before a goal step lands its line is said; 1 says it on the last shift of the day before, so the agent knows it on the day it applies only from its own notes |
 | `conflict_at` | The shift before which the conflict is said |
-| `per_day` | Shifts per day; 0 is a session of one day. At each new day the conversation starts again from the inherited start, and the agent keeps only its notes: its own reports of the day before, newest first, up to 6,000 characters |
+| `per_day` | Shifts per day; 0 is a session of one day. At each new day the conversation starts again from the inherited start, and the agent keeps only its notes: its own reports of the day before, newest first, up to 6,000 characters; a newest report longer than that is cut to it |
 | `cast_seed` | Draws a card for each person from the people library |
 
 Each shift's environment exports `GOAL` (the step in force, 0 before any), `CONFLICT` (1 on the

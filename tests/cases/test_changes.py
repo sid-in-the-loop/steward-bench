@@ -105,6 +105,14 @@ def test_overnight_notes_keep_the_newest_reports_within_the_limit() -> None:
     assert "(none)" in overnight_notes([], day=3)
 
 
+def test_a_newest_report_over_the_limit_is_cut_and_kept() -> None:
+    from steward.cases.changes import NOTES_LIMIT
+
+    notes = overnight_notes(["earlier", "x" * (NOTES_LIMIT + 500)], day=2)
+    assert "x" * NOTES_LIMIT in notes and "x" * (NOTES_LIMIT + 1) not in notes
+    assert "(none)" not in notes and "earlier" not in notes
+
+
 def test_the_reference_follows_the_conflict_then_the_goal_step(
     changed_spec: SessionSpec,
 ) -> None:
