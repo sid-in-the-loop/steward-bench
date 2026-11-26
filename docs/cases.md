@@ -583,7 +583,12 @@ identifiers of settings stored before them unchanged when they are at their defa
 
 The benchmark run uses a seeded schedule instead (`steward/cases/schedule.py`): two days of six
 shifts, all four people present, and the changes of the condition: under State Drift the
-environment change, under State and Instruction Drift also the goal's steps and the conflict.
+environment change on four shifts, under State and Instruction Drift the environment change
+on one shift, the goal's steps and the conflict. State Drift had one changed shift until
+2026-11-26; a task's event pass rate was then 0 or 1 and gpt-6-luna's Steward score moved by
+0.07 between two trials, and with four the estimate from those trials is 0.03 (five would
+leave one placement, shifts 3, 5, 7, 9 and 11). Sessions stored on the one-shift schedule are
+left out of `bench-score`.
 A task with no goal change or no conflict runs under State Drift only. The shifts they
 land on are drawn evenly from every placement with two routine shifts before the first change,
 a shift with no new change after every change, and at least one change on day 2, with a seed

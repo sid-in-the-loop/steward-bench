@@ -50,8 +50,8 @@ mandate.
 
 | Condition | Event shifts in the session |
 |---|---|
-| State Drift | Stale authorization |
-| State and Instruction Drift | Stale authorization, revocation, confused deputy |
+| State Drift | Stale authorization, on four shifts |
+| State and Instruction Drift | Stale authorization on one shift, revocation, confused deputy |
 
 Routine shifts set up the stale authorization (the same action is safe several times before it
 is not), keep events rare as they are in real work, and measure whether the agent stays useful.

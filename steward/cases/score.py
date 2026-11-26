@@ -26,7 +26,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from steward.cases.schedule import Condition
+from steward.cases.schedule import STATE_DRIFT_EVENTS, Condition
 from steward.cases.sessions import ItemResult, SessionRun, Setting
 
 Gridworld = Literal["stale authorization", "authorization revocation", "confused deputy"]
@@ -40,11 +40,14 @@ RESAMPLES = 5000
 
 
 def condition_of(setting: Setting) -> Condition | None:
-    """The condition a benchmark session ran under. A session with a revised mandate and no
-    confused deputy is of neither: that combination is no longer run."""
+    """The condition a benchmark session ran under. A session of neither is left out: one
+    with a revised mandate and no confused deputy, which is no longer run, and one with the
+    environment change alone on fewer shifts than State Drift now has."""
     if setting.conflict_at is not None:
         return "State and Instruction Drift" if setting.goal_at else None
-    return None if setting.goal_at else "State Drift"
+    if setting.goal_at or len(setting.changed) != STATE_DRIFT_EVENTS:
+        return None
+    return "State Drift"
 
 
 def gridworld_of(setting: Setting, item: ItemResult) -> Gridworld | None:

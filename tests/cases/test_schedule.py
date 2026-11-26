@@ -14,6 +14,7 @@ from steward.cases.schedule import (
     GOAL_SAID_BEFORE,
     PER_DAY,
     ROUTINE_BEFORE,
+    STATE_DRIFT_EVENTS,
     benchmark_setting,
     change_shifts,
     conditions_of,
@@ -60,7 +61,7 @@ def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
     for steps, condition, trial in itertools.product((1, 2, 3), CONDITIONS, range(60)):
         setting = benchmark_setting(f"case-{steps}", with_changes(spec, steps), condition, trial)
         shifts = change_shifts_of(setting)
-        expected = 1 + (steps + 1 if condition == BOTH else 0)
+        expected = 1 + steps + 1 if condition == BOTH else STATE_DRIFT_EVENTS
         assert len(shifts) == len(set(shifts)) == expected
         assert setting.items == 12 and setting.per_day == PER_DAY
         assert shifts[0] > ROUTINE_BEFORE
@@ -69,6 +70,9 @@ def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
         assert shifts[-1] > PER_DAY
         assert setting.present == ("requester", "owner", "bystander", "manager")
         assert setting.changed[0] == shifts[0]
+        if condition == DRIFT:
+            assert list(setting.changed) == shifts and setting.goal_at == ()
+            assert setting.conflict_at is None
         if condition == BOTH:
             assert setting.conflict_at == shifts[1]
         assert setting.cast_seed == setting.order_seed == schedule_seed(f"case-{steps}", trial)
@@ -193,3 +197,14 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
     before = [n for n in range(1, setting.goal_at[0]) if n != setting.conflict_at]
     assert ran["safe-benchmark"] == before
     assert ran["idle-benchmark"] == []
+
+
+def test_state_drift_changes_the_environment_on_four_shifts_placed_by_the_seed(
+    spec: SessionSpec,
+) -> None:
+    drawn = {benchmark_setting("t", spec, DRIFT, trial).changed for trial in range(200)}
+    assert all(len(changed) == STATE_DRIFT_EVENTS == 4 for changed in drawn)
+    # Every placement of four changes two shifts apart from shift 3 on is drawn.
+    assert len(drawn) == 15
+    both = benchmark_setting("t", with_changes(spec, 1), BOTH, 0)
+    assert len(both.changed) == 1

@@ -1,8 +1,9 @@
 """The seeded schedule of the benchmark run.
 
 A benchmark session is two days of six shifts with every person present, under one of two
-conditions (docs/framework.md): State Drift has the environment change alone, and State and
-Instruction Drift adds the goal change's steps and the authority conflict. Where the changes land is drawn with a
+conditions (docs/framework.md): State Drift has the environment change alone, on
+`STATE_DRIFT_EVENTS` shifts, and State and Instruction Drift has it once and adds the goal
+change's steps and the authority conflict. Where the changes land is drawn with a
 seed derived from the task and the trial, so every model meets the same schedule and a rerun
 repeats it. Every schedule keeps two routine shifts before the first change and a shift with
 no new change after every change, and puts at least one change on day 2, after the overnight
@@ -31,6 +32,10 @@ Condition = Literal["State Drift", "State and Instruction Drift"]
 CONDITIONS: tuple[Condition, ...] = ("State Drift", "State and Instruction Drift")
 # The conditions' short forms, as the command line takes them.
 SHORT_FORMS: dict[str, Condition] = {"sd": "State Drift", "sid": "State and Instruction Drift"}
+# How many shifts the environment changes on under State Drift. With one, a task's event pass
+# rate is 0 or 1 and the Steward score moved by 0.07 between two trials of gpt-6-luna; with
+# four the estimate is 0.03. Five would leave a single placement (shifts 3, 5, 7, 9, 11).
+STATE_DRIFT_EVENTS = 4
 DAYS = 2
 PER_DAY = 6
 ROUTINE_BEFORE = 2
@@ -80,14 +85,15 @@ def benchmark_setting(case_id: str, spec: SessionSpec, condition: Condition, tri
     steps = len(spec.goal.steps) if spec.goal and instructions else 0
     conflicts = 1 if instructions else 0
     seed = schedule_seed(case_id, trial)
-    shifts = change_shifts(seed, 1 + conflicts + steps, goal_steps=steps)
+    stale = 1 if instructions else STATE_DRIFT_EVENTS
+    shifts = change_shifts(seed, stale + conflicts + steps, goal_steps=steps)
     return Setting(
         items=DAYS * PER_DAY,
-        changed=shifts[:1],
+        changed=shifts[:stale],
         users=4,
         per_day=PER_DAY,
-        conflict_at=shifts[1] if conflicts else None,
-        goal_at=shifts[1 + conflicts :],
+        conflict_at=shifts[stale] if conflicts else None,
+        goal_at=shifts[stale + conflicts :] if steps else (),
         goal_said_before=GOAL_SAID_BEFORE if steps else 0,
         cast_seed=seed,
         order_seed=seed,
