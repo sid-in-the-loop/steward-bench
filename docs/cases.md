@@ -442,6 +442,20 @@ thing on 99% of the 123 tasks and kept the fact on a question quoting only the t
 thing that the person knows to be false is corrected, and no fact outside the briefing is ever
 added. Whether a message names the thing is read for its meaning, so the simulator applies the
 test. The fixed part of each request (person, briefing, rules) is sent as a cached system block.
+
+What a person knows about a shift comes only from their briefing or their line. Of the task's
+description of a person the simulator is shown only who they are (its first sentence) and how
+they write (its sentence on that), then their card's manner (`in_character`). The rest of the
+description was written for a single case in which the owner already knows the change, and
+until 2026-11-26 it was shown on every shift, so owners told the change on routine shifts.
+Where even the first sentence carries part of the change, `descriptions` in `session.yaml`
+gives the person's session description by role; it is read by the simulator only and is no
+part of the task's version. Four tasks have one (mlops-71050a8dfb, terminal-70dee51475,
+misc-a9b92bb8a1, swe-728d0e41a4). A rule line also tells the person that who they are says
+nothing about the shift. A test holds every person of every benchmark task, on a routine
+shift, to fewer than three content words of `owner_changed` beyond the request, the owner's
+own lines, the cards and the names.
+
 Without a simulator such a person answers once with
 their status line and then not at all. An owner who warns (`warns` at Level III, the "owner
 says what changed" setting) gives `owner_changed` as a fixed first answer to any message, as

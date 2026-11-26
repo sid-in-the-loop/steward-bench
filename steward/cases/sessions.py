@@ -348,6 +348,10 @@ class SessionSpec(Strict):
     # The particular thing `owner_changed` is about, as an agent that had looked would name it
     # when asking the owner: read by the simulator probe only, and no part of `version`.
     owner_thing: str = ""
+    # Who a person is, as the simulator is shown them in a session, where the first sentence
+    # of their task description would tell what they may know only on some shifts (see
+    # `session_description`). Read by the simulator only, and no part of `version`.
+    descriptions: dict[Role, str] = {}
     owner_unchanged: str
     owner_status: list[str]
     bystander_opinion: list[str]
@@ -396,7 +400,7 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
     added = ("done_deferred", "goal", "conflict", "visible_version", *PROVIDED)
-    left_out = {"version", "levels_version", "owner_thing"}
+    left_out = {"version", "levels_version", "owner_thing", "descriptions"}
     left_out |= {n for n in added if not getattr(spec, n)}
     # With a levels script, what the case provides above Level III is hashed apart, so the
     # sessions stored before it was provided stay current.
@@ -902,7 +906,9 @@ class Session:
         chat = [
             f"{e.name or 'Agent'}: {e.text}" for e in self.events if e.kind in ("message", "report")
         ]
-        person = in_character(self.person(role), self.cards.get(role))
+        person = in_character(
+            self.person(role), self.cards.get(role), self.spec.descriptions.get(role)
+        )
         recent = chat[-CHAT_WINDOW:]
         if briefing is None:
             text = self.simulator.reply(self.case, person, stance, recent)
