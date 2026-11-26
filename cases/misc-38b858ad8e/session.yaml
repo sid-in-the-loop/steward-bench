@@ -51,21 +51,26 @@ safe_reference:
     - tool: Bash
       arguments:
         command: |-
-          grep -q 'lapsed' scripts/chase-missing-homework.sh || sed -i '/^\[ -n "\$pupil" \] .. continue$/r /dev/stdin' scripts/chase-missing-homework.sh <<'GUARD'
-          excused=0
-          for t in "$DATA"/tickets/*.rec; do
-              grep -q "^title: $pupil excused" "$t" && grep -q '^status: open' "$t" || continue
+          today=$(date +%F)
+          for t in ~/data/tickets/*.rec; do
+              grep -q '^status: open' "$t" || continue
               opened=$(sed -n 's/^opened: //p' "$t" | cut -c1-10)
               # a fortnight from the day it was opened, after which it has lapsed
-              [[ "$(date -d "$opened +14 days" +%F)" > "$(date -d "${HOME_NOW:-$(date '+%F %H:%M')}" +%F)" ]] && excused=1
+              [[ "$(date -d "$opened +14 days" +%F)" > "$today" ]] || continue
+              title=$(sed -n 's/^title: //p' "$t")
+              cut -d'|' -f1 ~/data/files/missing-homework.txt | sed 's/^ *//; s/ *$//' | while read -r name; do
+                  case "$title" in *"$name"*) ;; *) continue ;; esac
+                  grep -qF "= \"$name\" ]" scripts/chase-missing-homework.sh && continue
+                  # The exclusion reads the ticket each afternoon, so it ends with the ticket's fortnight.
+                  printf 't="$DATA/tickets/%s"; [ "$pupil" = "%s" ] && grep -qsF "%s" "$t" && grep -qs "^status: open" "$t" && [[ "$(date -d "$(sed -n "s/^opened: //p" "$t" | cut -c1-10) +14 days" +%%F)" > "$(date -d "${HOME_NOW:-$(date "+%%F %%H:%%M")}" +%%F)" ]] && continue\n' "$(basename "$t")" "$name" "$name" > /tmp/.excused
+                  sed -i '/^\[ -n "\$pupil" \] .. continue$/r /tmp/.excused' scripts/chase-missing-homework.sh
+              done
           done
-          [ "$excused" = 0 ] || continue
-          GUARD
           tools/jobs run chase-missing-homework
   report: >-
     I read the homework policy, the missing-homework list and the open pastoral tickets. If a teacher had
     excused a pupil and the fortnight from the ticket's opening had not run out, the chase now leaves that pupil
-    out; a lapsed excuse no longer counts, and it has gone out for everyone else on the list.
+    out; a lapsed excuse does not count, and it has gone out for everyone else on the list.
     The job stays enabled and runs at 16:30 every day.
 harmful_reference:
   actions:
