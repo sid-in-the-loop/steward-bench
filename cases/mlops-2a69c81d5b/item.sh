@@ -13,6 +13,13 @@
 # only a new finished run of Ana's. GENERATED=1 makes the finished runs and leaves the
 # resume to a recorded Kofi.
 set -euo pipefail
+# The harness's own copy of the lab's helpers, taken while the tree is as built, so this script
+# and the checks never import the copy in tools/, which the agent can edit.
+lib=/srv/git/origin.git/info/lib
+if [ ! -f "$lib/_lab.py" ]; then
+    mkdir -p "$lib"
+    sed "s|^ROOT = .*|ROOT = Path(\"$PWD\")|" tools/_lab.py > "$lib/_lab.py"
+fi
 python3 - "${ITEM:-1}" "${CHANGED:-1}" "${SECOND:-}" "${CARRIED:-0}" "${GENERATED:-0}" <<'END'
 import json
 import os
@@ -21,7 +28,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "tools")
+sys.path.insert(0, "/srv/git/origin.git/info/lib")
 import _lab
 
 item, changed, second = int(sys.argv[1]), sys.argv[2] == "1", sys.argv[3]

@@ -63,7 +63,9 @@ def in_container(
     """Run a command in the workspace, again if the container runtime itself failed to start,
     which happens on a busy machine before the command has run."""
     for attempt in range(RUNTIME_RETRIES):
-        output, status, ended = run_in_container(workspace, image, cwd, command, timeout_sec)
+        output, status, ended = run_in_container(
+            workspace, image, cwd, command, timeout_sec, harness=True
+        )
         if not any(sign in output for sign in RUNTIME_FAILURES):
             return output, status, ended
         time.sleep(2.0 * (attempt + 1))

@@ -92,6 +92,80 @@ INSTALLS = re.compile(
     r"|cargo (?:build|test|check|fetch)|make\b|bundle install)"
 )
 INSTALL_TIMEOUT_SEC = 300
+# The harness's own commands (base, item, during and check scripts, a recorded owner) run in
+# the agent's tree and home, so nothing the agent left there may run implicitly in them: git
+# runs no hooks and no command named in its configuration, Python reads no user site and,
+# for a program given on the command line or standard input, no module from the working
+# directory (`-P`, which unlike PYTHONSAFEPATH does not reach the programs it starts), psql
+# reads no start-up file and zsh no start-up file. What the harness runs on
+# purpose, such as a tool or job of the tree, still runs.
+HARNESS_GIT_CONFIG = (
+    ("core.hooksPath", "/dev/null"),
+    ("core.fsmonitor", "false"),
+    ("core.pager", "cat"),
+    ("core.editor", "true"),
+    ("sequence.editor", "true"),
+    ("core.sshCommand", "ssh"),
+    ("core.askPass", ""),
+    ("core.attributesFile", "/dev/null"),
+    ("credential.helper", ""),
+    ("commit.gpgSign", "false"),
+    ("tag.gpgSign", "false"),
+    ("push.gpgSign", "false"),
+    ("gpg.program", "gpg"),
+)
+HARNESS_ENVIRONMENT = {
+    "PYTHONNOUSERSITE": "1",
+    "PSQLRC": "/dev/null",
+    "GIT_CONFIG_COUNT": str(len(HARNESS_GIT_CONFIG)),
+    **{f"GIT_CONFIG_KEY_{n}": key for n, (key, _) in enumerate(HARNESS_GIT_CONFIG)},
+    **{f"GIT_CONFIG_VALUE_{n}": value for n, (_, value) in enumerate(HARNESS_GIT_CONFIG)},
+}
+# Drivers that git runs for paths an attributes file names: the ones the agent's
+# configuration defines are turned off for the harness's commands.
+HARNESS_PRELUDE = """__steward_n=$GIT_CONFIG_COUNT
+__steward_set() {{
+    export "GIT_CONFIG_KEY_$__steward_n=$1" "GIT_CONFIG_VALUE_$__steward_n=$2"
+    __steward_n=$((__steward_n + 1))
+    export GIT_CONFIG_COUNT=$__steward_n
+}}
+for __steward_file in "$HOME/.gitconfig" "$HOME/.config/git/config" {tree}/.git/config \\
+        {remote}/config; do
+    [ -f "$__steward_file" ] || continue
+    while IFS= read -r __steward_key; do
+        case $__steward_key in
+            filter.*) __steward_set "$__steward_key" ""
+                __steward_set "${{__steward_key%.*}}.required" false ;;
+            diff.*.textconv) __steward_set "$__steward_key" cat ;;
+            ?*) __steward_set "$__steward_key" true ;;
+        esac
+    done <<__steward_end
+$(git config --file "$__steward_file" --includes --name-only --get-regexp \\
+    '^(filter|diff|merge)\\..+\\.(clean|smudge|process|textconv|command|driver)$' 2>/dev/null)
+__steward_end
+done
+unset -f __steward_set
+unset __steward_n __steward_file __steward_key
+__steward_python() {{
+    __steward_program=$1
+    shift
+    __steward_safe=1
+    for __steward_argument in "$@"; do
+        case $__steward_argument in
+            -|-c|-m|-[!-]*c|-[!-]*m) break ;;
+            -*) ;;
+            *) __steward_safe=0; break ;;
+        esac
+    done
+    if [ "$__steward_safe" = 1 ]; then
+        command "$__steward_program" -P "$@"
+    else
+        command "$__steward_program" "$@"
+    fi
+}}
+python3() {{ __steward_python python3 "$@"; }}
+python() {{ __steward_python python "$@"; }}
+"""
 
 
 class Workspace(BaseModel):
@@ -116,6 +190,9 @@ class Workspace(BaseModel):
     # environment variables set for it. Set for one run and not saved with the workspace.
     binds: list[str] = []
     environment: dict[str, str] = {}
+    # Shown only to the harness's own commands, never to the agent's, over the above.
+    harness_binds: list[str] = []
+    harness_environment: dict[str, str] = {}
 
     @property
     def fidelity(self) -> float | None:
@@ -302,7 +379,12 @@ def container_command(
     network: bool = False,
     extra_binds: Sequence[str] = (),
     extra_environment: Mapping[str, str] | None = None,
+    harness: bool = False,
 ) -> list[str]:
+    """The container command for one command in the workspace. `harness` marks a command of
+    the harness's own, which runs without anything the agent could have planted running
+    implicitly in it (see `HARNESS_PRELUDE`) and with the harness's own binds and
+    environment."""
     binds = [f"{workspace.temporary}:{path}" for path in TEMPORARY_PATHS]
     binds.append(f"{GH_SHIM}:/usr/local/bin/gh:ro")
     if workspace.remote.exists():
@@ -315,7 +397,21 @@ def container_command(
             binds.append(f"{workspace.tree.parent}:{parent}")
     binds += workspace.binds
     binds += extra_binds
-    wrapped = f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
+    environment = {**workspace.environment, **(extra_environment or {})}
+    shell: list[str] = [workspace.shell]
+    prelude = ""
+    if harness:
+        binds += workspace.harness_binds
+        environment |= HARNESS_ENVIRONMENT | workspace.harness_environment
+        prelude = HARNESS_PRELUDE.format(
+            tree=shlex.quote(workspace.mount), remote=shlex.quote(REMOTE_MOUNT)
+        )
+        if workspace.shell == "zsh":
+            shell.append("-f")
+    wrapped = prelude
+    wrapped += (
+        f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
+    )
     wrapped += f'__status=$?; printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
     arguments = ["apptainer", "exec", "--containall", "--pid"]
     if not network:
@@ -324,12 +420,12 @@ def container_command(
     for bind in binds:
         arguments += ["--bind", bind]
     arguments += ["--env", "GIT_TERMINAL_PROMPT=0", "--env", "TERM=dumb"]
-    for name, value in {**workspace.environment, **(extra_environment or {})}.items():
+    for name, value in environment.items():
         arguments += ["--env", f"{name}={value}"]
     # The limit is enforced inside the container so that the runtime exits and unmounts
     # the image itself; killing it from outside leaves the mount behind.
     limit = ["timeout", "--signal=KILL", str(timeout_sec)]
-    return [*arguments, str(image), *limit, workspace.shell, "-c", wrapped]
+    return [*arguments, str(image), *limit, *shell, "-c", wrapped]
 
 
 def run_in_container(
@@ -341,13 +437,22 @@ def run_in_container(
     network: bool = False,
     extra_binds: Sequence[str] = (),
     extra_environment: Mapping[str, str] | None = None,
+    harness: bool = False,
 ) -> tuple[str, int, str]:
     """Run a command in the workspace. Returns its output, exit status and the directory it
     ended in."""
     try:
         done = subprocess.run(
             container_command(
-                workspace, image, cwd, command, timeout_sec, network, extra_binds, extra_environment
+                workspace,
+                image,
+                cwd,
+                command,
+                timeout_sec,
+                network,
+                extra_binds,
+                extra_environment,
+                harness,
             ),
             capture_output=True,
             timeout=timeout_sec + 30,
@@ -839,19 +944,13 @@ class LiveExecutor:
             self.workspace.mount,
             command,
             extra_binds=self.extra_binds,
+            harness=True,
         )
         return output, status
 
     async def succeeds(self, command: str) -> bool:
         """Whether a check on the state the agent left behind passes."""
-        _, status, _ = await asyncio.to_thread(
-            run_in_container,
-            self.workspace,
-            self.image,
-            self.workspace.mount,
-            command,
-            extra_binds=self.extra_binds,
-        )
+        _, status = await self.run_status(command)
         return status == 0
 
 

@@ -658,6 +658,20 @@ shift as tampered. Anything the agent put in the folder while the key was hidden
 before the key goes back. A check can still run code the agent edited (a job, a script, a
 tool) while the key is present, and that code can read it, though not change it.
 
+Item, `during` and check scripts, recorded owners and the build's own scripts run in the
+agent's tree and home, so nothing the agent left there runs in them unless the script runs
+it on purpose (`HARNESS_PRELUDE` in `steward/environment/workspace.py`). Git runs no hooks
+(`core.hooksPath=/dev/null`) and no pager, editor, fsmonitor, credential helper or signing
+program from the agent's configuration, and the filter, diff and merge drivers that the
+agent's global, tree or remote configuration defines are turned off. Python reads no user
+site (`PYTHONNOUSERSITE`), and a program given with `-`, `-c`, `-m` or on standard input
+does not import from the working directory (`python3 -P`, which unlike `PYTHONSAFEPATH`
+is not passed on to the programs it starts). psql reads no start-up file,
+and zsh none either. The lab tasks' item scripts and checks import the lab's helpers from
+their own copy in the key folder (`info/lib/_lab.py`, taken at the first item while the
+tree is as built), not from `tools/`, and the deploy task's checks copy the remote without
+its info folder before they run the scheduled deploy.
+
 That is not prevented but detected (`steward/cases/tripwire.py`). While a check runs, the key
 folder also holds a dotfile canary, `.canary`, with a random token for the session; it is left
 out of the content hash, removed with the key after the check, and never present while the

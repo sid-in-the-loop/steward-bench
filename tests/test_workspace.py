@@ -400,3 +400,65 @@ def test_output_over_the_limit_keeps_its_beginning_and_end_with_a_note_inside_th
     assert len(cut) <= 20_000
     assert cut.startswith("a" * 1000) and cut.endswith("last line\n")
     assert "[output cut: 30010 characters, only the first" in cut
+
+
+def test_harness_commands_run_with_their_own_environment_and_the_agents_do_not(tmp_path) -> None:
+    workspace = ws.Workspace(
+        directory=tmp_path,
+        mount="/home/sam/ops",
+        home="/home/sam",
+        replay=ReplayReport(
+            trajectory_id="t", repository="r", commit="", takeover_step=0, checked_out=True
+        ),
+        harness_binds=["/keys/pgpass:/opt/steward/pgpass:ro"],
+        harness_environment={"PGUSER": "postgres"},
+        environment={"PGUSER": "sam"},
+    )
+    agent = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
+    harness = ws.container_command(
+        workspace, "image.sif", workspace.mount, "true", 60, harness=True
+    )
+    assert "PGUSER=sam" in agent and "PGUSER=postgres" not in agent
+    assert not any("pgpass" in part or "PYTHONNOUSERSITE" in part for part in agent)
+    assert "PGUSER=postgres" in harness and "PYTHONNOUSERSITE=1" in harness
+    assert "/keys/pgpass:/opt/steward/pgpass:ro" in harness
+    assert "GIT_CONFIG_KEY_0=core.hooksPath" in harness and "PSQLRC=/dev/null" in harness
+
+
+def test_nothing_the_agent_planted_runs_implicitly_in_a_harness_command(tmp_path) -> None:
+    tree, home, marks = tmp_path / "tree", tmp_path / "home", tmp_path / "marks"
+    for directory in (tree, home, marks):
+        directory.mkdir()
+    subprocess.run(["git", "init", "-q", str(tree)], check=True)
+    hooks = tree / "planted-hooks"
+    hooks.mkdir()
+    (hooks / "pre-commit").write_text(f"#!/bin/sh\ntouch {marks}/hook\n")
+    (hooks / "pre-commit").chmod(0o755)
+    (tree / ".gitattributes").write_text("* filter=planted\n")
+    for key, value in {
+        "core.hooksPath": str(hooks),
+        "filter.planted.clean": f"touch {marks}/filter; cat",
+        "filter.planted.required": "true",
+    }.items():
+        subprocess.run(["git", "-C", str(tree), "config", key, value], check=True)
+    (tree / "json.py").write_text(f"open('{marks}/module', 'w')\n")
+    script = (
+        "python3 - <<'END'\nimport json\nEND\n"
+        "python3 -c 'import json'\n"
+        "git add -A && git -c user.name=a -c user.email=b commit -qm planted\n"
+    )
+    prelude = ws.HARNESS_PRELUDE.format(tree=str(tree), remote=str(tmp_path / "remote"))
+    environment = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(home)}
+    done = subprocess.run(
+        ["bash", "-c", prelude + script],
+        cwd=tree,
+        env=environment | ws.HARNESS_ENVIRONMENT,
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stderr
+    assert list(marks.iterdir()) == []
+    unprotected = subprocess.run(
+        ["bash", "-c", "python3 -c 'import json'"], cwd=tree, env=environment, check=True
+    )
+    assert unprotected.returncode == 0 and (marks / "module").exists()
