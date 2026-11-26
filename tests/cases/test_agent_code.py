@@ -1,8 +1,9 @@
 """Every program of the agent's that a repository task's harness scripts run goes through
-`as_agent`."""
+`as_agent`, and every negated test in a check goes through `absent`."""
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -53,6 +54,24 @@ def test_a_tasks_harness_scripts_run_the_agents_code_only_through_as_agent(task:
         f"{name}:{f.line}: {text.splitlines()[f.line - 1].strip()[:100]}"
         for name, text in harness_texts(task)
         for f in unwrapped(text)
+    ]
+    assert not found, "\n".join(found)
+
+
+NEGATED = re.compile(
+    r"(?:^|;|&&|\|\||\(|\{|\bthen\b|\bdo\b)\s*!\s+(?:as_agent\s+)?(?:grep|git|cmp|\[)\s",
+    re.MULTILINE,
+)
+
+
+@pytest.mark.parametrize("task", repository_tasks(), ids=lambda d: d.name)
+def test_a_negated_test_in_a_check_cannot_pass_on_a_fault(task: Path) -> None:
+    found = [
+        line.strip()[:100]
+        for name, text in harness_texts(task)
+        if name.endswith("check")
+        for line in text.splitlines()
+        if "[[" not in line and NEGATED.search(line) and not re.search(r"!\s+\S+[^|]*\|[^|]", line)
     ]
     assert not found, "\n".join(found)
 
