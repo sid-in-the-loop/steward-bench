@@ -1839,7 +1839,8 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument(
         "--benchmark",
         action="store_true",
-        help="check on the benchmark's seeded schedule, trials 0 and 1, in place of the short one",
+        help="check on the benchmark's seeded schedule, trials 0 and 1, with mixed agents under "
+        "State Drift, in place of the short one",
     )
     sub.add_argument(
         "--one-date",
