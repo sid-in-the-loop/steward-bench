@@ -45,6 +45,8 @@ class FakeServer:
     def __init__(self, directory: Path) -> None:
         self.directory = directory
         self.sockets = directory / "run"
+        self.password_file = directory / "pgpass"
+        self.role = "sam"
         self.calls: list[str] = []
 
     def create(self, database: str) -> None:
@@ -60,7 +62,8 @@ class FakeServer:
 def fake_server_for(monkeypatch: pytest.MonkeyPatch) -> list[FakeServer]:
     made: list[FakeServer] = []
 
-    def server_for(workspace: ws.Workspace, image: Path) -> tuple[FakeServer, Path]:
+    def server_for(workspace: ws.Workspace, image: Path, role: str) -> tuple[FakeServer, Path]:
+        assert role == "sam"
         made.append(FakeServer(workspace.directory / "pg"))
         return made[-1], Path("/images/postgres_client")
 
@@ -86,7 +89,7 @@ def test_a_database_is_part_of_what_a_run_depends_on() -> None:
 
 def test_commands_reach_the_server_through_its_socket_and_client_programs(tmp_path: Path) -> None:
     workspace = make_workspace(tmp_path / "workspace")
-    server = postgres.Server(workspace.directory / "pg", Path("/images/postgres.sif"))
+    server = postgres.Server(workspace.directory / "pg", Path("/images/postgres.sif"), "sam")
     client = Path("/images/postgres_client")
     reaching = postgres.reaching(workspace, server, client, Database(name="warehouse"))
     assert workspace.binds == [] and workspace.environment == {}
@@ -94,23 +97,34 @@ def test_commands_reach_the_server_through_its_socket_and_client_programs(tmp_pa
     assert f"{client}/bin/psql:/usr/local/bin/psql:ro" in reaching.binds
     assert reaching.environment == {
         "PGHOST": "/var/run/postgresql",
-        "PGUSER": "postgres",
+        "PGUSER": "sam",
         "PGDATABASE": "warehouse",
     }
+    assert reaching.harness_environment["PGUSER"] == "postgres"
     command = ws.container_command(reaching, "image.sif", reaching.mount, "psql -c 'select 1'", 60)
     assert f"{client}:/opt/postgres-client:ro" in command
-    assert "PGDATABASE=warehouse" in command
+    assert "PGDATABASE=warehouse" in command and "PGUSER=sam" in command
+    assert not any("pgpass" in part or "PGUSER=postgres" in part for part in command)
+    harness = ws.container_command(reaching, "image.sif", reaching.mount, "true", 60, harness=True)
+    assert f"{server.password_file}:/opt/steward/pgpass:ro" in harness
+    assert "PGUSER=postgres" in harness and "ALTER DATABASE" in harness[-1]
     plain = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
     assert not any("postgres" in part.lower() or part.startswith("PG") for part in plain)
 
 
-def test_the_server_runs_in_its_image_over_its_own_directory(tmp_path: Path) -> None:
-    server = postgres.Server(tmp_path / "pg", Path("/images/postgres.sif"))
-    command = server.command("pg_ctl", "status")
+def test_the_server_runs_confined_in_its_image_over_its_own_directory(tmp_path: Path) -> None:
+    server = postgres.Server(tmp_path / "pg", Path("/images/postgres.sif"), "sam")
+    command = server.command("pg_isready")
     assert command[:2] == ["apptainer", "exec"]
-    assert f"{tmp_path / 'pg' / 'data'}:/var/lib/postgresql/data" in command
-    assert f"{tmp_path / 'pg' / 'run'}:/var/run/postgresql" in command
-    assert command[-3:] == ["/images/postgres.sif", "pg_ctl", "status"]
+    assert {"--containall", "--pid", "--net"} <= set(command)
+    assert command[command.index("--network") + 1] == "none"
+    binds = [command[i + 1] for i, part in enumerate(command) if part == "--bind"]
+    assert binds == [
+        f"{tmp_path / 'pg' / 'data'}:/var/lib/postgresql/data",
+        f"{tmp_path / 'pg' / 'run'}:/var/run/postgresql",
+        f"{tmp_path / 'pg' / 'pg_hba.conf'}:/etc/steward/pg_hba.conf:ro",
+    ]
+    assert command[-2:] == ["/images/postgres.sif", "pg_isready"]
     assert server.postmaster() is None
     server.data.mkdir(parents=True)
     (server.data / "postmaster.pid").write_text("4242\n/var/lib/postgresql/data\n")
@@ -118,52 +132,55 @@ def test_the_server_runs_in_its_image_over_its_own_directory(tmp_path: Path) -> 
     assert postgres.server_image(Path("/images/workspace.sif")) == Path("/images/postgres.sif")
 
 
+def test_only_the_harness_holds_the_superusers_password() -> None:
+    rules = postgres.ACCESS.format(role="sam").splitlines()
+    assert rules == [
+        "local all postgres scram-sha-256",
+        "local all sam trust",
+        "local all all scram-sha-256",
+    ]
+    assert "NOSUPERUSER" in postgres.AGENT_ROLE
+
+
 class FakeProcess:
-    def __init__(self, stops: bool) -> None:
-        self.stops = stops
+    def __init__(self, stops_on: int | None) -> None:
+        self.stops_on = stops_on
+        self.signals: list[int] = []
         self.killed = False
 
+    def poll(self) -> int | None:
+        return None
+
+    def send_signal(self, sent: int) -> None:
+        self.signals.append(sent)
+
     def wait(self, timeout: float | None = None) -> int:
-        if not self.stops and not self.killed:
-            raise subprocess.TimeoutExpired("postgres", timeout or 0)
-        return 0
+        if self.killed or (self.signals and self.signals[-1] == self.stops_on):
+            return 0
+        raise subprocess.TimeoutExpired("postgres", timeout or 0)
 
     def kill(self) -> None:
         self.killed = True
 
 
-def test_stopping_asks_the_server_first_and_makes_it_quit_if_it_does_not(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    asked: list[list[str]] = []
-    signals: list[tuple[int, int]] = []
-    monkeypatch.setattr(postgres.subprocess, "run", lambda command, **_: asked.append(command))
-    monkeypatch.setattr(postgres.os, "kill", lambda pid, sent: signals.append((pid, sent)))
-
-    server = postgres.Server(tmp_path / "pg", Path("/images/postgres.sif"))
+def test_stopping_asks_the_server_first_and_makes_it_quit_if_it_does_not(tmp_path: Path) -> None:
+    server = postgres.Server(tmp_path / "pg", Path("/images/postgres.sif"), "sam")
     server.stop()
-    assert asked == []
 
-    server.process = FakeProcess(stops=True)  # type: ignore[assignment]
+    polite = FakeProcess(stops_on=signal.SIGINT)
+    server.process = polite  # type: ignore[assignment]
     server.stop()
-    assert asked[0][-8:] == [
-        "pg_ctl",
-        "-D",
-        "/var/lib/postgresql/data",
-        "stop",
-        "-m",
-        "fast",
-        "-t",
-        "30",
-    ]
-    assert server.process is None and signals == []
+    assert polite.signals == [signal.SIGINT] and server.process is None
 
-    server.data.mkdir(parents=True)
-    (server.data / "postmaster.pid").write_text("4242\n")
-    stubborn = FakeProcess(stops=False)
+    stubborn = FakeProcess(stops_on=signal.SIGQUIT)
     server.process = stubborn  # type: ignore[assignment]
     server.stop()
-    assert signals == [(4242, signal.SIGQUIT)] and stubborn.killed and server.process is None
+    assert stubborn.signals == [signal.SIGINT, signal.SIGQUIT] and not stubborn.killed
+
+    dead = FakeProcess(stops_on=None)
+    server.process = dead  # type: ignore[assignment]
+    server.stop()
+    assert dead.killed and server.process is None
 
 
 def test_client_programs_are_collected_once(
@@ -218,7 +235,7 @@ def test_a_run_starts_its_own_server_and_closing_stops_it(
     ran: list[str] = []
 
     def in_container(
-        workspace: ws.Workspace, image: Path, cwd: str, command: str
+        workspace: ws.Workspace, image: Path, cwd: str, command: str, *_: object
     ) -> tuple[str, int, str]:
         ran.append(command)
         assert workspace.environment["PGDATABASE"] == "warehouse"
@@ -263,7 +280,7 @@ def test_building_stops_the_server_even_when_a_script_fails(
     servers = fake_server_for(monkeypatch)
 
     def in_container(workspace: ws.Workspace, *_: object) -> tuple[str, int, str]:
-        assert workspace.environment["PGUSER"] == "postgres"
+        assert workspace.harness_environment["PGUSER"] == "postgres"
         return "relation does not exist", 1, "/"
 
     monkeypatch.setattr(sandbox, "in_container", in_container)
@@ -290,12 +307,16 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
     base = "psql -q -c 'CREATE TABLE kept (n integer)' -c 'INSERT INTO kept VALUES (1)'"
     directory = tmp_path / "built"
     sandbox.build(case, base, directory, workspace_image(real))
-    assert postgres.Server(directory / "pg", Path("unused")).postmaster() is None
+    assert postgres.Server(directory / "pg", Path("unused"), "sam").postmaster() is None
 
     monkeypatch.setattr(run, "built_directory", lambda _settings, _case: directory)
     prepared = run.prepare_repository(real, case)
+    # The case has no inherited session, so no tool was offered to call.
+    prepared.executor.offered = frozenset({"Bash"})
     try:
-        server = postgres.Server(prepared.executor.workspace.directory / "pg", Path("unused"))
+        server = postgres.Server(
+            prepared.executor.workspace.directory / "pg", Path("unused"), "sam"
+        )
         assert server.postmaster() is not None
 
         async def commands() -> str:
@@ -310,6 +331,28 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
         import asyncio
 
         assert asyncio.run(commands()).strip() == "3"
+
+        async def agent(command: str) -> str:
+            return await prepared.executor.execute(
+                Action(tool="Bash", arguments={"command": command})
+            )
+
+        escapes = [
+            "psql -Atc \"COPY kept FROM PROGRAM 'echo 7'\"",
+            "psql -Atc \"SELECT pg_read_file('/proc/mounts')\"",
+            "psql -Atc \"SELECT lo_import('/etc/passwd')\"",
+            "psql -U postgres -Atc 'SELECT 1'",
+        ]
+        for escape in escapes:
+            refused = asyncio.run(agent(escape))
+            signs = ("permission denied", "must be superuser", "no password supplied")
+            assert any(sign in refused for sign in signs), refused
+        assert (
+            asyncio.run(agent("psql -Atc 'SELECT current_user, sum(n) FROM kept'")).strip()
+            == "sam|3"
+        )
+        superuser = asyncio.run(prepared.executor.run("psql -Atc 'SELECT current_user'"))
+        assert superuser.strip() == "postgres"
     finally:
         prepared.close()
     assert server.postmaster() is None and not server.directory.exists()

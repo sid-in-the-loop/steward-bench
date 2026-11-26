@@ -58,13 +58,18 @@ class BuildError(RuntimeError):
 
 
 def in_container(
-    workspace: Workspace, image: Path, cwd: str, command: str, timeout_sec: int = 120
+    workspace: Workspace,
+    image: Path,
+    cwd: str,
+    command: str,
+    timeout_sec: int = 120,
+    harness: bool = True,
 ) -> tuple[str, int, str]:
     """Run a command in the workspace, again if the container runtime itself failed to start,
     which happens on a busy machine before the command has run."""
     for attempt in range(RUNTIME_RETRIES):
         output, status, ended = run_in_container(
-            workspace, image, cwd, command, timeout_sec, harness=True
+            workspace, image, cwd, command, timeout_sec, harness=harness
         )
         if not any(sign in output for sign in RUNTIME_FAILURES):
             return output, status, ended
@@ -120,7 +125,7 @@ def build(case: Case, base_script: str, directory: Path, image: Path) -> None:
     else:
         # The database is up while the case is built and stopped cleanly afterwards, so the
         # built directory holds the cluster as the inherited session left it.
-        server, client = postgres.server_for(workspace, image)
+        server, client = postgres.server_for(workspace, image, environment.user)
         server.create(environment.database.name)
         try:
             reaching = postgres.reaching(workspace, server, client, environment.database)
@@ -149,7 +154,10 @@ def _carry_out(case: Case, base_script: str, workspace: Workspace, image: Path) 
         elif item.meanwhile is not None:
             _script(workspace, image, item.meanwhile, "meanwhile script")
         elif item.run is not None:
-            output, status, cwd = in_container(workspace, image, cwd, IN_ORDER + item.run)
+            # The inherited session is the agent's own: its commands run as the agent's do.
+            output, status, cwd = in_container(
+                workspace, image, cwd, IN_ORDER + item.run, harness=False
+            )
             steps.append(
                 Step(
                     index=index,

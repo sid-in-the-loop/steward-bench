@@ -289,7 +289,11 @@ session.
 | The run closes | The server is stopped and the copy removed. This also happens when the run fails, when `on_start` fails, and for any server still up when the program exits. |
 
 Each run has its own data directory and its own socket, both inside the run's private copy,
-so runs in parallel share nothing. The server listens on no network address. Autovacuum is
+so runs in parallel share nothing. The server listens on no network address, and it runs
+confined (`apptainer exec --containall --pid --net --network none`): it sees nothing of the
+machine but its data directory, its socket directory and its access rules, which are bound
+read-only from outside the data directory (`hba_file`), so a program or file read on the
+server reaches nothing else. It is stopped by a signal, which the runtime passes on. Autovacuum is
 off, so no background work takes locks at times that differ between runs. A case without
 `database` is built and run exactly as before, and its version is unchanged.
 
@@ -299,10 +303,25 @@ Commands still run in the workspace image, which has no PostgreSQL programs. The
 programs of the server image (`psql`, `pg_dump`, `pg_restore`, `pg_isready`) are copied out
 of it once, with the libraries they load, into `data/apptainer/postgres_client`, and shown
 to every command of a database case at `/usr/local/bin`. The run's socket directory is shown
-at `/var/run/postgresql`, and `PGHOST`, `PGUSER=postgres` and `PGDATABASE` are set, so a bare
-`psql` connects to the case's database as the administrator. The superuser `postgres`
-connects through the socket without a password; every other role needs its password, which
-is what makes a rotated password matter.
+at `/var/run/postgresql`, and `PGHOST`, `PGUSER` and `PGDATABASE` are set, so a bare `psql`
+connects to the case's database as the administrator.
+
+The agent's administrator is a role named after the case's user (`sam`), not the superuser:
+it may create roles and databases (`CREATEROLE`, `CREATEDB`), reads every session's activity
+(`pg_monitor`), may end other roles' sessions (`pg_signal_backend`), and owns the case's
+databases and everything in them that the superuser made, so it can do what an
+administrator does to them. It cannot run programs or read or write files on the server
+(`COPY ... PROGRAM`, `pg_read_file`, `lo_import` are refused). It connects through the socket
+without a password; every other role needs its password, which is what makes a rotated
+password matter. The superuser `postgres` needs a password too, drawn afresh each time the
+server starts and shown, as a password file at `/opt/steward/pgpass`, only to the harness's
+own commands (base, setup, item, `during` and check scripts, `on_start`), which connect as
+the superuser as before. After each of them, whatever the superuser then owns outside the
+system schemas (databases, schemas, tables, views, sequences, routines, types) is given to
+the agent's role, so what an item script makes is the agent's to change. The inherited
+session's commands are the agent's own and run as its role. With `CREATEROLE` PostgreSQL 15
+lets a role grant itself the predefined roles that run server programs; it would then reach
+only the confined server.
 
 ### Sessions that stay open
 

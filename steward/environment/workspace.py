@@ -193,6 +193,8 @@ class Workspace(BaseModel):
     # Shown only to the harness's own commands, never to the agent's, over the above.
     harness_binds: list[str] = []
     harness_environment: dict[str, str] = {}
+    # Run after each of the harness's own commands, in its container; its status is not read.
+    harness_epilogue: str = ""
 
     @property
     def fidelity(self) -> float | None:
@@ -412,7 +414,10 @@ def container_command(
     wrapped += (
         f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
     )
-    wrapped += f'__status=$?; printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
+    wrapped += "__status=$?\n"
+    if harness and workspace.harness_epilogue:
+        wrapped += f"(\n{workspace.harness_epilogue}\n) >/dev/null 2>&1 </dev/null\n"
+    wrapped += f'printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
     arguments = ["apptainer", "exec", "--containall", "--pid"]
     if not network:
         arguments += ["--net", "--network", "none"]

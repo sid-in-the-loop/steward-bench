@@ -295,7 +295,7 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     environment = case.environment
     if isinstance(environment, Repo) and environment.database is not None:
         try:
-            private, server = start_database(private, environment.database, image)
+            private, server = start_database(private, environment.database, image, environment.user)
         except BaseException:
             close()
             raise
@@ -318,12 +318,13 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
 
 
 def start_database(
-    workspace: Workspace, database: Database, image: Path
+    workspace: Workspace, database: Database, image: Path, role: str
 ) -> tuple[Workspace, postgres.Server]:
     """Start the run's own database server over the copy of the cluster in its workspace.
     Returns the workspace with the server in reach of every command, and the server, which
-    the caller stops. A server whose `on_start` script fails is stopped here."""
-    server, client = postgres.server_for(workspace, image)
+    the caller stops. `role` is the agent's role. A server whose `on_start` script fails is
+    stopped here."""
+    server, client = postgres.server_for(workspace, image, role)
     server.start()
     reaching = postgres.reaching(workspace, server, client, database)
     if database.on_start:
