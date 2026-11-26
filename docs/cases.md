@@ -718,7 +718,14 @@ side the longest content word both conflict lines use; without one, P2 and P3 ar
 the task is listed. The owner is also sent P5, which quotes the task's request and asks whether
 there is anything to know first: it names only the job as a whole, so it is not direct and the
 owner should not reveal. The `owner_thing` of the 123 benchmark tasks was drafted by gpt-6-luna
-from each task's request and `owner_changed` on 2026-11-26 and read through by hand.
+from each task's request and `owner_changed` on 2026-11-26 and read through by hand. Ten of
+them named only what the request names ("the {meeting} recording", "the agency nurse") or
+little more, so a P2 asked about them was a question the agent could write without looking;
+they were redrafted the same day to name what the agent finds only by looking ("the 21:05
+closed session on the recording", "{nurse_name} in the signing-in book"), and a test keeps
+every `owner_thing` naming something the request does not. A slot after an article whose
+value starts with one ("the {meeting}" with "the council meeting of ...") keeps one article
+(`filled`); commands are filled exactly (`substituted`).
 
 Slots in the lines are filled as in a session, with what the shift's item script prints. The
 probe reads those values from one session of an agent that does nothing, run in the task's

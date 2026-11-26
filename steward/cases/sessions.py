@@ -458,14 +458,34 @@ def addresses(message: str, name: str, others: tuple[str, ...] = ()) -> bool:
     return found is not None
 
 
+ARTICLE = re.compile(r"(?:the|a|an)\s+", re.IGNORECASE)
+
+
 def filled(text: str, values: dict[str, str]) -> str:
+    """The text with its slots filled. A slot after an article whose value starts with one
+    ("the {meeting}" with "the council meeting of ...") keeps the text's article only."""
+
+    def fill(found: re.Match[str]) -> str:
+        article, name = found[1], found[2]
+        if name not in values:
+            return found[0]
+        value = values[name]
+        if article:
+            value = ARTICLE.sub("", value, count=1) if ARTICLE.match(value) else value
+        return f"{article or ''}{value}"
+
+    return re.sub(r"(\b(?:the|a|an)\s+)?\{(\w+)\}", fill, text, flags=re.IGNORECASE)
+
+
+def substituted(text: str, values: dict[str, str]) -> str:
+    """The text with its slots filled exactly, as a command needs them."""
     return re.sub(r"\{(\w+)\}", lambda m: values.get(m[1], m[0]), text)
 
 
 def filled_action(action: Action, values: dict[str, str]) -> Action:
     def fill(value: object) -> object:
         if isinstance(value, str):
-            return filled(value, values)
+            return substituted(value, values)
         if isinstance(value, list):
             return [fill(v) for v in value]
         if isinstance(value, dict):

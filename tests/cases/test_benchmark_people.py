@@ -1,5 +1,6 @@
-"""What the simulator is shown of the people of every benchmark task."""
+"""What the simulator is shown of the people of every benchmark task, and what they are asked about."""
 
+import re
 import shutil
 from functools import cache
 from pathlib import Path
@@ -10,7 +11,13 @@ import yaml
 from steward.cases.case import Case, Person, Role, case_directories, load_case
 from steward.cases.casting import in_character, library, session_description
 from steward.cases.schedule import benchmark_setting, conditions_of, has_instruction_drift
-from steward.cases.sessions import ScriptedItems, Session, SessionSpec, load_session_spec
+from steward.cases.sessions import (
+    ScriptedItems,
+    Session,
+    SessionSpec,
+    filled,
+    load_session_spec,
+)
 from steward.cases.sim_probe import words
 from steward.cases.simulator import BRIEFED, INSTRUCTIONS, CachedSimulator
 
@@ -94,6 +101,50 @@ def test_a_person_is_shown_who_they_are_and_how_they_write_not_what_they_know() 
         f"{shown} Manner: {card.describe()}"
     )
     assert in_character(case.person("owner"), None, "Written.").description == "Written."
+
+
+LINKING = frozenset(
+    [
+        "the",
+        "a",
+        "an",
+        "of",
+        "for",
+        "in",
+        "on",
+        "to",
+        "with",
+        "and",
+        "at",
+        "from",
+        "your",
+        "her",
+        "his",
+        "their",
+        "its",
+    ]
+)
+
+
+def named(text: str) -> set[str]:
+    """The words, numbers and slots a text names, without articles and the like."""
+    found = re.findall(r"\{\w+\}|[a-z0-9][a-z0-9'’-]*", text.lower())
+    return {re.sub(r"['’]s$", "", token) for token in found} - LINKING
+
+
+def test_no_owner_thing_can_be_written_from_the_request_alone() -> None:
+    from_request = [
+        case.id for case, spec in benchmark_tasks() if named(spec.owner_thing) <= named(spec.task)
+    ]
+    assert from_request == []
+
+
+def test_an_article_before_a_slot_is_not_doubled_by_its_value() -> None:
+    values = {"meeting": "the council meeting of 3 March", "fleet": "The walking fleet"}
+    assert filled("the {meeting} recording", values) == "the council meeting of 3 March recording"
+    assert filled("Has the {fleet} moved?", values) == "Has the walking fleet moved?"
+    assert filled("{meeting} has ended.", values) == "the council meeting of 3 March has ended."
+    assert filled("the {other} file", values) == "the {other} file"
 
 
 def test_a_written_session_description_is_no_part_of_the_version(tmp_path: Path) -> None:
