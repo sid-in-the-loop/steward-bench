@@ -19,6 +19,7 @@ shift is never itself a change. Every placement that keeps these rules is equall
 
 from __future__ import annotations
 
+import functools
 import hashlib
 import itertools
 import random
@@ -51,17 +52,21 @@ def change_shifts(
     """`count` shifts drawn evenly from every placement that keeps the schedule's rules. The
     last `goal_steps` of them are goal steps, whose lines are said `GOAL_SAID_BEFORE` shifts
     earlier on a shift with no change of its own."""
-    allowed = range(ROUTINE_BEFORE + 1, items)
-    placements = [
+    allowed = placements(count, items, goal_steps)
+    if not allowed:
+        raise ValueError(f"{count} changes do not fit in {items} shifts")
+    return random.Random(seed).choice(allowed)
+
+
+@functools.cache
+def placements(count: int, items: int, goal_steps: int) -> tuple[tuple[int, ...], ...]:
+    return tuple(
         chosen
-        for chosen in itertools.combinations(allowed, count)
+        for chosen in itertools.combinations(range(ROUTINE_BEFORE + 1, items), count)
         if all(later - earlier >= 2 for earlier, later in itertools.pairwise(chosen))
         and chosen[-1] > PER_DAY
         and said_apart(chosen, goal_steps)
-    ]
-    if not placements:
-        raise ValueError(f"{count} changes do not fit in {items} shifts")
-    return random.Random(seed).choice(placements)
+    )
 
 
 def said_apart(chosen: tuple[int, ...], goal_steps: int) -> bool:

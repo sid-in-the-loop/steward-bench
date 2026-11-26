@@ -1296,9 +1296,10 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
     from itertools import combinations
 
     from steward.cases.schedule import CONDITIONS
-    from steward.cases.score import difference, lines, score
-    from steward.cases.session_commands import current_sessions
+    from steward.cases.score import difference, lines, outside_conditions, score
+    from steward.cases.session_commands import current_sessions, load_sessions
 
+    specs = {case.id: spec for case, spec in load_sessions(settings)}
     runs = {
         model: [
             run
@@ -1308,13 +1309,17 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
         ]
         for model in args.model
     }
+    for model in args.model:
+        outside = outside_conditions(runs[model], specs)
+        if outside:
+            print(f"{model}: {outside} sessions on no benchmark schedule, left out")
     for condition in CONDITIONS:
         for model in args.model:
-            found = score(model, runs[model], condition)
+            found = score(model, runs[model], condition, specs)
             for line in lines(found) if found else [f"{model}, {condition}: no sessions"]:
                 print(line)
         for first, second in combinations(args.model, 2):
-            gap = difference(runs[first], runs[second], condition)
+            gap = difference(runs[first], runs[second], condition, specs)
             if gap is not None:
                 low, high = gap.interval
                 verdict = "significant" if gap.significant else "not distinguishable"

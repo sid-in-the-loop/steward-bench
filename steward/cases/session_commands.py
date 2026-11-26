@@ -22,7 +22,12 @@ from steward.cases.levels import Bank, Voice
 from steward.cases.rate_log import log_while, rate_log
 from steward.cases.run import Model, model_policy
 from steward.cases.sandbox import MACHINE_FAULTS
-from steward.cases.schedule import Condition, benchmark_setting, conditions_of
+from steward.cases.schedule import (
+    Condition,
+    benchmark_setting,
+    conditions_of,
+    has_instruction_drift,
+)
 from steward.cases.sessions import (
     ItemResult,
     ScriptedItems,
@@ -78,8 +83,9 @@ IDLE = Reference(actions=[], report="I have not done anything on this one.")
 def benchmark_jobs(
     cases: list[tuple[Case, SessionSpec]], conditions: list[Condition], trials: int
 ) -> list[Job]:
-    """The benchmark run: every case under every condition it has the changes for, each trial
-    on its own seeded schedule."""
+    """The benchmark run: every task that can run under both conditions (one with a goal
+    change and an authority conflict), under each condition asked for, each trial on its own
+    seeded schedule. Any other task is left out, as the benchmark is scored on these alone."""
     return [
         Job(
             case=case,
@@ -88,8 +94,8 @@ def benchmark_jobs(
             trial=trial,
         )
         for case, spec in cases
+        if has_instruction_drift(spec)
         for condition in conditions
-        if condition in conditions_of(spec)
         for trial in range(trials)
     ]
 

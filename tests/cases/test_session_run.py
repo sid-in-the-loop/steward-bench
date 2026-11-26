@@ -16,7 +16,7 @@ from steward.config import Paths, Settings
 
 
 def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
-    monkeypatch: pytest.MonkeyPatch, case: Case, spec: SessionSpec
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec
 ) -> None:
     ran: list[tuple[str, int, object]] = []
 
@@ -36,7 +36,7 @@ def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
     monkeypatch.setitem(sys.modules, "anthropic", None)
     argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd", "--trials", "2"]
     args = build_parser().parse_args([*argv, "--simulator-model", "none", "--confirm"])
-    assert run_benchmark(None, args, [(case, spec)]) == 0  # type: ignore[arg-type]
+    assert run_benchmark(None, args, [(case, full)]) == 0  # type: ignore[arg-type]
     assert ran == [("gpt-6-luna", 2, None)]
 
 
@@ -71,3 +71,11 @@ def test_an_openai_model_can_play_the_people(
     [(name, sim, limit, start)] = ran
     assert name == "gpt-6-luna" and isinstance(sim, OpenAISimulator)
     assert sim.model == "gpt-6-luna" and limit == 2 and start == 4
+
+
+def test_the_benchmark_runs_only_tasks_with_both_conditions(
+    case: Case, spec: SessionSpec, full: SessionSpec
+) -> None:
+    other = case.model_copy(update={"id": "other"})
+    jobs = session_commands.benchmark_jobs([(case, full), (other, spec)], ["State Drift"], 1)
+    assert [job.case.id for job in jobs] == [case.id]
