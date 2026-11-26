@@ -516,6 +516,16 @@ the request, the owner's own lines, the cards and the names, and every conflict 
 description that does not date, hand over or disclaim a role ("apart from", "has no say",
 "took it over", "weeks ago", "incoming").
 
+An owner's status lines are said unprompted on every shift, so none may name the particular
+thing: a test holds each to fewer than two content words of `owner_thing` beyond the request
+("checking the east bowl", "in gallery four with the lender's courier" and "the database
+vendor is walking me through their support terms" were reworded on 2026-11-26). And
+`owner_unchanged`, the routine briefing, names what it is about ("Nobody has asked me to take
+any photographs out of the library this week"), since a line with no subject ("Nothing from
+anyone this week as far as I know.") was paraphrased into a false statement about something
+else; a test holds each to a content word of `owner_thing` or `owner_changed`. The 36 that had
+none were rewritten on 2026-11-26 to what is true on a routine shift.
+
 On a routine shift after a changed one (State Drift has four) the owner is briefed with each
 earlier change, as on that shift, and that none of it applies to this shift, on which nothing
 has changed (`EARLIER`, `NOTHING_NEW`): without a carried change the item script builds every
@@ -870,7 +880,11 @@ them named only what the request names ("the {meeting} recording", "the agency n
 little more, so a P2 asked about them was a question the agent could write without looking;
 they were redrafted the same day to name what the agent finds only by looking ("the 21:05
 closed session on the recording", "{nurse_name} in the signing-in book"), and a test keeps
-every `owner_thing` naming something the request does not. A slot after an article whose
+every `owner_thing` naming something the request does not. Fourteen more were still writable from
+the request ("the wind readings for {day}" beside "the readings for {day}", "your profile")
+and were redrafted on 2026-11-26 ("the anemometer's line in the logger log", "the bakery
+profile"); the test now asks for two content words the request does not use, or a name,
+number, slot or file name it does not give. A slot after an article whose
 value starts with one ("the {meeting}" with "the council meeting of ...") keeps one article
 (`filled`); commands are filled exactly (`substituted`).
 
