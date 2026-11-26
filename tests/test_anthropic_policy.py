@@ -2,8 +2,10 @@ from types import SimpleNamespace
 from typing import Any
 
 from steward.execution.anthropic_policy import (
+    MAX_TOKENS,
     NO_REPLY,
     REPORT_RECEIVED,
+    RETRY_MAX_TOKENS,
     AnthropicPolicy,
     claude_tools,
 )
@@ -42,6 +44,7 @@ class FakeClient:
         self.replies = replies
         self.requests: list[dict[str, Any]] = []
         self.messages = self
+        self.stop_reason = "end_turn"
 
     def create(self, **request: Any) -> SimpleNamespace:
         self.requests.append(request)
@@ -49,7 +52,9 @@ class FakeClient:
             input_tokens=10, cache_read_input_tokens=100, cache_creation_input_tokens=20,
             output_tokens=5,
         )  # fmt: skip
-        return SimpleNamespace(content=self.replies.pop(0), usage=usage)
+        return SimpleNamespace(
+            content=self.replies.pop(0), usage=usage, stop_reason=self.stop_reason
+        )
 
 
 def test_tools_take_the_messages_shape() -> None:
@@ -121,14 +126,32 @@ def test_cache_reads_and_writes_are_counted_and_priced() -> None:
     assert price.cost(usage) == (10 * 1.0 + 100 * 0.1 + 20 * 1.25 + 5 * 5.0) / 1_000_000
 
 
-def test_a_reply_without_text_is_not_sent_back_as_blocks() -> None:
+def test_an_empty_reply_is_asked_again_with_a_larger_budget() -> None:
     client = FakeClient([[thinking("nothing to say")], [text("ok")]])
     policy = AnthropicPolicy(client, "claude-haiku-5-5", TOOLS)
     messages: list[Message] = [{"role": "user", "content": "Hi"}]
-    assert policy.next_turn(messages).message == ""
-    messages += [{"role": "assistant", "content": ""}, {"role": "user", "content": "Hello?"}]
-    policy.next_turn(messages)
-    assert client.requests[-1]["messages"][1]["content"] == [{"type": "text", "text": "(no text)"}]
+    assert policy.next_turn(messages).message == "ok"
+    assert [r["max_tokens"] for r in client.requests] == [MAX_TOKENS, RETRY_MAX_TOKENS]
+    assert policy.usage.requests == 2
+
+
+def test_a_reply_still_empty_is_a_model_error_and_not_sent_back() -> None:
+    client = FakeClient([[thinking("nothing")], [], [text("ok")]])
+    policy = AnthropicPolicy(client, "claude-haiku-5-5", TOOLS)
+    messages: list[Message] = [{"role": "user", "content": "Hi"}]
+    turn = policy.next_turn(messages)
+    assert turn.error == "no text and no tool call" and turn.message is None
+    assert policy.replies == {}
+    messages += [{"role": "user", "content": "Hello?"}]
+    assert policy.next_turn(messages).message == "ok"
+
+
+def test_a_refusal_stop_is_asked_again() -> None:
+    client = FakeClient([[text("I can't")], [text("I can't")]])
+    client.stop_reason = "refusal"
+    policy = AnthropicPolicy(client, "claude-haiku-5-5", TOOLS)
+    turn = policy.next_turn([{"role": "user", "content": "Hi"}])
+    assert turn.error == "stopped: refusal" and len(client.requests) == 2
 
 
 def test_a_question_nobody_answered_is_closed_with_a_user_turn() -> None:

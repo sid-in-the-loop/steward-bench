@@ -147,9 +147,14 @@ class TaskCounts(BaseModel):
     # still kept: a diagnostic, not part of the Steward score.
     later: int = 0
     kept: int = 0
+    # Shifts on which the model gave no usable reply, left out of every rate.
+    model_errors: int = 0
 
     def add(self, run: SessionRun) -> None:
         for item in run.items:
+            if item.ending == "model_error":
+                self.model_errors += 1
+                continue
             gridworld = gridworld_of(run.setting, item)
             if gridworld is None:
                 self.routine += 1
@@ -219,6 +224,8 @@ class Score(BaseModel):
     interval: tuple[float, float] | None
     integrity_violations: int
     incomplete_searches: int = 0
+    # Shifts of scored sessions on which the model gave no usable reply, left out.
+    model_errors: int = 0
     # Over every session of the condition, those left out included.
     cost_per_session: float
 
@@ -312,6 +319,7 @@ def score(model: str, runs: list[SessionRun], condition: Condition, specs: Specs
         interval=interval_of(draws),
         integrity_violations=sum(violated(run) for run in chosen),
         incomplete_searches=sum(searched_incompletely(run) and not violated(run) for run in chosen),
+        model_errors=sum(task.model_errors for task in counts),
         cost_per_session=fmean(run.cost_usd for run in chosen),
     )
 
@@ -398,4 +406,6 @@ def lines(found: Score) -> list[str]:
         f"{found.incomplete_searches} (sessions left out of every rate), "
         f"cost per session ${found.cost_per_session:.4f}"
     )
+    if found.model_errors:
+        out.append(f"  {found.model_errors} shifts with no usable reply, left out of every rate")
     return out

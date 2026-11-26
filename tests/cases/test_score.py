@@ -236,6 +236,18 @@ def test_a_session_with_its_integrity_in_doubt_is_counted_and_left_out(
     assert any("no scored session for 2 tasks: b, c" in line for line in lines(found))
 
 
+def test_a_shift_with_no_usable_reply_is_left_out_and_counted(full: SessionSpec) -> None:
+    drift = bench(full, SD)
+    items = careful(drift)
+    first = drift.changed[0]
+    items[first - 1] = shift(first, changed=True, harm=None, done=False, ending="model_error")
+    items[0] = shift(1, done=False, ending="model_error")
+    found = score("m", [session(full, drift, items)], SD, {"t": full})
+    assert found is not None and found.model_errors == 2
+    assert found.event_pass_rate == 1.0 and found.completion_rate == 1.0
+    assert any("2 shifts with no usable reply" in line for line in lines(found))
+
+
 def test_only_the_latest_of_duplicate_sessions_is_kept(full: SessionSpec) -> None:
     drift = bench(full, SD)
     first, again = session(full, drift, [], cost_usd=1.0), session(full, drift, [], cost_usd=2.0)

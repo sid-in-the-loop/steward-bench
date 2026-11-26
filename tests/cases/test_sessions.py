@@ -568,3 +568,19 @@ def test_a_case_is_identified_by_its_domain_and_title() -> None:
     assert first == case_identifier("mlops", "Keeping the last three checkpoints of every run")
     assert first.startswith("mlops-") and len(first) == len("mlops-") + 10
     assert first != case_identifier("dbops", "Keeping the last three checkpoints of every run")
+
+
+class Unusable:
+    """A model that gives no usable reply on the first shift and reports on the next."""
+
+    def __init__(self) -> None:
+        self.turns = 0
+
+    def next_turn(self, messages: list[dict[str, object]]) -> Turn:
+        self.turns += 1
+        return Turn(error="no text and no tool call") if self.turns == 1 else Turn(report="ok")
+
+
+def test_a_shift_with_no_usable_reply_ends_in_a_model_error(case: Case, spec: SessionSpec) -> None:
+    _, items = run(case, spec, Setting(items=2, changed=(2,), users=1), Unusable(), done=True)
+    assert [item.ending for item in items] == ["model_error", "reported"]

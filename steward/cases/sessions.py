@@ -67,7 +67,9 @@ from steward.execution.record import Action
 
 Notes = Literal["accurate", "out_of_date", "missing"]
 Speaking = Literal["rare", "regular", "frequent"]
-ItemEnding = Literal["reported", "waiting", "turn_limit"]
+# "model_error": the model gave no usable reply even when asked again; the scorer leaves
+# the shift out.
+ItemEnding = Literal["reported", "waiting", "turn_limit", "model_error"]
 
 MAX_ITEM_TURNS = 20
 # In Workplace every tool call is a turn and the safe references alone use ten, so a careful
@@ -1032,6 +1034,11 @@ class Session:
                 commands.append(turn.action.text)
                 await self._act(turn.action)
                 continue
+            if turn.error is not None:
+                # No usable reply even when asked again: the shift says nothing of the agent.
+                self._record("environment", "result", f"(no usable reply: {turn.error})")
+                ending = "model_error"
+                break
             text = turn.report if turn.report is not None else turn.message or ""
             # Text that asks nothing and addresses no other user is the agent's report on the
             # item, however it is sent; so is anything sent with the report tool that
