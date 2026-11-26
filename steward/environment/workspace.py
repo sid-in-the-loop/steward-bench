@@ -18,6 +18,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from datetime import datetime
@@ -92,87 +93,72 @@ INSTALLS = re.compile(
     r"|cargo (?:build|test|check|fetch)|make\b|bundle install)"
 )
 INSTALL_TIMEOUT_SEC = 300
-# This machine gives no user a cgroup of its own (rootless apptainer needs a user session bus
-# for --memory and --pids-limit, and there is none), so a command is limited from inside its
-# shell instead: no file over 4 GiB, no core files, and no new process once this user has
-# 16,384 processes and threads on the machine, which bounds a fork bomb well below the
-# user's own limit. Memory and disk in all are not limited.
+# Inside each command's shell: no file over 4 GiB, no core files, and at most 16,384 processes
+# and threads. The kernel counts that last limit in the container's own user namespace, so it
+# bounds one command, not the machine's user. Where the user's systemd manager can be reached,
+# every container also runs in a scope of its own with a ceiling on its tasks and memory
+# (`scope_prefix`).
 RESOURCE_LIMITS = (
     "ulimit -u 16384 2>/dev/null; ulimit -f 4194304 2>/dev/null; ulimit -c 0 2>/dev/null\n"
 )
-# The harness's own commands (base, item, during and check scripts, a recorded owner) run in
-# the agent's tree and home, so nothing the agent left there may run implicitly in them: git
-# runs no hooks and no command named in its configuration, Python reads no user site and,
-# for a program given on the command line or standard input, no module from the working
-# directory (`-P`, which unlike PYTHONSAFEPATH does not reach the programs it starts), psql
-# reads no start-up file and zsh no start-up file. What the harness runs on
-# purpose, such as a tool or job of the tree, still runs.
+SCOPE_TASKS = 4096
+SCOPE_MEMORY = "8G"
+# The harness's own commands (base, item, during and check scripts, a recorded owner) see the
+# harness's folder, /opt/steward: its programs on the PATH first, the script being run, the
+# superuser's password where there is a database, and what `as_agent` needs. The script is a
+# file there, not an argument, so no process can read it from another's command line.
+HARNESS_DIRECTORY = "/opt/steward"
+HARNESS_PROGRAMS = {
+    "as_agent": Path(__file__).parent / "shims" / "as_agent",
+    "git": Path(__file__).parent / "shims" / "harness_git",
+}
+# Nothing the agent left in its tree or home runs implicitly in a harness command: Python reads
+# no user site and puts neither the working directory nor a script's own folder on its path,
+# in the program run and in every Python program it starts, psql reads no start-up file, and
+# git, which the harness's PATH reaches through `harness_git`, runs nothing the agent's
+# configuration names. These settings are also given to git run by its full path.
 HARNESS_GIT_CONFIG = (
     ("core.hooksPath", "/dev/null"),
     ("core.fsmonitor", "false"),
     ("core.pager", "cat"),
     ("core.editor", "true"),
     ("sequence.editor", "true"),
-    ("core.sshCommand", "ssh"),
+    ("core.sshCommand", "false"),
     ("core.askPass", ""),
     ("core.attributesFile", "/dev/null"),
     ("credential.helper", ""),
+    ("diff.external", ""),
     ("commit.gpgSign", "false"),
     ("tag.gpgSign", "false"),
     ("push.gpgSign", "false"),
-    ("gpg.program", "gpg"),
+    ("log.showSignature", "false"),
+    ("gpg.program", "false"),
+    ("protocol.allow", "never"),
+    ("protocol.file.allow", "always"),
 )
 HARNESS_ENVIRONMENT = {
     "PYTHONNOUSERSITE": "1",
+    "PYTHONSAFEPATH": "1",
     "PSQLRC": "/dev/null",
+    "GIT_CONFIG_NOSYSTEM": "1",
+    "GIT_CONFIG_GLOBAL": "/dev/null",
     "GIT_CONFIG_COUNT": str(len(HARNESS_GIT_CONFIG)),
     **{f"GIT_CONFIG_KEY_{n}": key for n, (key, _) in enumerate(HARNESS_GIT_CONFIG)},
     **{f"GIT_CONFIG_VALUE_{n}": value for n, (_, value) in enumerate(HARNESS_GIT_CONFIG)},
 }
-# Drivers that git runs for paths an attributes file names: the ones the agent's
-# configuration defines are turned off for the harness's commands.
-HARNESS_PRELUDE = """__steward_n=$GIT_CONFIG_COUNT
-__steward_set() {{
-    export "GIT_CONFIG_KEY_$__steward_n=$1" "GIT_CONFIG_VALUE_$__steward_n=$2"
-    __steward_n=$((__steward_n + 1))
-    export GIT_CONFIG_COUNT=$__steward_n
+# `absent TEST...` is a negated test for checks that cannot be fooled by a fault: it succeeds
+# when TEST exits 1, the status by which grep, cmp, git cat-file -e, test and a task's own
+# helpers say "not there", and fails when TEST finds what it looks for or fails some other way.
+HARNESS_PRELUDE = f"""export PATH={HARNESS_DIRECTORY}/bin:$PATH
+absent() {{
+    "$@"
+    set -- "$?" "$1"
+    case $1 in
+        0) return 1 ;;
+        1) return 0 ;;
+        *) echo "absent: $2 failed with status $1" >&2; return 2 ;;
+    esac
 }}
-for __steward_file in "$HOME/.gitconfig" "$HOME/.config/git/config" {tree}/.git/config \\
-        {remote}/config; do
-    [ -f "$__steward_file" ] || continue
-    while IFS= read -r __steward_key; do
-        case $__steward_key in
-            filter.*) __steward_set "$__steward_key" ""
-                __steward_set "${{__steward_key%.*}}.required" false ;;
-            diff.*.textconv) __steward_set "$__steward_key" cat ;;
-            ?*) __steward_set "$__steward_key" true ;;
-        esac
-    done <<__steward_end
-$(git config --file "$__steward_file" --includes --name-only --get-regexp \\
-    '^(filter|diff|merge)\\..+\\.(clean|smudge|process|textconv|command|driver)$' 2>/dev/null)
-__steward_end
-done
-unset -f __steward_set
-unset __steward_n __steward_file __steward_key
-__steward_python() {{
-    __steward_program=$1
-    shift
-    __steward_safe=1
-    for __steward_argument in "$@"; do
-        case $__steward_argument in
-            -|-c|-m|-[!-]*c|-[!-]*m) break ;;
-            -*) ;;
-            *) __steward_safe=0; break ;;
-        esac
-    done
-    if [ "$__steward_safe" = 1 ]; then
-        command "$__steward_program" -P "$@"
-    else
-        command "$__steward_program" "$@"
-    fi
-}}
-python3() {{ __steward_python python3 "$@"; }}
-python() {{ __steward_python python "$@"; }}
 """
 
 
@@ -201,7 +187,9 @@ class Workspace(BaseModel):
     # Shown only to the harness's own commands, never to the agent's, over the above.
     harness_binds: list[str] = []
     harness_environment: dict[str, str] = {}
-    # Run after each of the harness's own commands, in its container; its status is not read.
+    # Run before and after each of the harness's own commands, in its container; their
+    # status is not read.
+    harness_prologue: str = ""
     harness_epilogue: str = ""
 
     @property
@@ -388,6 +376,55 @@ def home_of(mount: str) -> str:
     return str(PurePosixPath(*parts[:3])) if parts[1:2] in (("Users",), ("home",)) else "/root"
 
 
+def scope_prefix() -> list[str]:
+    """The command that puts a container in a systemd scope of its own, with a ceiling on its
+    tasks and memory, or nothing where the user's systemd manager cannot be reached (then
+    only the limits inside its shell apply). Asked once per process."""
+    global _scope
+    if _scope is None:
+        found: list[str] = []
+        if shutil.which("systemd-run") and os.environ.get("STEWARD_NO_SCOPE") != "1":
+            command = ["systemd-run", "--user", "--scope", "--quiet", "--collect"]
+            command += ["-p", f"TasksMax={SCOPE_TASKS}", "-p", f"MemoryMax={SCOPE_MEMORY}"]
+            try:
+                probe = subprocess.run(
+                    [*command, "true"], capture_output=True, timeout=30, env=scope_environment()
+                )
+                if probe.returncode == 0:
+                    found = [*command, "--"]
+            except (OSError, subprocess.TimeoutExpired):
+                pass
+        _scope = found
+        log.info("container scopes: %s", "systemd" if found else "none, shell limits only")
+    return _scope
+
+
+_scope: list[str] | None = None
+
+
+def scope_environment() -> dict[str, str]:
+    """The environment for systemd-run, which finds the user's manager through
+    XDG_RUNTIME_DIR."""
+    runtime = os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
+    return {**os.environ, "XDG_RUNTIME_DIR": runtime}
+
+
+def harness_files(
+    workspace: Workspace, directory: Path, script: str, environment: Mapping[str, str]
+) -> None:
+    """What a harness command's folder holds: the script, and for `as_agent` the agent's
+    environment, the names of the harness's own variables and where the key folder is."""
+    agent = {**workspace.environment}
+    for name, value in environment.items():
+        if name not in HARNESS_ENVIRONMENT and name not in workspace.harness_environment:
+            agent.setdefault(name, value)
+    harness_only = [name for name in environment if name not in agent]
+    (directory / "script").write_text(script)
+    (directory / "agent-env").write_text("".join(f"{n}={v}\n" for n, v in agent.items()))
+    (directory / "harness-names").write_text("".join(f"{n}\n" for n in harness_only))
+    (directory / "key").write_text(f"{REMOTE_MOUNT}/info\n")
+
+
 def container_command(
     workspace: Workspace,
     image: Path | str,
@@ -397,12 +434,12 @@ def container_command(
     network: bool = False,
     extra_binds: Sequence[str] = (),
     extra_environment: Mapping[str, str] | None = None,
-    harness: bool = False,
+    harness: Path | None = None,
 ) -> list[str]:
-    """The container command for one command in the workspace. `harness` marks a command of
-    the harness's own, which runs without anything the agent could have planted running
-    implicitly in it (see `HARNESS_PRELUDE`) and with the harness's own binds and
-    environment."""
+    """The container command for one command in the workspace. `harness`, a folder of this
+    machine, marks a command of the harness's own: its script and what `as_agent` reads are
+    written there and shown at /opt/steward/run, and it runs with the harness's own binds,
+    programs and environment (see `HARNESS_PRELUDE`)."""
     binds = [f"{workspace.temporary}:{path}" for path in TEMPORARY_PATHS]
     binds.append(f"{GH_SHIM}:/usr/local/bin/gh:ro")
     if workspace.remote.exists():
@@ -418,23 +455,30 @@ def container_command(
     environment = {**workspace.environment, **(extra_environment or {})}
     shell: list[str] = [workspace.shell]
     prelude = ""
-    if harness:
+    if harness is not None:
         binds += workspace.harness_binds
-        environment |= HARNESS_ENVIRONMENT | workspace.harness_environment
-        prelude = HARNESS_PRELUDE.format(
-            tree=shlex.quote(workspace.mount), remote=shlex.quote(REMOTE_MOUNT)
+        binds += [f"{harness}:{HARNESS_DIRECTORY}/run:ro"]
+        binds += [
+            f"{program}:{HARNESS_DIRECTORY}/bin/{name}:ro"
+            for name, program in HARNESS_PROGRAMS.items()
+        ]
+        environment |= (
+            HARNESS_ENVIRONMENT | workspace.harness_environment | dict(extra_environment or {})
         )
+        prelude = HARNESS_PRELUDE
         if workspace.shell == "zsh":
             shell.append("-f")
     wrapped = RESOURCE_LIMITS + prelude
+    if harness is not None and workspace.harness_prologue:
+        wrapped += f"(\n{workspace.harness_prologue}\n) >/dev/null 2>&1 </dev/null\n"
     wrapped += (
         f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
     )
     wrapped += "__status=$?\n"
-    if harness and workspace.harness_epilogue:
+    if harness is not None and workspace.harness_epilogue:
         wrapped += f"(\n{workspace.harness_epilogue}\n) >/dev/null 2>&1 </dev/null\n"
     wrapped += f'printf "\\n{CWD_MARK}%s\\n" "$PWD"; exit $__status'
-    arguments = ["apptainer", "exec", "--containall", "--pid"]
+    arguments = [*scope_prefix(), "apptainer", "exec", "--containall", "--pid"]
     if not network:
         arguments += ["--net", "--network", "none"]
     arguments += ["--home", f"{workspace.home_directory}:{workspace.home}"]
@@ -446,6 +490,9 @@ def container_command(
     # The limit is enforced inside the container so that the runtime exits and unmounts
     # the image itself; killing it from outside leaves the mount behind.
     limit = ["timeout", "--signal=KILL", str(timeout_sec)]
+    if harness is not None:
+        harness_files(workspace, harness, wrapped, environment)
+        return [*arguments, str(image), *limit, *shell, f"{HARNESS_DIRECTORY}/run/script"]
     return [*arguments, str(image), *limit, *shell, "-c", wrapped]
 
 
@@ -462,25 +509,27 @@ def run_in_container(
 ) -> tuple[str, int, str]:
     """Run a command in the workspace. Returns its output, exit status and the directory it
     ended in."""
-    try:
-        done = subprocess.run(
-            container_command(
-                workspace,
-                image,
-                cwd,
-                command,
-                timeout_sec,
-                network,
-                extra_binds,
-                extra_environment,
-                harness,
-            ),
-            capture_output=True,
-            timeout=timeout_sec + 30,
-            stdin=subprocess.DEVNULL,
-        )
-    except subprocess.TimeoutExpired:
-        return f"Command timed out after {timeout_sec} seconds.", 124, cwd
+    with tempfile.TemporaryDirectory(prefix="steward-harness-") as folder:
+        try:
+            done = subprocess.run(
+                container_command(
+                    workspace,
+                    image,
+                    cwd,
+                    command,
+                    timeout_sec,
+                    network,
+                    extra_binds,
+                    extra_environment,
+                    Path(folder) if harness else None,
+                ),
+                capture_output=True,
+                timeout=timeout_sec + 30,
+                stdin=subprocess.DEVNULL,
+                env=scope_environment(),
+            )
+        except subprocess.TimeoutExpired:
+            return f"Command timed out after {timeout_sec} seconds.", 124, cwd
     if done.returncode == 137 and CWD_MARK.encode() not in done.stdout:
         return f"Command timed out after {timeout_sec} seconds.", 124, cwd
     output = done.stdout.decode(errors="replace")

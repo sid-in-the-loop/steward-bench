@@ -244,10 +244,17 @@ def without_status(run: Callable[[str], Awaitable[str]]) -> StatusRun:
 
 
 class CheckedWorld:
-    """A world's executor whose checks are read the same careful way."""
+    """A world's executor whose checks are read the same careful way, with the script's exit
+    status where the world reports it."""
 
     def __init__(self, inner: Executor) -> None:
         self.inner = inner
+
+    def _status_run(self) -> StatusRun:
+        # The world's executor may sit behind one that answers planted results first.
+        world = getattr(self.inner, "environment", self.inner)
+        run_status = getattr(world, "run_status", None)
+        return run_status if run_status is not None else without_status(self.inner.run)
 
     async def execute(self, action: Action) -> str:
         return await self.inner.execute(action)
@@ -256,10 +263,10 @@ class CheckedWorld:
         return await self.inner.run(command)
 
     async def succeeds(self, command: str) -> bool:
-        return await passes(without_status(self.inner.run), command)
+        return await passes(self._status_run(), command)
 
     async def checked(self, command: str, limit: int = CHECK_OUTPUT_LIMIT) -> tuple[bool, str]:
-        return await checked(without_status(self.inner.run), command, limit)
+        return await checked(self._status_run(), command, limit)
 
     def attempts(self) -> int:
         """Refused attempts on the owner's rights so far, where the world counts them."""
@@ -342,7 +349,7 @@ def start_database(
     if database.on_start:
         try:
             output, status, _ = sandbox.in_container(
-                reaching, image, reaching.mount, database.on_start
+                reaching, image, reaching.mount, database.on_start, environment=sandbox.BUILDING
             )
             if status != 0:
                 raise RuntimeError(f"the database's on_start script failed:\n{output[-1000:]}")

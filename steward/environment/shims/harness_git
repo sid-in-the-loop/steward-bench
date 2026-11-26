@@ -1,0 +1,265 @@
+#!/usr/bin/python3 -I
+"""git for the harness's own scripts, in place of the real one on their PATH.
+
+Every repository a harness script works on is one the agent could configure, and git runs
+commands that a configuration names (hooks, an fsmonitor, a pager, an editor, filter, diff and
+merge drivers, an upload or receive pack, a signing program, a credential helper, an ssh or
+proxy command), some of them from the first value it reads, so a later override does not
+undo them. So git reads no system configuration and, of the agent's global configuration, only
+the settings that name no command. The repository's configuration is read the way the
+command would read it (its worktree configuration and every file it includes, by any
+condition), and git is shown, in place of each of those files, a copy that keeps only
+settings known to name no command. A command that may write the configuration (`config`,
+`remote`, `branch`, `clone` and the like) cannot be shown a copy, since its write would be
+lost; it runs with every key that names a command overridden and the pack programs given on
+its command line. Local repositories are the only transport allowed. Every command runs
+through `as_agent`, so anything git still ran would find neither the answer key nor the
+harness.
+"""
+
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+GIT = "/usr/bin/git"
+AS_AGENT = "/opt/steward/bin/as_agent"
+# Options before the subcommand that take a value as the next argument.
+WITH_VALUE = {"-C", "-c", "--git-dir", "--work-tree", "--namespace", "--config-env", "--exec-path"}
+# The settings kept from a configuration: none of them names a command.
+SAFE = re.compile(
+    r"core\.(repositoryformatversion|filemode|bare|logallrefupdates|ignorecase"
+    r"|precomposeunicode|symlinks|autocrlf|eol|safecrlf|quotepath|sharedrepository|worktree"
+    r"|abbrev|compression|loosecompression|bigfilethreshold|commentchar|whitespace|checkstat"
+    r"|trustctime|untrackedcache|warnambiguousrefs|packedrefstimeout|excludesfile)"
+    r"|extensions\.[\w-]+"
+    r"|remote\..+\.(url|pushurl|fetch|push|mirror|tagopt|prune|prunetags|skipdefaultupdate"
+    r"|skipfetchall|promisor|partialclonefilter)"
+    r"|branch\..+\.(remote|merge|rebase|pushremote|description)"
+    r"|(user|author|committer|init|advice|color|i18n|versionsort|feature)\.[\w.-]+"
+    r"|pull\.(rebase|ff)|push\.(default|autosetupremote|followtags)"
+    r"|merge\.(ff|conflictstyle|defaulttoupstream|log)|fetch\.(prune|prunetags|writecommitgraph)"
+    r"|rebase\.(autosquash|autostash|updaterefs)|log\.(date|decorate|abbrevcommit|follow)"
+    r"|diff\.(renames|algorithm|context|noprefix|mnemonicprefix|relative|statgraphwidth)"
+    r"|status\.(showuntrackedfiles|short|branch)|tag\.sort|protocol\.version|index\.version"
+    r"|receive\.[\w.-]+|transfer\.(fsckobjects|hiderefs|unpacklimit)"
+    r"|uploadpack\.(allow\w+|hiderefs)|url\..+\.(insteadof|pushinsteadof)|safe\.directory"
+    r"|gc\.(reflogexpire|reflogexpireunreachable|pruneexpire)|pack\.(window|depth|threads)"
+)
+# Keys that name a command or a program, with a value that makes each inert, for a command that
+# is not shown the copies. Keys git reads only from protected configuration are set too.
+INERT = [
+    (r"core\.hookspath", "/dev/null"),
+    (r"core\.fsmonitor", "false"),
+    (r"core\.pager|pager\..+", "cat"),
+    (r"core\.editor|sequence\.editor", "true"),
+    (r"core\.sshcommand", "false"),
+    (r"core\.gitproxy", "none"),
+    (r"core\.askpass", "true"),
+    (r"core\.alternaterefscommand", "true"),
+    (r"core\.attributesfile", "/dev/null"),
+    (r"diff\.external", "true"),
+    (r"diff\..+\.(command|textconv)", "true"),
+    (r"diff\..+\.cachetextconv", "false"),
+    (r"filter\..+\.(clean|smudge)", "cat"),
+    (r"filter\..+\.process", "true"),
+    (r"filter\..+\.required", "false"),
+    (r"merge\..+\.driver", "false"),
+    (r"(merge|diff)tool\..+\.(cmd|path)", "false"),
+    (r"remote\..+\.uploadpack", "git-upload-pack"),
+    (r"remote\..+\.receivepack", "git-receive-pack"),
+    (r"remote\..+\.vcs", "none"),
+    (r"remote\..+\.proxy", ""),
+    (r"uploadpack\.packobjectshook", "git"),
+    (r"credential\.(.+\.)?helper", ""),
+    (r"gpg\.(.+\.)?program", "false"),
+    (r"(log|format)\.showsignature", "false"),
+    (r"(commit|tag|push|rebase)\.gpgsign", "false"),
+    (r"submodule\..+\.update", "none"),
+    (r"submodule\.recurse|fetch\.recursesubmodules|push\.recursesubmodules", "false"),
+    (r"interactive\.difffilter", "cat"),
+    (r"trailer\..+\.(command|cmd)", "true"),
+    (r"web\.browser|browser\..+\.(cmd|path)", "false"),
+    (r"sendemail\..+", ""),
+    (r"gc\.auto|gc\.autodetach|maintenance\.auto", "0"),
+]
+PATTERNS = [(re.compile(pattern), value) for pattern, value in INERT]
+BASELINE = [
+    ("core.hooksPath", "/dev/null"),
+    ("core.fsmonitor", "false"),
+    ("core.pager", "cat"),
+    ("core.editor", "true"),
+    ("sequence.editor", "true"),
+    ("core.sshCommand", "false"),
+    ("core.attributesFile", "/dev/null"),
+    ("credential.helper", ""),
+    ("gpg.program", "false"),
+    ("log.showSignature", "false"),
+    ("commit.gpgSign", "false"),
+    ("tag.gpgSign", "false"),
+    ("push.gpgSign", "false"),
+    ("protocol.allow", "never"),
+    ("protocol.file.allow", "always"),
+    ("gc.auto", "0"),
+    ("maintenance.auto", "false"),
+]
+# Subcommands that may write the configuration they read.
+WRITERS = {
+    "config", "remote", "init", "clone", "worktree", "submodule", "branch", "checkout",
+    "switch", "push", "maintenance", "sparse-checkout", "notes", "pull", "fetch",
+}  # fmt: skip
+UPLOAD = {"fetch", "pull", "clone", "ls-remote", "archive"}
+
+
+def global_options(arguments: list[str]) -> list[str]:
+    """The options given before the subcommand, which choose the repository."""
+    found: list[str] = []
+    index = 0
+    while index < len(arguments):
+        argument = arguments[index]
+        if not argument.startswith("-") or argument in ("-h", "--help", "-v", "--version"):
+            break
+        found.append(argument)
+        if argument in WITH_VALUE and index + 1 < len(arguments):
+            found.append(arguments[index + 1])
+            index += 1
+        index += 1
+    return found
+
+
+def environment() -> dict[str, str]:
+    kept = {
+        name: value
+        for name, value in os.environ.items()
+        if not name.startswith(("GIT_CONFIG", "GIT_EXEC_PATH", "GIT_EXTERNAL_DIFF", "GIT_SSH"))
+        and name not in ("GIT_ASKPASS", "SSH_ASKPASS", "GIT_PAGER", "GIT_EDITOR", "PAGER")
+    }
+    return kept | {
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_SYSTEM": "/dev/null",
+        "GIT_CONFIG_GLOBAL": "/dev/null",
+        "GIT_ALLOW_PROTOCOL": "file",
+        "GIT_PROTOCOL_FROM_USER": "0",
+        "GIT_TERMINAL_PROMPT": "0",
+        "GIT_PAGER": "cat",
+        "PAGER": "cat",
+        "GIT_EDITOR": "true",
+        "GIT_SEQUENCE_EDITOR": "true",
+        "GIT_ASKPASS": "true",
+    }
+
+
+def entries(listing: list[str], env: dict[str, str]) -> list[tuple[str, str, str]]:
+    """(origin, key, value) of every setting a `git config --list --show-origin -z` reads."""
+    done = subprocess.run(listing, env=env, capture_output=True, stdin=subprocess.DEVNULL)
+    parts = done.stdout.decode(errors="surrogateescape").split("\0")
+    found = []
+    for origin, entry in zip(parts[::2], parts[1::2], strict=False):
+        key, _, value = entry.partition("\n")
+        found.append((origin, key, value))
+    return found
+
+
+def global_settings(env: dict[str, str]) -> list[tuple[str, str]]:
+    """The settings of the agent's global configuration that name no command."""
+    reading = {name: value for name, value in env.items() if name != "GIT_CONFIG_GLOBAL"}
+    listing = [GIT, "config", "--global", "--list", "--show-origin", "-z"]
+    return [(k, v) for _, k, v in entries(listing, reading) if SAFE.fullmatch(k.lower())]
+
+
+def quoted(value: str) -> str:
+    escaped = value.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+    return '"' + escaped.replace("\t", "\\t") + '"'
+
+
+def sanitized(settings: list[tuple[str, str]]) -> str:
+    """A configuration file holding the given settings."""
+    lines = []
+    for key, value in settings:
+        section, _, rest = key.partition(".")
+        subsection, _, name = rest.rpartition(".")
+        head = f'[{section} "{subsection.replace(chr(92), chr(92) * 2).replace(chr(34), chr(92) + chr(34))}"]'
+        lines += [head if subsection else f"[{section}]", f"\t{name} = {quoted(value)}"]
+    return "\n".join(lines) + "\n"
+
+
+def copies(options: list[str], env: dict[str, str], folder: str) -> list[str]:
+    """`--bind` arguments for as_agent that show git a copy of each file of the repository's
+    configuration that keeps only the safe settings: the first file holds every safe setting
+    read, in order, and the others are empty."""
+    listing = [GIT, *options, "config", "--list", "--includes", "--show-origin", "-z"]
+    read = [(o, k, v) for o, k, v in entries(listing, env) if o.startswith("file:")]
+    files = list(dict.fromkeys(origin.removeprefix("file:") for origin, _, _ in read))
+    for worktree in worktree_configs(options, env):
+        if worktree not in files:
+            files.append(worktree)
+    binds = []
+    kept = [(k, v) for _, k, v in read if SAFE.fullmatch(k.lower())]
+    for number, path in enumerate(files):
+        if not os.path.isfile(path):
+            continue
+        copy = os.path.join(folder, f"config-{number}")
+        with open(copy, "w", encoding="utf-8", errors="surrogateescape") as written:
+            written.write(sanitized(kept) if number == 0 else "")
+        binds += ["--bind", f"{copy}:{os.path.realpath(path)}"]
+    return binds
+
+
+def worktree_configs(options: list[str], env: dict[str, str]) -> list[str]:
+    """The worktree configuration of the repository, read only when an extension says so."""
+    done = subprocess.run(
+        [GIT, *options, "rev-parse", "--path-format=absolute", "--git-dir"],
+        env=env,
+        capture_output=True,
+        text=True,
+        stdin=subprocess.DEVNULL,
+    )
+    path = os.path.join(done.stdout.strip(), "config.worktree") if done.returncode == 0 else ""
+    return [path] if path and os.path.isfile(path) else []
+
+
+def overrides(keys: list[str], env: dict[str, str]) -> list[tuple[str, str]]:
+    chosen = dict(global_settings(env))
+    chosen.update(BASELINE)
+    for key in keys:
+        lowered = key.lower()
+        for pattern, value in PATTERNS:
+            if pattern.fullmatch(lowered):
+                chosen[key] = value
+                break
+    return list(chosen.items())
+
+
+def main() -> None:
+    arguments = sys.argv[1:]
+    env = environment()
+    options = global_options(arguments)
+    rest = arguments[len(options) :]
+    subcommand = rest[0] if rest else ""
+    if subcommand == "config":
+        # `git config` runs nothing a configuration names, and may write the global file.
+        del env["GIT_CONFIG_GLOBAL"]
+    shown_copies = subcommand not in WRITERS
+    listing = [GIT, *options, "config", "--list", "--includes", "--show-origin", "-z"]
+    keys = [] if shown_copies else [key for _, key, _ in entries(listing, env)]
+    settings = overrides(keys, env)
+    env["GIT_CONFIG_COUNT"] = str(len(settings))
+    for number, (key, value) in enumerate(settings):
+        env[f"GIT_CONFIG_KEY_{number}"] = key
+        env[f"GIT_CONFIG_VALUE_{number}"] = value
+    binds: list[str] = []
+    if shown_copies:
+        folder = tempfile.mkdtemp(prefix="steward-git-", dir="/dev/shm")
+        binds = copies(options, env, folder)
+    elif subcommand == "push":
+        rest = [rest[0], "--receive-pack=git-receive-pack", *rest[1:]]
+    elif subcommand in UPLOAD:
+        rest = [rest[0], "--upload-pack=git-upload-pack", *rest[1:]]
+    keep = [f"{name}={value}" for name, value in env.items() if name.startswith("GIT_")]
+    keep += [f"PAGER={env['PAGER']}"]
+    os.execve(AS_AGENT, [AS_AGENT, *binds, *keep, GIT, *options, *rest], env)
+
+
+if __name__ == "__main__":
+    main()

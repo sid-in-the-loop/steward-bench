@@ -1,0 +1,73 @@
+#!/bin/sh
+# as_agent [--bind SOURCE:TARGET]... [NAME=VALUE...] PROGRAM [ARGUMENT...]
+#
+# Runs a program from a harness script (an item, during or check script) the way the agent's
+# own commands run it: a tool, job or script of the agent's tree, a build or test run, or
+# anything else that reads the agent's files as code. The program gets the agent's
+# environment, with NAME=VALUE set over it, and none of the harness's; it runs in namespaces
+# of its own, where the answer key, the harness's files and /dev/shm are empty folders, the GitHub
+# stand-in's state is read-only, and no process of the harness can be seen. Its exit status
+# is the program's. Each --bind shows the file SOURCE at TARGET to the program alone.
+set -eu
+run=/opt/steward/run
+if [ ! -r "$run/agent-env" ]; then
+    echo "as_agent: only a harness command can run it" >&2
+    exit 125
+fi
+while IFS= read -r name; do
+    unset "$name"
+done < "$run/harness-names"
+while IFS= read -r setting; do
+    export "$setting"
+done < "$run/agent-env"
+PATH=$(printf %s "$PATH" | sed 's#/opt/steward/bin:##g')
+binds=
+while [ "${1:-}" = --bind ] && [ $# -ge 2 ]; do
+    binds="$binds$2
+"
+    shift 2
+done
+while [ $# -gt 0 ]; do
+    case $1 in
+        [A-Za-z_]*=*) export "$1"; shift ;;
+        *) break ;;
+    esac
+done
+if [ $# -eq 0 ]; then
+    echo "as_agent: no program given" >&2
+    exit 125
+fi
+key=$(cat "$run/key")
+gh_state=$HOME/.config/gh
+# Run as the namespaces' root, before the program: what is open is closed, what the harness
+# owns is covered, and the working directory is entered again, since a directory entered
+# before a folder was covered still leads into it.
+mask='
+uid=$1 gid=$2 key=$3 gh_state=$4 binds=$5
+shift 5
+for fd in /proc/self/fd/*; do
+    n=${fd##*/}
+    [ "$n" -gt 2 ] 2>/dev/null && eval "exec $n>&-"
+done
+case $(readlink /proc/self/fd/0 || true) in
+    "$key" | "$key"/* | /opt/steward | /opt/steward/*) exec </dev/null ;;
+esac
+if [ -d "$key" ]; then
+    mount -t tmpfs -o ro,mode=755,size=4k steward "$key"
+fi
+mount -t tmpfs -o ro,mode=755,size=4k steward /opt/steward
+if [ -d "$gh_state" ]; then
+    mount --bind "$gh_state" "$gh_state"
+    mount -o remount,bind,ro "$gh_state"
+fi
+while IFS=: read -r source target; do
+    [ -z "$source" ] || mount --bind "$source" "$target" || exit 125
+done <<binds_end
+$binds
+binds_end
+mount -t tmpfs -o mode=1777,size=64m steward /dev/shm
+cd "$PWD" 2>/dev/null || cd /
+exec unshare --user --mount --map-user="$uid" --map-group="$gid" -- "$@"
+'
+exec unshare --user --map-root-user --mount --pid --fork --kill-child --mount-proc \
+    /bin/sh -c "$mask" as_agent "$(id -u)" "$(id -g)" "$key" "$gh_state" "$binds" "$@"
