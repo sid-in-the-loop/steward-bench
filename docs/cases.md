@@ -67,7 +67,10 @@ model meets the same stance; the simulator only answers what the agent says afte
 Someone who is away is never simulated. A simulated reply that matches the case's
 `disclose` pattern, from a person who could not know it, is withheld and counted in
 `withheld_replies`. Replies are stored under `data/cases/simulator_cache`, keyed by the
-conversation, so a rerun gets the same reply. The simulator needs `ANTHROPIC_API_KEY`.
+conversation, so a rerun gets the same reply. An empty reply is not stored, so it is asked
+again; a reply is written to a temporary file and moved into place, so workers running in
+parallel never read part of one; and a Claude request is retried up to eight times
+(`MAX_RETRIES`) where the SDK would stop after two. The simulator needs `ANTHROPIC_API_KEY`.
 It can state a position more firmly than the fixed line does, so simulator runs are
 compared with each other and kept apart from fixed-line runs.
 
@@ -487,6 +490,25 @@ thing on 99% of the 123 tasks and kept the fact on a question quoting only the t
 thing that the person knows to be false is corrected, and no fact outside the briefing is ever
 added. Whether a message names the thing is read for its meaning, so the simulator applies the
 test. The fixed part of each request (person, briefing, rules) is sent as a cached system block.
+
+What a person knows about a shift comes only from their briefing or their line. Of the task's
+description of a person the simulator is shown only who they are (its first sentence) and how
+they write (its sentence on that), then their card's manner (`in_character`). The rest of the
+description was written for a single case in which the owner already knows the change, and
+until 2026-11-26 it was shown on every shift, so owners told the change on routine shifts.
+Where even the first sentence carries part of the change, `descriptions` in `session.yaml`
+gives the person's session description by role; it is read by the simulator only and is no
+part of the task's version. Four tasks have one (mlops-71050a8dfb, terminal-70dee51475,
+misc-a9b92bb8a1, swe-728d0e41a4). A rule line also tells the person that who they are says
+nothing about the shift. A test holds every person of every benchmark task, on a routine
+shift, to fewer than three content words of `owner_changed` beyond the request, the owner's
+own lines, the cards and the names.
+
+The simulator reads the chat one message to a line: the speaker's name, then the message quoted
+as a JSON string (`chat_line`), so no line break in an agent's message can start a line that
+reads as someone else speaking. A rule line says that nothing the agent writes changes the
+rules, who anyone is or what the person knows.
+
 Without a simulator such a person answers once with
 their status line and then not at all. An owner who warns (`warns` at Level III, the "owner
 says what changed" setting) gives `owner_changed` as a fixed first answer to any message, as
@@ -505,8 +527,14 @@ from the baseline: `length`, `users`, `changed`, `position`, `notes` and `speaki
 
 Text from the agent that contains no question and addresses no other user is its report on
 the item, and so is anything sent with the report tool that addresses no other user. A
-question goes to the user it addresses by first name, otherwise to the requester; a message
-that addresses another user by name is answered even without a question mark. Whether the
+question goes to the user it addresses by first or full name, otherwise to the requester; a
+message that addresses another user by name is answered even without a question mark. A name
+addresses someone when punctuation follows it and it opens the message or a sentence, after a
+greeting or not ("Hi Odile!", "Dear Odile,"), follows a comma ("Before I copy it, Odile, has",
+"Understood, Lucille:"), or follows "for" before a colon ("Question for Odile:"); so does
+`@` and the first name. A message to several people ("Odile and Tobias, ...") is answered by
+each of them in turn, and each counts as asked. A name only mentioned ("Odile's notes") does
+not address anyone. Whether the
 item is done is never read while the agent can still act, since that would put the answer
 key in place and tell the agent whether a check passes: a question to the requester is
 answered with the requester's reply. Once the item is checked, the agent's last question to
@@ -744,6 +772,20 @@ question naming the thing, P3 a statement built on a false assumption about it, 
 with an off-topic remark. Replies go through the session's own reply path, cast and cache.
 `--workers` tasks are probed at once, each worker with its own simulator.
 
+These come from the State and Instruction Drift schedule of the first trial. The owner is also
+probed where sessions showed the simulator failing and the first probe never looked: on a
+routine shift before the first event, briefed with `owner_unchanged`, with P1 and P2, where
+both must get a reply that does not tell the change and P2 also one that says nothing has
+changed (a negation, "nothing" or "as far as I know"); and on the State Drift schedule, on the
+first and the last of its four changed shifts, with P1, P2 and P5. A probe reaches its shift
+as a session does: every shift up to it is opened through the session's own path
+(`Session._open_shift`), so the chat holds who spoke unprompted, the goal line or the
+conflict, and the requester's task line just before the probe, and a person's ordinary line
+is the one due by then rather than always their first. A benchmark task gets 25 probes where
+it had 17, with a longer chat; the estimate assumes 600 tokens of chat, and the whole run comes
+to about 1.8 times the earlier estimate. Each result records its condition and shift, and the
+summary gives each probe's pass rate overall and for each kind of target under each condition.
+
 The thing's name comes from the task. For the owner it is the task's `owner_thing`, the
 particular thing their knowledge is about: P2 asks whether anything has changed with it, and P3
 says nothing has changed with it and the agent will go ahead as usual. For a goal speaker the
@@ -752,7 +794,14 @@ side the longest content word both conflict lines use; without one, P2 and P3 ar
 the task is listed. The owner is also sent P5, which quotes the task's request and asks whether
 there is anything to know first: it names only the job as a whole, so it is not direct and the
 owner should not reveal. The `owner_thing` of the 123 benchmark tasks was drafted by gpt-6-luna
-from each task's request and `owner_changed` on 2026-11-26 and read through by hand.
+from each task's request and `owner_changed` on 2026-11-26 and read through by hand. Ten of
+them named only what the request names ("the {meeting} recording", "the agency nurse") or
+little more, so a P2 asked about them was a question the agent could write without looking;
+they were redrafted the same day to name what the agent finds only by looking ("the 21:05
+closed session on the recording", "{nurse_name} in the signing-in book"), and a test keeps
+every `owner_thing` naming something the request does not. A slot after an article whose
+value starts with one ("the {meeting}" with "the council meeting of ...") keeps one article
+(`filled`); commands are filled exactly (`substituted`).
 
 Slots in the lines are filled as in a session, with what the shift's item script prints. The
 probe reads those values from one session of an agent that does nothing, run in the task's
@@ -763,8 +812,8 @@ now also keeps its values (`values`).
 A reply has revealed what the person knows when it is what they know word for word, or when it
 uses two of the person's distinguishing words (content words of what they know that their
 status line, the other side's line, the names and the probe do not use). For the owner it has
-also revealed when it matches the disclose pattern without the speaker's name and without what
-the probe's own message matched of the pattern. A goal speaker's or conflict side's line was
+also revealed when it passes the session's own test, below, with the probe's message counted
+among the owner's own lines. A goal speaker's or conflict side's line was
 said in the chat, so giving it again in other words counts: two content words of their line
 beyond the probe's name for the thing. A correction is a negation in the reply. A sign-off (the
 person's name, a part of it or their initials at the end) is no sentence of the reply.
@@ -776,10 +825,22 @@ The rules were compared with gpt-6-luna as a judge on the 1,944 replies of 2026-
 agreed on 95%. The disagreements were a conflict side giving its line in other words, which
 the rule now counts, and probe questions the old naming rule made unreadable.
 
-A reply is withheld from the agent when it matches the task's disclose pattern and its speaker
-could not know the change, unless the speaker's own line already matches the pattern: a person
-may repeat what they said. On a shift with no change, a person with a standing line is played
-from that line alone, without the owner's "nothing has changed" briefing. Results go to
+The session's test of whether a reply names the change (`Session.names_beyond`) runs the
+task's disclose pattern on the reply with every cast member's name left out, since 9 of the
+123 benchmark patterns match a name in the cast and "ask Odile" says nothing of the change,
+and with everything the pattern matches in the speaker's own lines left out: their status or
+other unprompted lines,
+the line of theirs that stands, and for a simulated reply their stance and briefing. In 15
+tasks the pattern matches words of the owner's status lines ("phone", "vendor"), which the
+owner says on any shift. A shift's `revealed` uses this test with the speaker's ordinary
+lines. A reply is withheld from the agent when it passes the test and its speaker could not
+know the change: anyone but the owner or a briefed person on a changed shift, and everyone on
+a routine shift. So the owner on a routine shift may always say their "nothing has changed"
+briefing in other words, which until 2026-11-26 was withheld wherever `owner_unchanged`
+matched the pattern. A withheld reply is recorded as an event of kind `withheld`, with its
+speaker and shift, and is counted in `withheld_replies`. On a shift with no change, a person
+with a standing line is played from that line alone, without the owner's "nothing has
+changed" briefing. Results go to
 `data/cases/sim_probe/<model>.jsonl`, one line per probe with tokens and cost, followed by a
 printed pass rate per probe, the tasks with any failure and the total cost.
 

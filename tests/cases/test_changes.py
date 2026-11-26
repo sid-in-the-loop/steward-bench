@@ -221,6 +221,8 @@ def test_a_card_adds_a_manner_but_never_changes_the_person_otherwise() -> None:
     assert shown.description.startswith("A scientist in the lab. Manner: ")
     assert (shown.name, shown.role) == (person.name, person.role)
     assert in_character(person, None) == person
+    told = person.model_copy(update={"description": "A scientist. She moved the lab on Monday."})
+    assert in_character(told, None).description == "A scientist."
 
 
 def test_the_visible_version_is_exported_and_keeps_old_ids_apart(

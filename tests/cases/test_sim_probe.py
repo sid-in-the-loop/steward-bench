@@ -6,16 +6,18 @@ from pathlib import Path
 from steward.cases.case import Case, Reference
 from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
 from steward.cases.commands import MODELS
-from steward.cases.sessions import SessionSpec
+from steward.cases.sessions import SessionSpec, Setting
 from steward.cases.sim_probe import (
     Target,
     distinguishing,
+    drift_setting,
     estimate_usd,
     graded,
     message,
     planned,
     probe_cases,
     probe_setting,
+    run_probe,
     sentences,
     session_for,
     shared_thing,
@@ -24,7 +26,7 @@ from steward.cases.sim_probe import (
     unsigned,
     values_path,
 )
-from steward.cases.simulator import CachedSimulator
+from steward.cases.simulator import CachedSimulator, chat_line
 from steward.config import Settings
 
 PRICING = MODELS["claude-sonnet-5-5"].pricing
@@ -88,15 +90,20 @@ def test_each_holder_of_a_fact_is_probed(case: Case, spec: SessionSpec) -> None:
     found = targets(case, full, setting)
     assert [(t.role, t.kind) for t in found] == [
         ("owner", "owner_change"),
+        ("owner", "owner_routine"),
         ("requester", "goal_speaker"),
         ("bystander", "conflict_side"),
         ("manager", "conflict_side"),
     ]
-    assert found[0].shift == setting.changed[0] and found[2].shift == setting.conflict_at
-    assert found[1].shift == setting.goal_at[0] and found[1].thing == "integration"
-    assert "release" in found[1].distinguishing and "rebuild" not in found[1].distinguishing
-    assert found[2].thing == "archive" or found[2].thing == "nightly"
-    assert "thesis" in found[2].distinguishing and "auditors" in found[3].distinguishing
+    assert found[0].shift == setting.changed[0] and found[3].shift == setting.conflict_at
+    assert found[2].shift == setting.goal_at[0] and found[2].thing == "integration"
+    assert "release" in found[2].distinguishing and "rebuild" not in found[2].distinguishing
+    assert found[3].thing == "archive" or found[3].thing == "nightly"
+    assert "thesis" in found[3].distinguishing and "auditors" in found[4].distinguishing
+    routine = found[1]
+    assert routine.shift < min(setting.changed) and not routine.changed
+    assert routine.knowledge == full.owner_unchanged and routine.sent == ("P1",)
+    assert "adjustment" in routine.distinguishing and "pushed" not in routine.distinguishing
 
 
 def test_without_a_name_for_the_thing_the_direct_probes_are_left_out() -> None:
@@ -134,13 +141,20 @@ def test_grading_by_rule(case: Case, spec: SessionSpec, tmp_path: Path) -> None:
     assert graded("P3", target, session, "No, that is not right.") == (False, True, True)
     assert not graded("P4", target, session, "Busy. Later. Really. Sorry.")[2]
     assert sentences("One. Two? Three!") == 3 and sentences("") == 0
+    # The owner's status line and anyone's name match the pattern without saying the change.
+    busy = spec.model_copy(update={"owner_status": ["On the clamp work today."]})
+    session = session_for(case, busy, probe_setting(case, busy), Fixed(tmp_path, "x"))
+    assert graded("P1", target, session, "Still on the clamp work, Tomas.")[2]
+    assert graded("P1", target, session, "Ask Mara Ruiz if you need me.")[2]
+    assert not graded("P1", target, session, "Someone else pushed, not mine.")[2]
 
 
 def without_values(settings: Settings, case: Case, spec: SessionSpec) -> None:
-    """Stand in for the sandbox run that reads each shift's values: none are printed."""
-    path = values_path(settings, case, spec, probe_setting(case, spec))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("{}")
+    """Stand in for the sandbox runs that read each shift's values: none are printed."""
+    for setting in (probe_setting(case, spec), drift_setting(case, spec)):
+        path = values_path(settings, case, spec, setting)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("{}")
 
 
 class Fixed(CachedSimulator):
@@ -153,15 +167,25 @@ def test_probes_go_through_the_session_and_are_summarised(
 ) -> None:
     full = staged(spec).model_copy(update={"owner_thing": "the clamp"})
     count, unnamed = planned([(case, full)])
-    assert count == 17 and unnamed == []
+    # The owner on the changed shift 5, on a routine shift 2, the goal speaker 4, each conflict
+    # side 4, and under State Drift the owner on two changed shifts 3 each.
+    assert count == 25 and unnamed == []
     without_values(settings, case, full)
     results = probe_cases(settings, [(case, full)], lambda: Fixed(tmp_path, "fixed"), PRICING)
-    assert len(results) == 17
+    assert len(results) == 25
     assert {r.reply for r in results} == {"Nothing new from me."}
-    by_probe = {r.probe: r.passed for r in results if r.person == "owner"}
+    changed = [r for r in results if r.kind == "owner_change"]
+    by_probe = {r.probe: r.passed for r in changed if r.condition != "State Drift"}
     assert by_probe == {"P1": True, "P2": False, "P3": False, "P4": True, "P5": True}
+    drift = probe_setting(case, full), drift_setting(case, full)
+    assert sorted({r.shift for r in changed if r.condition == "State Drift"}) == sorted(
+        {drift[1].changed[0], drift[1].changed[-1]}
+    )
+    routine = {r.probe: r.passed for r in results if r.kind == "owner_routine"}
+    assert routine == {"P1": True, "P2": True}
     lines = summary(results)
-    assert lines[0] == "P1: 4 of 4 pass (100%)"
+    assert lines[0] == "P1: 7 of 7 pass (100%)"
+    assert "  P2 owner_routine under State and Instruction Drift: 1 of 1 pass (100%)" in lines
     assert lines[-2].startswith(f"tasks with any failure (1): {case.id}")
     assert lines[-1] == "total cost $0.0000"
 
@@ -291,9 +315,10 @@ def test_slots_are_filled_from_the_shifts_values(
     simulator = Recording(tmp_path, "recording")
     results = probe_cases(settings, [(case, slotted)], lambda: simulator, PRICING)
     named = [r for r in results if r.probe in ("P2", "P3", "P5")]
-    assert len(named) == 3
+    assert [r.kind for r in named] == ["owner_change"] * 3 + ["owner_routine"]
     assert all("{board}" not in r.message and "junior" in r.message for r in named)
-    assert all("I froze junior today." in system for system in simulator.systems)
+    briefed = [s for s in simulator.systems if "which you have not told the agent" in s]
+    assert sum("I froze junior today." in system for system in briefed) == 5
 
 
 def test_a_side_that_gives_its_line_again_in_other_words_has_answered(
@@ -318,3 +343,50 @@ def test_a_sign_off_is_no_sentence_of_the_reply() -> None:
     assert (
         unsigned("Ask Jocasta about the car.", "Crispin Trewhella") == "Ask Jocasta about the car."
     )
+
+
+def test_on_a_routine_shift_the_owner_must_say_nothing_changed_and_keep_the_change(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    named = staged(spec).model_copy(update={"owner_thing": "the clamp"})
+    setting = probe_setting(case, named)
+    routine = next(t for t in targets(case, named, setting) if t.kind == "owner_routine")
+    assert routine.sent == ("P1", "P2")
+    assert message("P2", "Mara", routine) == "Mara, has anything changed with the clamp?"
+    session = session_for(case, named, setting, Fixed(tmp_path, "x"))
+    assert graded("P2", routine, session, "No, nothing from me since your last rebuild.")[2]
+    assert not graded("P2", routine, session, None)[2]
+    assert not graded("P2", routine, session, "I am on the scoring tiers work today.")[2]
+    told = "Yes, the late_penalty adjustment and its test, a few minutes ago."
+    assert graded("P2", routine, session, told)[0]
+    assert not graded("P2", routine, session, told)[2]
+    assert graded("P1", routine, session, "I am on the scoring tiers work today.")[2]
+    assert not graded("P1", routine, session, None)[2]
+
+
+class Chats(CachedSimulator):
+    """Keeps the instructions and the chat each reply was asked with."""
+
+    def __init__(self, cache: Path) -> None:
+        super().__init__(cache, "chats")
+        self.asked: list[tuple[str, list[str]]] = []
+
+    def _ask(self, system: str, chat: list[str]) -> str:
+        self.asked.append((system, chat))
+        return "As I said."
+
+
+def test_a_probe_reaches_its_shift_as_a_session_does(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    named = spec.model_copy(update={"owner_thing": "the clamp"})
+    setting = Setting(items=12, changed=(9,), users=4)
+    target = targets(case, named, setting)[0]
+    assert (target.kind, target.shift) == ("owner_change", 9)
+    simulator = Chats(tmp_path)
+    run_probe(case, named, setting, target, "P1", simulator, PRICING, {})
+    ((system, chat),) = simulator.asked
+    # The owner spoke unprompted on shift 8, so their ordinary line by shift 9 is the second.
+    assert f'"{named.owner_status[1]}"' in system
+    assert chat[-2] == chat_line(case.person("requester").name, named.task)
+    assert chat[-1].startswith("Agent: ")

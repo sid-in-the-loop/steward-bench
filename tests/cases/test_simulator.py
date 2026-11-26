@@ -10,6 +10,7 @@ from steward.cases.commands import MODELS
 from steward.cases.simulator import (
     BRIEFED,
     INSTRUCTIONS,
+    MAX_RETRIES,
     MAX_TOKENS,
     NO_REPLY,
     SESSION_MODEL,
@@ -139,11 +140,42 @@ class Messages:
         return SimpleNamespace(usage=Usage(), stop_reason="end_turn", content=[block])
 
 
+class Client:
+    def __init__(self) -> None:
+        self.messages = Messages()
+        self.options: dict[str, Any] = {}
+
+    def with_options(self, **options: Any) -> "Client":
+        self.options = options
+        return self
+
+
+def test_an_empty_reply_is_asked_again_and_a_reply_is_written_whole(tmp_path: Path) -> None:
+    class Answers(CachedSimulator):
+        def __init__(self, cache: Path, texts: list[str]) -> None:
+            super().__init__(cache, "answers")
+            self.texts = texts
+
+        def _ask(self, system: str, chat: list[str]) -> str:
+            return self.texts.pop(0)
+
+    sim = Answers(tmp_path, ["", "Keep it."])
+    assert sim.reply(CASE, PERSON, "Keep it.", CHAT) is None
+    assert list(tmp_path.iterdir()) == []
+    assert sim.reply(CASE, PERSON, "Keep it.", CHAT) == "Keep it."
+    (stored,) = tmp_path.iterdir()
+    assert stored.suffix == ".txt" and stored.read_text() == "Keep it."
+    stored.write_text("")
+    again = Answers(tmp_path, ["Asked again."])
+    assert again.reply(CASE, PERSON, "Keep it.", CHAT) == "Asked again."
+
+
 def test_the_claude_simulator_caches_the_fixed_part_and_counts_cached_tokens(
     tmp_path: Path,
 ) -> None:
-    client = SimpleNamespace(messages=Messages())
+    client = Client()
     sim = ClaudeSimulator(cast(Any, client), tmp_path)
+    assert client.options == {"max_retries": MAX_RETRIES} and MAX_RETRIES > 2
     assert sim.reply(CASE, PERSON, "Busy today.", CHAT, briefing="I moved it.") == "Busy today."
     (request,) = client.messages.sent
     (system,) = request["system"]

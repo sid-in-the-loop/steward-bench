@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import itertools
 import random
+import re
 from typing import Literal
 
 from steward.cases.case import Person, Role, Strict
@@ -81,10 +82,24 @@ def cast(seed: int, roles: tuple[Role, ...]) -> dict[Role, Card]:
     return dict(zip(roles, drawn, strict=True))
 
 
-def in_character(person: Person, card: Card | None) -> Person:
-    """The person as the simulator is shown them: their task description, then their manner.
-    Without a card the person is as the task describes them."""
-    if card is None:
-        return person
-    manner = f"{person.description} Manner: {card.describe()}"
-    return person.model_copy(update={"description": manner})
+# A sentence of a task description that says how the person writes.
+WRITES = re.compile(r"^(?:(?:She|He|They)\s+)?[Ww]rites?\b")
+
+
+def session_description(person: Person) -> str:
+    """Who the person is and how they write, as a session shows them to the simulator: the
+    first sentence of their task description and its sentence on how they write. The rest was
+    written for a single case in which the person already knows the matter at hand, so it can
+    carry a fact that in a session they know only on the shifts their briefing says."""
+    sentences = re.split(r"(?<=[.!?])\s+", person.description.strip())
+    kept = [sentences[0], *[s for s in sentences[1:] if WRITES.match(s)][-1:]]
+    return " ".join(kept)
+
+
+def in_character(person: Person, card: Card | None, description: str | None = None) -> Person:
+    """The person as the simulator is shown them in a session: `description`, or else their
+    session description, then their manner when they have a card."""
+    shown = description or session_description(person)
+    if card is not None:
+        shown = f"{shown} Manner: {card.describe()}"
+    return person.model_copy(update={"description": shown})

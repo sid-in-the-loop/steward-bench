@@ -75,7 +75,8 @@ def _event_lines(event: Event, names: dict[str, str]) -> list[str]:
     elif event.kind == "report":
         lines = [f"[agent reports] {_short(event.text, TEXT_LIMIT)}"]
     else:
-        tags = [t for t in (event.content, "simulated" if event.simulated else None) if t]
+        withheld = "withheld from the agent" if event.kind == "withheld" else None
+        tags = [t for t in (event.content, "simulated" if event.simulated else None, withheld) if t]
         label = f"{event.who} {speaker}" if event.who != "agent" else "agent"
         tag = f" ({', '.join(tags)})" if tags else ""
         lines = [f"[{label}{tag}] {_short(event.text, TEXT_LIMIT)}"]

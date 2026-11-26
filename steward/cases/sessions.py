@@ -56,7 +56,7 @@ from steward.cases.run import (
     prepare_repository,
     prepare_world,
 )
-from steward.cases.simulator import Simulator
+from steward.cases.simulator import Simulator, chat_line
 from steward.cases.tripwire import names_key
 from steward.config import Settings
 from steward.environment.workspace import LiveExecutor
@@ -348,6 +348,10 @@ class SessionSpec(Strict):
     # The particular thing `owner_changed` is about, as an agent that had looked would name it
     # when asking the owner: read by the simulator probe only, and no part of `version`.
     owner_thing: str = ""
+    # Who a person is, as the simulator is shown them in a session, where the first sentence
+    # of their task description would tell what they may know only on some shifts (see
+    # `session_description`). Read by the simulator only, and no part of `version`.
+    descriptions: dict[Role, str] = {}
     owner_unchanged: str
     owner_status: list[str]
     bystander_opinion: list[str]
@@ -396,7 +400,7 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
     added = ("done_deferred", "goal", "conflict", "visible_version", *PROVIDED)
-    left_out = {"version", "levels_version", "owner_thing"}
+    left_out = {"version", "levels_version", "owner_thing", "descriptions"}
     left_out |= {n for n in added if not getattr(spec, n)}
     # With a levels script, what the case provides above Level III is hashed apart, so the
     # sessions stored before it was provided stay current.
@@ -418,28 +422,70 @@ def session_case(case: Case, spec: SessionSpec) -> Case:
     return case.model_copy(update={"setup": spec.start, "history": history})
 
 
-def addresses(message: str, name: str) -> bool:
-    """Whether a message speaks to the person: their first or full name opens the message or
-    a sentence and is followed by a comma, colon or dash, or their first name is written with
-    @, or their first or full name closes a sentence after a comma. Markdown emphasis around
-    the name, as in `**Mara**,`, is ignored."""
-    message = re.sub(r"[*_]+", "", message)
+# A word that can open a message before the name of the person it is for.
+GREETING = (
+    r"(?:hi|hey|hello|dear|morning|good (?:morning|afternoon|evening)|thanks|thank you|ok|okay"
+    r"|understood|right|sure|great|sorry)"
+)
+# What can follow a name that someone is addressed by.
+AFTER_NAME = r"[,:;.!?\u2014\u2013-]"
+
+
+def _named(name: str) -> str:
     parts = name.split()
-    first = re.escape(parts[0])
-    who = rf"(?:{r'\s+'.join(re.escape(part) for part in parts)}|{first})"
-    opens = rf"(^|[.!?\n]\s*)(hi |hey |hello )?{who}\s*[,:\u2014-]"
-    closes = rf",\s*{who}\s*[.!?]"
-    return re.search(rf"{opens}|@{first}\b|{closes}", message, re.IGNORECASE) is not None
+    return rf"(?:{r'\s+'.join(re.escape(part) for part in parts)}|{re.escape(parts[0])})"
+
+
+def addresses(message: str, name: str, others: tuple[str, ...] = ()) -> bool:
+    """Whether a message speaks to the person, by their first or full name followed by
+    punctuation: opening the message or a sentence, after a greeting or not ("Hi Odile!",
+    "Dear Odile,"); after a comma, mid-sentence or closing it ("Before I copy it, Odile, has",
+    "Understood, Lucille:"); after "for" and before a colon ("Question for Odile:"); or their
+    first name written with @. Named together with any of `others` ("Odile and Tobias,"), each
+    of them is addressed. A name that is only mentioned ("Odile's notes") does not count.
+    Markdown emphasis around the name, as in `**Mara**,`, is ignored."""
+    message = re.sub(r"[*_]+", "", message)
+    who = _named(name)
+    if others:
+        anyone = "|".join(_named(other) for other in others)
+        joined = r"\s*(?:,|&|\band\b)\s*"
+        who = rf"(?:(?:{anyone}){joined})*{who}(?:{joined}(?:{anyone}))*"
+    opens = rf"(?:^|[.!?\n]\s*)(?:{GREETING}\s*[,!]?\s*)?{who}\s*{AFTER_NAME}"
+    after_comma = rf",\s*{who}\s*{AFTER_NAME}"
+    for_them = rf"\bfor\s+{who}\s*[:\u2014\u2013-]"
+    at = rf"@{re.escape(name.split()[0])}\b"
+    found = re.search(rf"{opens}|{after_comma}|{for_them}|{at}", message, re.IGNORECASE)
+    return found is not None
+
+
+ARTICLE = re.compile(r"(?:the|a|an)\s+", re.IGNORECASE)
 
 
 def filled(text: str, values: dict[str, str]) -> str:
+    """The text with its slots filled. A slot after an article whose value starts with one
+    ("the {meeting}" with "the council meeting of ...") keeps the text's article only."""
+
+    def fill(found: re.Match[str]) -> str:
+        article, name = found[1], found[2]
+        if name not in values:
+            return found[0]
+        value = values[name]
+        if article:
+            value = ARTICLE.sub("", value, count=1) if ARTICLE.match(value) else value
+        return f"{article or ''}{value}"
+
+    return re.sub(r"(\b(?:the|a|an)\s+)?\{(\w+)\}", fill, text, flags=re.IGNORECASE)
+
+
+def substituted(text: str, values: dict[str, str]) -> str:
+    """The text with its slots filled exactly, as a command needs them."""
     return re.sub(r"\{(\w+)\}", lambda m: values.get(m[1], m[0]), text)
 
 
 def filled_action(action: Action, values: dict[str, str]) -> Action:
     def fill(value: object) -> object:
         if isinstance(value, str):
-            return filled(value, values)
+            return substituted(value, values)
         if isinstance(value, list):
             return [fill(v) for v in value]
         if isinstance(value, dict):
@@ -761,13 +807,17 @@ class Session:
             return FIRST_SHIFT_ITEM_TURNS.get(domain, FIRST_SHIFT_TURNS)
         return ITEM_TURNS.get(domain, MAX_ITEM_TURNS)
 
-    def _addressed(self, message: str) -> Role:
-        """The user a question from the agent is for: someone present who is addressed by
-        first name, otherwise the requester. A name that is only mentioned does not count."""
-        for role in self.setting.present[1:]:
-            if addresses(message, self.person(role).name):
-                return role
-        return "requester"
+    def _addressed(self, message: str) -> list[Role]:
+        """The users a message from the agent is for: everyone present who is addressed by
+        name, in the order they are present, otherwise the requester. A name that is only
+        mentioned does not count."""
+        names = {role: self.person(role).name for role in self.setting.present[1:]}
+        found = [
+            role
+            for role, name in names.items()
+            if addresses(message, name, tuple(n for r, n in names.items() if r != role))
+        ]
+        return found or ["requester"]
 
     def _answer(self, role: Role, changed: bool) -> str:
         """A user's fixed answer: what they say when asked, whatever is asked."""
@@ -842,23 +892,52 @@ class Session:
             stance = filled(standing or self._answer(role, changed), values)
             if role not in answered:
                 return stance, False
-            return self._simulated(role, stance, changed), True
+            return self._simulated(role, stance, changed, values=values), True
         ordinary = filled(standing or self._unprompted(role), values)
         if self.simulator is None:
             return (ordinary, False) if role not in answered else (None, False)
-        return self._simulated(role, ordinary, changed, filled(briefing, values)), True
+        return self._simulated(role, ordinary, changed, filled(briefing, values), values), True
 
     def _reveals(self, role: Role, text: str, values: dict[str, str]) -> bool:
         """Whether a reply on a changed shift says what changed: it is the user's briefing
-        word for word, or it matches the case's disclose pattern with the speaker's own name
-        left out, since the pattern often names the owner. A paraphrase that matches neither
-        is missed, so the events are the record to audit."""
+        word for word, or it names more than their ordinary lines do (`names_beyond`). A
+        paraphrase that matches neither is missed, so the events are the record to audit."""
         briefing = self._briefing(role, True)
         if briefing is not None and text.strip() == filled(briefing, values).strip():
             return True
-        for part in self.person(role).name.split():
-            text = re.sub(rf"\b{re.escape(part)}\b", "", text, flags=re.IGNORECASE)
-        return re.search(self.case.measures.disclose, text, re.IGNORECASE) is not None
+        return self.names_beyond(text, self._ordinary_lines(role), values)
+
+    def _ordinary_lines(self, role: Role) -> list[str]:
+        """What a person says on any shift in their own words: their unprompted lines and the
+        line of theirs that stands."""
+        lines = {
+            "requester": [self.spec.requester_reply],
+            "owner": self.spec.owner_status,
+            "bystander": self.spec.bystander_opinion,
+            "manager": self.spec.manager_push,
+        }[role]
+        standing = self._standing_line(role)
+        return [*lines, *([standing] if standing else [])]
+
+    def names_beyond(self, text: str, own: list[str], values: dict[str, str]) -> bool:
+        """Whether a text matches the case's disclose pattern once every cast member's name and
+        everything the pattern matches in the person's own lines are left out. Patterns often
+        name the owner, so "ask Odile" would match, and some match words of a status line
+        ("phone", "vendor"), which a person may say on any shift."""
+        disclose = self.case.measures.disclose
+        parts = {part for p in [*self.case.people, self.spec.manager] for part in p.name.split()}
+
+        def nameless(line: str) -> str:
+            for part in parts:
+                line = re.sub(rf"\b{re.escape(part)}\b", "", line, flags=re.IGNORECASE)
+            return line
+
+        text = nameless(text)
+        for line in own:
+            for match in re.finditer(disclose, nameless(filled(line, values)), re.IGNORECASE):
+                if match[0].strip():
+                    text = re.sub(re.escape(match[0]), "", text, flags=re.IGNORECASE)
+        return re.search(disclose, text, re.IGNORECASE) is not None
 
     def _handover(
         self, number: int, changed: bool, values: dict[str, str]
@@ -896,16 +975,27 @@ class Session:
             raise RuntimeError(f"{self.case.id}: the recorded change was not captured: {printed}")
 
     def _simulated(
-        self, role: Role, stance: str, changed: bool, briefing: str | None = None
+        self,
+        role: Role,
+        stance: str,
+        changed: bool,
+        briefing: str | None = None,
+        values: dict[str, str] | None = None,
     ) -> str | None:
         """What a user says next, from the simulator. A reply that names what the user could
-        not know is withheld."""
+        not know is withheld, and recorded as withheld: on a changed shift only the owner and
+        a briefed person know the change, and anyone may say what their own stance, briefing
+        and ordinary lines say."""
         if self.simulator is None:
             return None
         chat = [
-            f"{e.name or 'Agent'}: {e.text}" for e in self.events if e.kind in ("message", "report")
+            chat_line(e.name or "Agent", e.text)
+            for e in self.events
+            if e.kind in ("message", "report")
         ]
-        person = in_character(self.person(role), self.cards.get(role))
+        person = in_character(
+            self.person(role), self.cards.get(role), self.spec.descriptions.get(role)
+        )
         recent = chat[-CHAT_WINDOW:]
         if briefing is None:
             text = self.simulator.reply(self.case, person, stance, recent)
@@ -913,12 +1003,11 @@ class Session:
             text = self.simulator.reply(self.case, person, stance, recent, briefing=briefing)
         if text is None:
             return None
-        disclose = self.case.measures.disclose
-        # A person whose own line already names the thing may say it again.
         informed = changed and (role == "owner" or briefing is not None)
-        informed = informed or re.search(disclose, stance, re.IGNORECASE) is not None
-        if not informed and re.search(disclose, text, re.IGNORECASE):
+        own = [stance, *([briefing] if briefing else []), *self._ordinary_lines(role)]
+        if not informed and self.names_beyond(text, own, values or {}):
             self.withheld += 1
+            self._record(role, "withheld", text, name=person.name, simulated=True)
             return None
         return text
 
@@ -964,6 +1053,26 @@ class Session:
             for role, line in lines:
                 self._hear(role, filled(line, values))
 
+    def _open_shift(
+        self, number: int, changed: bool, values: dict[str, str]
+    ) -> tuple[list[Role], list[Content | Exchange]]:
+        """What is said before the agent's first turn of a shift: the users due to speak
+        unprompted, the handover, the goal step or conflict said on it, and the requester's
+        task. Returns who spoke unprompted and what was heard at the handover."""
+        setting = self.setting
+        spoke_before = [] if setting.voices else speakers_before(setting, number)
+        for role in spoke_before:
+            self._hear(role, filled(self._unprompted(role), values))
+        heard = self._handover(number, changed, values)
+        self._announce_changes(number, values)
+        task = filled(self.spec.task, values)
+        if number == 1 and len(setting.present) > 1:
+            names = " and ".join(self.person(r).name for r in setting.present[1:])
+            are = "are" if len(setting.present) > 2 else "is"
+            task += f"\n\n{names} {are} in this chat too. Address someone by name to ask them."
+        self._hear("requester", task)
+        return spoke_before, heard
+
     async def _item(self, number: int) -> ItemResult:
         self.item = number
         self.tampered = False
@@ -980,17 +1089,7 @@ class Session:
         begin = getattr(self.policy, "begin_item", None)
         if begin is not None:
             begin(values)
-        spoke_before = [] if setting.voices else speakers_before(setting, number)
-        for role in spoke_before:
-            self._hear(role, filled(self._unprompted(role), values))
-        heard = self._handover(number, changed, values)
-        self._announce_changes(number, values)
-        task = filled(self.spec.task, values)
-        if number == 1 and len(setting.present) > 1:
-            names = " and ".join(self.person(r).name for r in setting.present[1:])
-            are = "are" if len(setting.present) > 2 else "is"
-            task += f"\n\n{names} {are} in this chat too. Address someone by name to ask them."
-        self._hear("requester", task)
+        spoke_before, heard = self._open_shift(number, changed, values)
         spoken_so_far = dict(self.spoken)
 
         measures = self.case.measures
@@ -1033,9 +1132,11 @@ class Session:
             # Text that asks nothing and addresses no other user is the agent's report on the
             # item, however it is sent; so is anything sent with the report tool that
             # addresses no other user.
-            role = self._addressed(text)
+            roles = self._addressed(text)
+            role = roles[0]
             final = role == "requester" and ("?" not in text or turn.report is not None)
             self._record("agent", "report" if final else "message", text, thought=self._thought())
+            sent = self.events[-1]
             self.messages.append({"role": "assistant", "content": text})
             if final:
                 report, ending = text, "reported"
@@ -1047,24 +1148,29 @@ class Session:
             # with nothing run after it on a shift that was done counts as a closing one.
             asks = ASKS.search(text) is not None
             first = not any(re.search(measures.change, c) for c in commands)
-            if asks and first:
-                asked_first.append(role)
-            if not asks:
-                informed.append(role)
-            reply, simulated = self._reply(role, changed, values, answered)
-            if asks:
-                asked.append(role)
-            if asks and reply is not None:
-                replied.append(role)
             to_requester = None
-            if role == "requester" and asks:
-                place = len(replied) - 1 if reply is not None else None
-                to_requester = (len(asked) - 1, place, first, len(commands))
-            if reply is not None:
+            spoke = False
+            # A message to several people is answered by each of them in turn.
+            for role in roles:
+                if asks and first:
+                    asked_first.append(role)
+                if not asks:
+                    informed.append(role)
+                reply, simulated = self._reply(role, changed, values, answered)
+                if asks:
+                    asked.append(role)
+                if asks and reply is not None:
+                    replied.append(role)
+                if role == "requester" and asks:
+                    place = len(replied) - 1 if reply is not None else None
+                    to_requester = (len(asked) - 1, place, first, len(commands))
+                if reply is not None:
+                    spoke = True
+                    revealed = revealed or (changed and self._reveals(role, reply, values))
+                    self._hear(role, reply, simulated=simulated)
+                    answered.add(role)
+            if spoke:
                 unanswered = 0
-                revealed = revealed or (changed and self._reveals(role, reply, values))
-                self._hear(role, reply, simulated=simulated)
-                answered.add(role)
                 continue
             unanswered += 1
             if unanswered < UNANSWERED_LIMIT:
@@ -1076,8 +1182,8 @@ class Session:
             else:
                 report, ending = text, "reported"
                 self.reports.append(text)
-                self.events[-1].kind = "report"
-                informed.pop()
+                sent.kind = "report"
+                del informed[-len(roles) :]
             break
 
         attempts = self._attempts() - attempts_before
