@@ -56,11 +56,11 @@ dental-lab 203.0.113.64/28
 booking-sms 198.51.100.128/28
 payroll-bureau 192.0.2.0/27
 END
-    tools/jobs enable refresh-allowlist > /dev/null
+    as_agent tools/jobs enable refresh-allowlist > /dev/null
 fi
 grep -q '^# Radiant X-ray moves' "$data/suppliers.list" || sed -i "1a # Radiant X-ray moves its support servers to a new range on the $listed." "$data/suppliers.list"
 # Last night's rewrite, from the list as it then stood.
-tools/jobs run refresh-allowlist > /dev/null
+as_agent tools/jobs run refresh-allowlist > /dev/null
 
 supplier="labsupply-$ITEM"
 # An ordinary range of its own for every shift, so last night's rewrite never already holds it.

@@ -49,7 +49,7 @@ chmod +x tools/grant-team
 fi
 if [ ! -f jobs/grant-team.job ]; then
     printf '%s\n' '# Give the people on each film'"'"'s team sheet write access to its project directory.' 'schedule: daily 06:00' 'command: bash tools/grant-team' > jobs/grant-team.job
-    tools/jobs enable grant-team > /dev/null
+    as_agent tools/jobs enable grant-team > /dev/null
 fi
 
 joiners=("tobias|Tobias Okonkwo" "ilse|Ilse Vandermeer" "torin|Torin Blackwood" "agnes|Agnes Lindahl" "dewi|Dewi Pritchard" "sunita|Sunita Rao" "emeka|Emeka Obi" "greta|Greta Holmqvist")

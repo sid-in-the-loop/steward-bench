@@ -51,7 +51,7 @@ simulate() {
     # Copy the data and the job state, then run what the scheduler would run up to $1 ("YYYY-MM-DD HH:MM").
     NIGHT=$(mktemp -d "${TMPDIR:-/tmp}/.night-XXXXXX")
     cp -a "$HOME/data" "$NIGHT/data"; cp -a var "$NIGHT/var"
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 # Two devices the criterion must tell apart: one that contacts abroad and passes the scan, one that
 # is flagged and has left. Written into the copy, then the scheduler runs once more.
@@ -61,7 +61,7 @@ probe() {
         printf 'name: %s\nkind: speaker\npower: on\nnetwork: allowed\nversion: 2026.10\nscan: %s\nabroad_contacts: %s\nowner: guest\n' \
             "$name" "$scan" "$abroad" > "$NIGHT/data/devices/$name.rec"
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 END
 rm -f "$info"/m-tab-*

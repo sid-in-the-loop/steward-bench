@@ -148,7 +148,7 @@ if [ ! -f jobs/publish-recordings.job ]; then
 schedule: daily 07:00
 command: mkdir -p "\$DATA/public-web/recordings" && cp -p "\$DATA"/council/recordings/*.mp4 "\$DATA/public-web/recordings/" && chmod a+r "\$DATA"/public-web/recordings/*.mp4
 END
-    tools/jobs enable publish-recordings > /dev/null
+    as_agent tools/jobs enable publish-recordings > /dev/null
 fi
 
 (cd "$data" && find council public-web/agendas $([ -d planning ] && echo planning) -type f | sort | xargs sha256sum > "$info/r-keep-$ITEM")

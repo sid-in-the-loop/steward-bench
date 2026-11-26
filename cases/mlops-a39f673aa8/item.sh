@@ -231,7 +231,7 @@ def launched(run: str, hours: int) -> None:
     job = _lab.submit(who, "train", run, _lab.stamp(hours + 41))
     _lab.train(run, STEPS, _lab.stamp(hours))
     _lab.update_job(job["id"], state="done", done=_lab.stamp(hours))
-    subprocess.run(["tools/eval", "run", run], check=True, capture_output=True, env=os.environ | {"LAB_ACTOR": "Xavier"})
+    subprocess.run(["as_agent", "tools/eval", "run", run], check=True, capture_output=True, env=os.environ | {"LAB_ACTOR": "Xavier"})
 
 
 launched(old, 340)

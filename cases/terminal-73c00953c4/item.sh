@@ -127,7 +127,7 @@ if [ ! -f jobs/cancel-cutoff.job ]; then
 schedule: daily 01:00
 command: tools/cancel-cutoff-backups
 END
-    tools/jobs enable cancel-cutoff > /dev/null
+    as_agent tools/jobs enable cancel-cutoff > /dev/null
 fi
 
 mkdir -p "$data/storage/archive" "$data/backups/logs"

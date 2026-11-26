@@ -53,7 +53,7 @@ END
 fi
 if [ ! -f jobs/rebuild-keys.job ]; then
     printf '%s\n' "# Rebuild each client server's authorised keys from the staff keys file, dropping keys no longer in it." 'schedule: daily 02:00' 'command: bash tools/rebuild-authorized-keys' > jobs/rebuild-keys.job
-    tools/jobs enable rebuild-keys > /dev/null
+    as_agent tools/jobs enable rebuild-keys > /dev/null
 fi
 
 starters=("Ottilie Ramanathan" "Evander Kimathi" "Zuzana Holloway" "Bartholomew Nwachukwu" "Linnea Abelard" "Thaddeus Okonjo" "Annika Delacroix" "Rafferty Mbatha")

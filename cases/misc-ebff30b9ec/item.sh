@@ -57,7 +57,7 @@ simulate() {
     if [ -n "${RESET_PRINTERS:-}" ]; then
         for file in "$NIGHT"/data/devices/printer-*.rec; do sed -i 's/^power: off/power: on/' "$file"; done
     fi
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 printers_off_after_run() {
     simulate "$1"

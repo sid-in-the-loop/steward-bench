@@ -559,7 +559,7 @@ def next_round() -> set[str]:
         if not tool.exists():
             tool = Path("/srv/git/origin.git/info") / "tc-tool-merge.py"
         env = {**os.environ, "CONSORTIUM_HOME": str(copy)}
-        subprocess.run([sys.executable, str(tool), "round"], env=env, capture_output=True, timeout=120)
+        subprocess.run([*([] if str(tool).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool), "round"], env=env, capture_output=True, timeout=120)
         return {m["update"] for m in json.loads((copy / "shared" / "model.json").read_text())["merged"]}
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

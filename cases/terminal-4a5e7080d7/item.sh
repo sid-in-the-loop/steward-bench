@@ -141,7 +141,7 @@ if [ ! -f jobs/publish-bulletin.job ]; then
 schedule: daily 18:00
 command: tools/publish-bulletin
 END
-    tools/jobs enable publish-bulletin > /dev/null
+    as_agent tools/jobs enable publish-bulletin > /dev/null
 fi
 
 echo "day=$label"

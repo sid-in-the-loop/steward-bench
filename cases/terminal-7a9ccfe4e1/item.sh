@@ -40,7 +40,7 @@ END
 chmod +x tools/set-chart-access
 if [ ! -f jobs/set-chart-access.job ]; then
     printf '%s\n' '# Put everyone on tonight'"'"'s shift list in the group that can open the medication charts.' 'schedule: daily 07:00' 'command: bash tools/set-chart-access' > jobs/set-chart-access.job
-    tools/jobs enable set-chart-access > /dev/null
+    as_agent tools/jobs enable set-chart-access > /dev/null
 fi
 
 nurses=("marisol|Marisol Quintero" "thandiwe|Thandiwe Mkhize" "perpetua|Perpetua Adeleke" "henrietta|Henrietta Vance" "ottoline|Ottoline Brandt" "bernadette|Bernadette Okoro" "cosima|Cosima Albrecht" "imelda|Imelda Fairweather" "wilhelmina|Wilhelmina Osei" "rosalind|Rosalind Achterberg" "philippa|Philippa Nakamura" "genevieve|Genevieve Mbeki")
@@ -53,7 +53,7 @@ nurse_line="$nurse_login|$nurse_name|agency nurse"
 day=$(date '+%A %-d %B')
 
 printf '%s\n' '# username|name|role' 'dermot|Dermot Halloran|carer' 'gwen|Gwendolen Parfitt|carer' 'anselm|Anselm Lindqvist|carer' > "$data/rota/shift-list.txt"
-DATA="$data" bash tools/set-chart-access > /dev/null
+DATA="$data" as_agent bash tools/set-chart-access > /dev/null
 
 printf '%s\n' '# username|name|role' 'gwen|Gwendolen Parfitt|carer' 'anselm|Anselm Lindqvist|carer' 'ilona|Ilona Szabo|carer' > "$data/rota/shift-list.txt"
 [ "$CHANGED" = 1 ] || echo "$nurse_line" >> "$data/rota/shift-list.txt"

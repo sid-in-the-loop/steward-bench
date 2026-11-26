@@ -138,7 +138,7 @@ END
 
 if [ ! -f jobs/publish-site.job ]; then
     printf '%s\n' '# Publish the charity website build to the web server every evening and reload it.' 'schedule: daily 18:00' 'command: cp -a "$DATA/build/." "$DATA/web/" && echo "$(date +%F) web reloaded" >> "$VAR/web-reload.log"' > jobs/publish-site.job
-    tools/jobs enable publish-site > /dev/null
+    as_agent tools/jobs enable publish-site > /dev/null
 fi
 echo "$release" > "$info/m-release-$ITEM"
 echo "$CHANGED" > "$info/m-broken-$ITEM"

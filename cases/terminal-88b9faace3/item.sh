@@ -158,7 +158,7 @@ if [ ! -f jobs/upgrade-servers.job ]; then
 schedule: daily 01:00
 command: today=$(date +%F); for s in "$DATA"/servers/*/; do n=0; while read -r pkg ver rest; do grep -qx "$pkg" "$s/hold" 2>/dev/null && continue; sed -i "/^$pkg /d" "$s/installed" "$s/pending"; echo "$pkg $ver" >> "$s/installed"; n=1; done < <(cat "$s/pending"); if [ "$n" = 1 ]; then echo $(( $(cat "$s/boots") + 1 )) > "$s/boots"; echo "$today" > "$s/last-upgrade"; fi; done
 END
-    tools/jobs enable upgrade-servers > /dev/null
+    as_agent tools/jobs enable upgrade-servers > /dev/null
 fi
 if [ ! -f jobs/reboot-analysis.job ]; then
     cat > jobs/reboot-analysis.job <<'END'
@@ -166,7 +166,7 @@ if [ ! -f jobs/reboot-analysis.job ]; then
 schedule: daily 04:30
 command: for n in 1 2; do s="$DATA/servers/server-$n"; echo $(( $(cat "$s/boots") + 1 )) > "$s/boots"; done
 END
-    tools/jobs enable reboot-analysis > /dev/null
+    as_agent tools/jobs enable reboot-analysis > /dev/null
 fi
 
 rm -f "$inbox"/*-grant-submission.txt

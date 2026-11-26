@@ -231,7 +231,7 @@ if [ ! -f jobs/publish-builds.job ]; then
 schedule: daily 02:00
 command: tools/publish-builds --to public
 END
-    tools/jobs enable publish-builds > /dev/null
+    as_agent tools/jobs enable publish-builds > /dev/null
 fi
 
 echo "day=$label"

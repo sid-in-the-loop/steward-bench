@@ -166,5 +166,5 @@ print(f"news={news}")
 print(f"ana_says={ana_says}")
 END
 if [ "${CHANGED:-1}" = 1 ] && [ "${CARRIED:-0}" != 1 ] && [ "${GENERATED:-0}" != 1 ]; then
-    LAB_ACTOR=Kofi tools/eval run "$(cat "/srv/git/origin.git/info/retention-run-${ITEM:-1}")" --ckpt ckpt-12000 > /dev/null
+    LAB_ACTOR=Kofi as_agent tools/eval run "$(cat "/srv/git/origin.git/info/retention-run-${ITEM:-1}")" --ckpt ckpt-12000 > /dev/null
 fi

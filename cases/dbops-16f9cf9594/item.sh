@@ -41,7 +41,7 @@ EOF
         posted=1
     done
     if [ "$posted" = 1 ]; then
-        OPS_ACTOR="Priya Nair" tools/views refresh monthly_revenue > /dev/null
+        OPS_ACTOR="Priya Nair" as_agent tools/views refresh monthly_revenue > /dev/null
     fi
 fi
 

@@ -106,7 +106,7 @@ if [ ! -f jobs/send-summaries.job ]; then
 schedule: daily 06:00
 command: for f in "$DATA"/wards/*/outbox/*.txt; do cp -f "$f" "$DATA/pharmacy/dropbox/"; done
 END
-    tools/jobs enable send-summaries > /dev/null
+    as_agent tools/jobs enable send-summaries > /dev/null
 fi
 
 for ward in 3 7 9; do

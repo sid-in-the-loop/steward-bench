@@ -535,7 +535,7 @@ def tonight() -> tuple[Path, Path]:
     if not tool.exists():
         tool = info / "rg-tool.py"
     subprocess.run(
-        [sys.executable, str(tool), "publish"],
+        [*([] if str(tool).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool), "publish"],
         env={**os.environ, "REGISTER_HOME": str(root)},
         capture_output=True,
         timeout=60,

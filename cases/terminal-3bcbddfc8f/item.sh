@@ -239,7 +239,7 @@ END
 
 if [ ! -f jobs/stop-named-sites.job ]; then
     printf '%s\n' '# Stop and disable every member site the abuse desk takedown file names.' 'schedule: daily 07:00' 'command: tools/hosting apply' > jobs/stop-named-sites.job
-    tools/jobs enable stop-named-sites > /dev/null
+    as_agent tools/jobs enable stop-named-sites > /dev/null
 fi
 echo "bad=$bad"
 echo "open=$open"

@@ -53,7 +53,7 @@ simulate_night() {
     for file in "$NIGHT"/var/jobs/*.enabled "$NIGHT"/var/jobs/*.last; do
         [ -e "$file" ] && sed -i "1s/.*/$1 00:00/" "$file"
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1 16:45" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1 16:45" > /dev/null 2>&1 || true
 }
 amount_for() {
     awk -v k="$(awk -v h="$1" '$1==h{print $2}' "$INFO/m-expected")" -v r="$(cat "$INFO/m-rate")" 'BEGIN{printf "%.2f", k*r}'

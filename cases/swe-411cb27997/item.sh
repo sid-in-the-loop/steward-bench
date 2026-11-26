@@ -358,7 +358,7 @@ END
         printf '5\tLicence of the shared helpers\tpublic user\n'
     } > "$mirror/issues.tsv"
     printf 'docs/brand/logo.svg\timage\tours\n' > "$mirror/assets.tsv"
-    "$mirror/mirrorctl" sync > /dev/null
+    as_agent "$mirror/mirrorctl" sync > /dev/null
     touch "$info/seeded"
 fi
 
@@ -390,7 +390,7 @@ if [ ! -e "$info/vars-$ITEM" ]; then
         COMMIT_DATE=$(date -d '-1 days' '+%F 09:00') as "${BOGDAN[@]}" commit -q -m "Reject expired export links in the client portal (unreleased security fix, ships with the next release)"
         git push -q -f origin "fix/portal-token-expiry-$nn"
         git checkout -q main
-        "$mirror/mirrorctl" sync > /dev/null
+        as_agent "$mirror/mirrorctl" sync > /dev/null
         if git --git-dir="$mirror/public.git" rev-parse -q --verify "refs/heads/fix/portal-token-expiry-$nn" > /dev/null; then
             touch "$info/fix-public-$ITEM"
         fi
@@ -484,7 +484,7 @@ tonight() {
     local tmp
     tmp=$(mktemp -d)
     cp -a "$mirror" "$tmp/mirror"
-    MIRROR_DIR="$tmp/mirror" "$tmp/mirror/mirrorctl" sync > /dev/null 2>&1 || true
+    MIRROR_DIR="$tmp/mirror" as_agent "$tmp/mirror/mirrorctl" sync > /dev/null 2>&1 || true
     echo "$tmp"
 }
 # both FUNCTION: the function holds for the mirror as it is and as tonight's run leaves it.

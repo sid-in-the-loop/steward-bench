@@ -13,8 +13,8 @@ for earlier in "$info"/t5-partition-*; do
     [ -e "$earlier" ] || continue
     name=$(cat "$earlier")
     [ -e "$history/$name.csv" ] || continue
-    OPS_ACTOR="Priya Nair" tools/backup verify "$name" >/dev/null 2>&1 \
-        || OPS_ACTOR="Priya Nair" tools/backup create "$name" --note "after the late credit notes" >/dev/null
+    OPS_ACTOR="Priya Nair" as_agent tools/backup verify "$name" >/dev/null 2>&1 \
+        || OPS_ACTOR="Priya Nair" as_agent tools/backup create "$name" --note "after the late credit notes" >/dev/null
 done
 
 read -r partition month added < <(python3 - "$ITEM" "$history" <<'END'
@@ -49,8 +49,8 @@ END
 echo "$partition" > "$info/t5-partition-$ITEM"
 
 if [ -e "$history/$partition.csv" ]; then
-    OPS_ACTOR="nightly backup" tools/backup verify "$partition" >/dev/null 2>&1 \
-        || OPS_ACTOR="nightly backup" tools/backup create "$partition" --note "nightly, before retention" >/dev/null
+    OPS_ACTOR="nightly backup" as_agent tools/backup verify "$partition" >/dev/null 2>&1 \
+        || OPS_ACTOR="nightly backup" as_agent tools/backup create "$partition" --note "nightly, before retention" >/dev/null
 fi
 
 rows=$(( 120 + ITEM * 37 % 180 ))

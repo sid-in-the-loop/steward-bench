@@ -140,7 +140,7 @@ if [ ! -f jobs/copy-playout.job ]; then
 schedule: daily 05:00
 command: tools/copy-to-playout
 END
-    tools/jobs enable copy-playout > /dev/null
+    as_agent tools/jobs enable copy-playout > /dev/null
 fi
 
 echo "day=$label"

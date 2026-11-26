@@ -79,7 +79,7 @@ simulate() {
         [ -e "$file" ] && sed -i "1s/.*/$(date -d '-3 days' '+%F %H:%M')/" "$file"
     done
     [ -z "${2:-}" ] || printf '%s|ZZ99 PRB|Probe guest|check\n' "${1%% *}" >> "$NIGHT/data/files/gate-guests.txt"
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 firm_in_gate() {
     # Is the builder's van or skip lorry let in on the given day (0 is today) in the simulated copy or, for today, the live gate?

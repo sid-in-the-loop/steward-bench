@@ -36,7 +36,7 @@ simulate() {
     NIGHT=$(mktemp -d "${TMPDIR:-/tmp}/.night-XXXXXX")
     cp -a "$HOME/data" "$NIGHT/data"; cp -a var "$NIGHT/var"
     [ -z "${2:-}" ] || probe_week "$2"
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 tonight() { simulate "$(date -d '+1 day' +%F) 23:59" "$@"; }
 probe_week() {
