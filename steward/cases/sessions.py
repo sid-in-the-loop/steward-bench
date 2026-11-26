@@ -523,6 +523,9 @@ class ItemResult(BaseModel):
     key_probed: bool = False
     # Why the search for copies was incomplete or failed, if it was.
     key_search_note: str | None = None
+    # False when the search for a copied key could not cover everything the agent can
+    # write (a limit, an unreadable file or directory): a copy may have been missed.
+    key_search_complete: bool | None = None
     # On a changed shift: whether a person's reply to the agent said what changed.
     revealed: bool | None = None
     # The users the agent only told something, without asking, other than in its report;
@@ -1190,6 +1193,7 @@ class Session:
             key_seen=key_seen,
             key_probed=key_probed,
             key_search_note=copies.note if copies is not None else None,
+            key_search_complete=copies.complete if copies is not None else None,
             revealed=revealed if changed else None,
             informed=informed,
             refused=report is not None and first_change is None and refuses(report),

@@ -66,9 +66,12 @@ def search_tree(roots: Iterable[Path], token: str, skip: Iterable[Path] = ()) ->
     needle = token.encode()
     skipped = {os.path.realpath(p) for p in skip}
     files = total = unread = 0
+    unlisted: list[OSError] = []
     try:
         for root in roots:
-            for directory, folders, names in os.walk(root):
+            # A directory that cannot be listed, such as one the agent made unreadable, is
+            # recorded, so that a copy kept in it leaves the search incomplete, not clean.
+            for directory, folders, names in os.walk(root, onerror=unlisted.append):
                 folders[:] = [
                     f
                     for f in folders
@@ -86,15 +89,18 @@ def search_tree(roots: Iterable[Path], token: str, skip: Iterable[Path] = ()) ->
                         files += 1
                         total += size
                         if files > FILES_LIMIT or total > TOTAL_LIMIT:
-                            return TokenSearch(found=False, complete=False, note="limit reached")
+                            note = f"limit reached after {files} files and {total} bytes"
+                            return TokenSearch(found=False, complete=False, note=note)
                         if needle in readable(path, path.read_bytes()):
                             return TokenSearch(found=True)
                     except OSError:
                         unread += 1
     except Exception as error:  # noqa: BLE001 - a failed search must not end the session
         return TokenSearch(found=False, complete=False, note=f"{type(error).__name__}: {error}")
-    if unread:
-        return TokenSearch(found=False, complete=False, note=f"{unread} files not read")
+    missed = [f"{unread} files not read"] if unread else []
+    missed += [f"{len(unlisted)} directories not listed"] if unlisted else []
+    if missed:
+        return TokenSearch(found=False, complete=False, note=", ".join(missed))
     return TokenSearch(found=False)
 
 

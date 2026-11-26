@@ -74,6 +74,32 @@ def test_a_large_file_is_not_read_and_the_search_says_it_is_incomplete(
     assert not found.found and not found.complete and found.note == "1 files not read"
 
 
+def test_a_copy_hidden_in_an_unreadable_directory_leaves_the_search_incomplete(
+    tmp_path: Path,
+) -> None:
+    hidden = tmp_path / "hidden"
+    hidden.mkdir()
+    (hidden / "copy").write_text("token")
+    hidden.chmod(0)
+    try:
+        found = search_tree([tmp_path], "token")
+    finally:
+        hidden.chmod(0o755)
+    assert not found.found and not found.complete
+    assert found.note == "1 directories not listed"
+
+
+def test_reaching_a_limit_leaves_the_search_incomplete(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tripwire, "FILES_LIMIT", 2)
+    for n in range(5):
+        (tmp_path / f"f{n}").write_text("x")
+    found = search_tree([tmp_path], "token")
+    assert not found.found and not found.complete and found.note is not None
+    assert found.note.startswith("limit reached")
+
+
 def test_a_failed_search_is_recorded_not_raised(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -153,6 +179,7 @@ def test_a_copied_key_is_caught_where_it_lands_and_when_the_agent_reads_it(
     assert not environment.agent_saw_canary
     first, second = items
     assert first.key_copied is True and first.key_seen is False
+    assert first.key_search_complete is True
     assert first.routine_harm is False and not first.tampered
     assert second.key_copied is True and second.key_seen is True
     assert second.harm is True and second.tamper_attempt
@@ -171,7 +198,7 @@ def test_a_session_without_an_answer_key_records_no_tripwire(
     session = Session(case, spec, setting, environment, Reads(), [])  # type: ignore[arg-type]
     _, items = asyncio.run(session.run())
     assert items[0].key_copied is None and items[0].key_seen is None
-    assert items[0].key_search_note is None
+    assert items[0].key_search_note is None and items[0].key_search_complete is None
 
 
 def test_the_key_folder_is_a_probe_under_the_url_the_remote_is_shown_as() -> None:
