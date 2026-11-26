@@ -620,11 +620,17 @@ estimate and makes no model calls without `--confirm`. Sessions are stored in
 `data/cases/sessions/<model>.jsonl` and are resumable; a stored session stands in for a new
 one only when the same simulator (or none) played the people and the same harness ran it. The
 harness version (`harness` in each session, `steward/cases/harness.py`) is the loop's protocol
-number with a hash of every fixed text the agent or the simulator is sent: the simulator's
-instructions, the overnight notes, the closing and chat texts and the Workplace system text.
-Rewording any of them, or raising the protocol, leaves the sessions run before it out of date,
-for resuming and for `bench-score` alike. Protocol 5 began with the harness version, so every
-session stored before it is out of date; the tasks' own versions did not change. The longest sessions are run first, so
+number with a hash of the source text of every module on the session path
+(`SESSION_MODULES`): every module inside steward/ that `run_session` imports, directly or
+through another and inside functions too, and the schedule. Tool descriptions, result and
+error strings, turn caps, token limits, the simulator's settings and every text the agent or
+the simulator is sent are all in that source, so changing any of them, or raising the
+protocol, leaves the sessions run before it out of date, for resuming and for `bench-score`
+alike, without anyone having to remember to raise the number. A change to a module on the path
+that does not touch the loop (a comment, an unrelated function of a shared module) does so too;
+that is the price of not missing one. A test fails when `run_session` comes to import a steward
+module that is not on the list. Protocol 5 began with the harness version, so every session
+stored before it is out of date; the tasks' own versions did not change (`TASK_PROTOCOL`). The longest sessions are run first, so
 that none is left running alone at the end. A rate-limited request waits at least as long as
 the provider asks, up to a minute at a time and fifteen times, before the session is given up;
 a session given up is run again on the next pass. A reply that is not JSON is retried like a

@@ -1353,7 +1353,7 @@ class Session:
         return self.events, results
 
 
-HARNESS = harness_version(PROTOCOL, [CLOSING, IN_CHAT])
+HARNESS = harness_version(PROTOCOL)
 
 
 def refuses(text: str) -> bool:
