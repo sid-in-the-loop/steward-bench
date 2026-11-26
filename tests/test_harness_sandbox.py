@@ -205,3 +205,34 @@ def test_a_harness_command_reads_its_script_from_a_file_and_not_its_arguments(
     )
     assert not any("CHANGED" in part for part in command)
     assert "CHANGED=1" in (tmp_path / "run" / "script").read_text()
+
+
+def test_the_agent_reaches_the_github_stand_in_only_through_its_own_process(
+    tmp_path: Path,
+) -> None:
+    import json
+
+    workspace = make_workspace(tmp_path)
+    state = workspace.home_directory / ws.GH_STATE
+    state.parent.mkdir(parents=True)
+    initial = {"repository": "o/r", "next_number": 1, "pulls": {}, "issues": {}, "recorded": {}}
+    state.write_text(json.dumps(initial))
+    broker = ws.GhBroker(workspace, IMAGE)
+    reaching = broker.start()
+    try:
+        commands = (
+            "gh issue create --title First --body 'from the agent' && gh issue list; "
+            "echo forged > ~/.config/gh/state.json; echo status=$?"
+        )
+        output, _, _ = ws.run_in_container(reaching, IMAGE, reaching.mount, commands, 60)
+        assert "First" in output and "Read-only file system" in output, output
+        recorded = json.loads(state.read_text())
+        assert recorded["issues"]["1"]["title"] == "First"
+        calls = (state.parent / "calls.jsonl").read_text()
+        assert '"issue", "create"' in calls
+        # The harness's own scripts still write the state directly.
+        harness_output, status = harness(reaching, "echo '{}' > ~/.config/gh/scratch.json")
+        assert status == 0 and (state.parent / "scratch.json").exists(), harness_output
+    finally:
+        broker.stop()
+    assert broker.process is None

@@ -81,7 +81,10 @@ REMOTE_NAMED = re.compile(
 # macOS keeps /tmp at /private/tmp, and sessions name it either way.
 TEMPORARY_PATHS = ("/tmp", "/private/tmp")
 GH_SHIM = Path(__file__).parent / "shims" / "gh"
+GH_CLIENT = Path(__file__).parent / "shims" / "gh_client"
+GH_BROKER = Path(__file__).parent / "shims" / "gh_broker"
 GH_STATE = Path(".config") / "gh" / "state.json"
+GH_SOCKETS = "/run/steward-gh"
 ITEM_NUMBER = re.compile(r"/(?:pull|issues)/(\d+)")
 CWD_MARK = "__steward_cwd__"
 # Time spent re-running commands that only read; state-changing ones always run.
@@ -187,6 +190,9 @@ class Workspace(BaseModel):
     # Shown only to the harness's own commands, never to the agent's, over the above.
     harness_binds: list[str] = []
     harness_environment: dict[str, str] = {}
+    # The folder of this machine that holds the socket of the run's GitHub stand-in, when
+    # it runs in a container of its own (see `GhBroker`). Set for one run and not saved.
+    gh_sockets: str = ""
     # Run before and after each of the harness's own commands, in its container; their
     # status is not read.
     harness_prologue: str = ""
@@ -441,7 +447,8 @@ def container_command(
     written there and shown at /opt/steward/run, and it runs with the harness's own binds,
     programs and environment (see `HARNESS_PRELUDE`)."""
     binds = [f"{workspace.temporary}:{path}" for path in TEMPORARY_PATHS]
-    binds.append(f"{GH_SHIM}:/usr/local/bin/gh:ro")
+    stand_in = workspace.gh_sockets and harness is None
+    binds.append(f"{GH_CLIENT if stand_in else GH_SHIM}:/usr/local/bin/gh:ro")
     if workspace.remote.exists():
         binds.append(f"{workspace.remote}:{REMOTE_MOUNT}")
     if not workspace.under_home:
@@ -451,6 +458,11 @@ def container_command(
         else:
             binds.append(f"{workspace.tree.parent}:{parent}")
     binds += workspace.binds
+    if stand_in:
+        # The agent reaches the stand-in only through its socket, and reads its state.
+        state = workspace.home_directory / GH_STATE.parent
+        binds += [f"{workspace.gh_sockets}:{GH_SOCKETS}:ro"]
+        binds += [f"{state}:{PurePosixPath(workspace.home) / GH_STATE.parent}:ro"]
     binds += extra_binds
     environment = {**workspace.environment, **(extra_environment or {})}
     shell: list[str] = [workspace.shell]
@@ -902,6 +914,58 @@ def build_workspace(
     seed_github(workspace, repository, steps, takeover_step)
     (destination / "workspace.json").write_text(workspace.model_dump_json(indent=1))
     return workspace
+
+
+class GhBroker:
+    """The run's GitHub stand-in in a container of its own, the one process that writes its
+    state. The agent's `gh` passes each call to it through a socket; the stand-in runs the
+    call in the caller's directory, with the harness's git, which runs through `as_agent`.
+    Harness scripts keep the stand-in itself and write its state directly."""
+
+    def __init__(self, workspace: Workspace, image: Path | str) -> None:
+        self.workspace = workspace
+        self.image = image
+        self.folder = Path(tempfile.mkdtemp(prefix="steward-gh-"))
+        self.sockets = self.folder / "sockets"
+        self.sockets.mkdir()
+        self.process: subprocess.Popen[bytes] | None = None
+
+    def start(self) -> Workspace:
+        """Start the stand-in; returns the workspace whose agent commands reach it."""
+        quiet = self.workspace.model_copy(update={"harness_prologue": "", "harness_epilogue": ""})
+        run = self.folder / "run"
+        run.mkdir()
+        binds = [
+            f"{self.sockets}:{GH_SOCKETS}",
+            f"{GH_SHIM}:{HARNESS_DIRECTORY}/gh/shim:ro",
+            f"{GH_BROKER}:{HARNESS_DIRECTORY}/gh/broker:ro",
+        ]
+        script = f"exec /usr/bin/python3 -I {HARNESS_DIRECTORY}/gh/broker {GH_SOCKETS}/socket"
+        command = container_command(
+            quiet, self.image, quiet.mount, script, 30 * 24 * 3600, extra_binds=binds, harness=run
+        )
+        log = (self.folder / "log").open("ab")
+        self.process = subprocess.Popen(
+            command, stdout=log, stderr=log, stdin=subprocess.DEVNULL, env=scope_environment()
+        )
+        deadline = time.monotonic() + 60
+        while not (self.sockets / "socket").exists():
+            if self.process.poll() is not None or time.monotonic() > deadline:
+                self.stop()
+                raise RuntimeError("the GitHub stand-in did not start")
+            time.sleep(0.2)
+        return self.workspace.model_copy(update={"gh_sockets": str(self.sockets)})
+
+    def stop(self) -> None:
+        if self.process is not None and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait()
+        self.process = None
+        shutil.rmtree(self.folder, ignore_errors=True)
 
 
 def copy_workspace(source: Workspace, destination: Path) -> Workspace:

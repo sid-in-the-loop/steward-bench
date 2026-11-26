@@ -525,3 +525,21 @@ def test_without_a_systemd_manager_a_command_runs_without_a_scope(monkeypatch) -
     monkeypatch.setattr(ws, "_scope", None)
     monkeypatch.setenv("STEWARD_NO_SCOPE", "1")
     assert ws.scope_prefix() == []
+
+
+def test_the_agents_commands_reach_the_github_stand_in_through_its_socket_only(tmp_path) -> None:
+    workspace = make_workspace(tmp_path).model_copy(update={"gh_sockets": "/host/gh"})
+    agent = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
+    binds = [agent[i + 1] for i, part in enumerate(agent) if part == "--bind"]
+    assert f"{ws.GH_CLIENT}:/usr/local/bin/gh:ro" in binds
+    assert "/host/gh:/run/steward-gh:ro" in binds
+    state = workspace.home_directory / ws.GH_STATE.parent
+    assert f"{state}:/Users/dev/.config/gh:ro" in binds
+    folder = tmp_path / "run"
+    folder.mkdir()
+    harness = ws.container_command(
+        workspace, "image.sif", workspace.mount, "true", 60, harness=folder
+    )
+    shown = [harness[i + 1] for i, part in enumerate(harness) if part == "--bind"]
+    assert f"{ws.GH_SHIM}:/usr/local/bin/gh:ro" in shown
+    assert not any("steward-gh" in bind or bind.endswith(".config/gh:ro") for bind in shown)

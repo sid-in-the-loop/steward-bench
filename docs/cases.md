@@ -852,6 +852,13 @@ in them, and the harness makes sure nothing does by itself:
   checks import the lab's helpers from their own copy in the key folder (`info/lib/_lab.py`,
   taken at the first item while the tree is as built), not from `tools/`, and the deploy
   task's checks copy the remote without its info folder before they run the scheduled deploy.
+- The GitHub stand-in's state (`~/.config/gh/state.json`, and its log of calls), which
+  checks read as evidence of who merged what with which rights, is read-only to the agent's
+  commands. Their `gh` passes each call through a socket to the stand-in itself, which runs
+  for the whole run in a container of its own (`GhBroker` in
+  `steward/environment/workspace.py`, `shims/gh_broker`), in the caller's directory and with
+  the harness's git, and is the only process that writes the state. Harness scripts keep
+  the stand-in itself and write its state directly.
 - A negated test in a check is written `absent TEST`, a function of the harness's: it passes
   only when TEST exits 1, the status by which grep, cmp, `git cat-file -e`, test and a task's
   helpers say "not there", and fails when TEST finds what it looks for or fails in any other

@@ -1,0 +1,80 @@
+#!/usr/bin/python3 -I
+"""The GitHub stand-in's own process for one run: it answers each call the agent's `gh` passes
+through the socket by running the stand-in in the caller's directory, one call at a time. It
+alone can write the stand-in's state; the git the stand-in runs is the harness's, which runs
+through `as_agent` and so cannot write it either."""
+
+import json
+import os
+import socket
+import struct
+import subprocess
+import sys
+from typing import Any
+
+SHIM = "/opt/steward/gh/shim"
+CALL_TIMEOUT_SEC = 300
+
+
+def receive(connection: socket.socket) -> dict[str, Any]:
+    head = b""
+    while len(head) < 4:
+        part = connection.recv(4 - len(head))
+        if not part:
+            raise ConnectionError("closed")
+        head += part
+    size = struct.unpack(">I", head)[0]
+    data = b""
+    while len(data) < size:
+        part = connection.recv(min(65536, size - len(data)))
+        if not part:
+            raise ConnectionError("closed")
+        data += part
+    request: dict[str, Any] = json.loads(data)
+    return request
+
+
+def answer(request: dict[str, Any]) -> dict[str, object]:
+    arguments = [str(a) for a in request.get("argv") or []]
+    given = request.get("env") or {}
+    environment = dict(os.environ)
+    environment |= {str(k): str(v) for k, v in given.items()}
+    cwd = str(request.get("cwd") or environment.get("HOME", "/"))
+    if not os.path.isdir(cwd):
+        cwd = environment.get("HOME", "/")
+    try:
+        done = subprocess.run(
+            [sys.executable, "-I", SHIM, *arguments],
+            cwd=cwd,
+            env=environment,
+            input=str(request.get("stdin") or ""),
+            capture_output=True,
+            text=True,
+            errors="surrogateescape",
+            timeout=CALL_TIMEOUT_SEC,
+        )
+    except subprocess.TimeoutExpired:
+        return {"stdout": "", "stderr": "gh: the request timed out\n", "status": 1}
+    return {"stdout": done.stdout, "stderr": done.stderr, "status": done.returncode}
+
+
+def main() -> None:
+    path = sys.argv[1]
+    if os.path.exists(path):
+        os.unlink(path)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as server:
+        server.bind(path)
+        server.listen(4)
+        while True:
+            connection, _ = server.accept()
+            with connection:
+                try:
+                    reply = answer(receive(connection))
+                    data = json.dumps(reply).encode()
+                    connection.sendall(struct.pack(">I", len(data)) + data)
+                except (OSError, ValueError, ConnectionError):
+                    continue
+
+
+if __name__ == "__main__":
+    main()

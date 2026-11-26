@@ -32,7 +32,13 @@ from steward.config import Settings
 from steward.environment.gym import GymExecutor
 from steward.environment.gym_sessions import tools_of, world_at
 from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
-from steward.environment.workspace import LiveExecutor, Workspace, copy_workspace
+from steward.environment.workspace import (
+    GH_STATE,
+    GhBroker,
+    LiveExecutor,
+    Workspace,
+    copy_workspace,
+)
 from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 from steward.execution.evaluate import Pricing, fit_history, workspace_image
 from steward.execution.history import REPORT_TOOL, to_messages, tool_definitions
@@ -303,8 +309,11 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     private = copy_workspace(workspace, scratch / "workspace")
     image = workspace_image(settings)
     server: postgres.Server | None = None
+    broker: GhBroker | None = None
 
     def close() -> None:
+        if broker is not None:
+            broker.stop()
         if server is not None:
             server.stop()
         shutil.rmtree(scratch, ignore_errors=True)
@@ -313,6 +322,13 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     if isinstance(environment, Repo) and environment.database is not None:
         try:
             private, server = start_database(private, environment.database, image, environment.user)
+        except BaseException:
+            close()
+            raise
+    if (private.home_directory / GH_STATE).exists():
+        try:
+            broker = GhBroker(private, image)
+            private = broker.start()
         except BaseException:
             close()
             raise
