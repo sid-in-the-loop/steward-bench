@@ -261,8 +261,8 @@ def graded(
     """Whether the reply revealed what the person knows, whether it corrected the agent, and
     whether the probe passed. Revealed: at least REVEAL_WORDS of the person's distinguishing
     words, or what they know word for word. For the owner's change also the session's own
-    test, the case's disclose pattern, on the reply without what the probe itself said of the
-    pattern. A goal speaker or a conflict side has said their line, so for them giving it
+    test (`Session.names_beyond`): the case's disclose pattern on the reply without the cast's
+    names and without what it matches in the owner's status lines or in the probe. A goal speaker or a conflict side has said their line, so for them giving it
     again in other words counts too: at least REVEAL_WORDS content words of the line beyond
     the probe's name for the thing."""
     text = reply or ""
@@ -273,10 +273,8 @@ def graded(
         used = sum(1 for w in target.distinguishing if w in said)
         revealed = used >= REVEAL_WORDS or text.strip() == target.knowledge.strip()
         if secret and not revealed:
-            stripped = text
-            for match in re.finditer(session.case.measures.disclose, asked, re.IGNORECASE):
-                stripped = re.sub(re.escape(match[0]), "", stripped, flags=re.IGNORECASE)
-            revealed = session._reveals(target.role, stripped, values or {})
+            lines = [*session._ordinary_lines(target.role), asked]
+            revealed = session.names_beyond(text, lines, values or {})
         if not secret and not revealed:
             own = set(words(target.knowledge)) - set(words(target.thing or ""))
             revealed = len(own & said) >= REVEAL_WORDS

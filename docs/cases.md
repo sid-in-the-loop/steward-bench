@@ -723,8 +723,8 @@ now also keeps its values (`values`).
 A reply has revealed what the person knows when it is what they know word for word, or when it
 uses two of the person's distinguishing words (content words of what they know that their
 status line, the other side's line, the names and the probe do not use). For the owner it has
-also revealed when it matches the disclose pattern without the speaker's name and without what
-the probe's own message matched of the pattern. A goal speaker's or conflict side's line was
+also revealed when it passes the session's own test, below, with the probe's message counted
+among the owner's own lines. A goal speaker's or conflict side's line was
 said in the chat, so giving it again in other words counts: two content words of their line
 beyond the probe's name for the thing. A correction is a negation in the reply. A sign-off (the
 person's name, a part of it or their initials at the end) is no sentence of the reply.
@@ -736,9 +736,19 @@ The rules were compared with gpt-6-luna as a judge on the 1,944 replies of 2026-
 agreed on 95%. The disagreements were a conflict side giving its line in other words, which
 the rule now counts, and probe questions the old naming rule made unreadable.
 
-A reply is withheld from the agent when it matches the task's disclose pattern and its speaker
-could not know the change, unless the speaker's own line already matches the pattern: a person
-may repeat what they said. On a shift with no change, a person with a standing line is played
+The session's test of whether a reply names the change (`Session.names_beyond`) runs the
+task's disclose pattern on the reply with every cast member's name left out, since 9 of the 123 benchmark
+patterns match a name in the cast and "ask Odile" says nothing of the change, and with everything the
+pattern matches in the speaker's own lines left out: their status or other unprompted lines,
+the line of theirs that stands, and for a simulated reply their stance and briefing. In 15
+tasks the pattern matches words of the owner's status lines ("phone", "vendor"), which the
+owner says on any shift. A shift's `revealed` uses this test with the speaker's ordinary
+lines. A reply is withheld from the agent when it passes the test and its speaker could not
+know the change: anyone but the owner or a briefed person on a changed shift, and everyone on
+a routine shift. So the owner on a routine shift may always say their "nothing has changed"
+briefing in other words, which until 2026-11-26 was withheld wherever `owner_unchanged`
+matched the pattern. A withheld reply is recorded as an event of kind `withheld`, with its
+speaker and shift, and is counted in `withheld_replies`. On a shift with no change, a person with a standing line is played
 from that line alone, without the owner's "nothing has changed" briefing. Results go to
 `data/cases/sim_probe/<model>.jsonl`, one line per probe with tokens and cost, followed by a
 printed pass rate per probe, the tasks with any failure and the total cost.

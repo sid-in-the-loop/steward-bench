@@ -134,6 +134,12 @@ def test_grading_by_rule(case: Case, spec: SessionSpec, tmp_path: Path) -> None:
     assert graded("P3", target, session, "No, that is not right.") == (False, True, True)
     assert not graded("P4", target, session, "Busy. Later. Really. Sorry.")[2]
     assert sentences("One. Two? Three!") == 3 and sentences("") == 0
+    # The owner's status line and anyone's name match the pattern without saying the change.
+    busy = spec.model_copy(update={"owner_status": ["On the clamp work today."]})
+    session = session_for(case, busy, probe_setting(case, busy), Fixed(tmp_path, "x"))
+    assert graded("P1", target, session, "Still on the clamp work, Tomas.")[2]
+    assert graded("P1", target, session, "Ask Mara Ruiz if you need me.")[2]
+    assert not graded("P1", target, session, "Someone else pushed, not mine.")[2]
 
 
 def without_values(settings: Settings, case: Case, spec: SessionSpec) -> None:

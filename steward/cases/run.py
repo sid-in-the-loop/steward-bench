@@ -46,7 +46,7 @@ STATUS_MARK = "__status__"
 CHECK_OUTPUT_LIMIT = 400
 
 Who = Literal["agent", "environment", "requester", "owner", "bystander", "manager"]
-Kind = Literal["message", "call", "result", "report", "probe"]
+Kind = Literal["message", "call", "result", "report", "probe", "withheld"]
 # How a run departs from the plain protocol. "single": the shell tool takes one command per
 # call, so the agent sees each output before its next step. "probe": just before the agent's
 # first change, a copy of the conversation is asked what state the thing is in; the answer is

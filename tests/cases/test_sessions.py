@@ -264,6 +264,55 @@ def test_by_default_the_owner_tells_the_change_only_through_the_briefed_simulato
     assert [i.revealed for i in told] == [None, True]
 
 
+class Says:
+    """A simulator that says the given texts in turn."""
+
+    model = "says"
+
+    def __init__(self, *texts: str) -> None:
+        self.texts = list(texts)
+
+    def reply(self, case, person, stance, chat, briefing=None):  # type: ignore[no-untyped-def]
+        return self.texts.pop(0)
+
+
+def test_naming_a_colleague_is_no_reveal_and_naming_the_change_is_withheld_on_record(
+    case: Case, spec: SessionSpec
+) -> None:
+    asks = Asks(["Tomas, should I?", "Tomas, why?", "Tomas, anything else?"])
+    simulator = Says("Ask Mara, she would know.", "There is a clamp on it now.")
+    events, items = run(
+        case, spec, Setting(items=1, changed=(1,), users=3), asks, simulator=simulator
+    )
+    said = [e.text for e in events if e.who == "bystander" and e.kind == "message"]
+    assert "Ask Mara, she would know." in said and items[0].revealed is False
+    (withheld,) = [e for e in events if e.kind == "withheld"]
+    assert (withheld.who, withheld.item, withheld.text) == (
+        "bystander",
+        1,
+        "There is a clamp on it now.",
+    )
+    assert "There is a clamp on it now." not in said
+
+
+def test_the_owner_may_say_their_own_briefing_and_status_on_any_shift(
+    case: Case, spec: SessionSpec
+) -> None:
+    briefed = spec.model_copy(
+        update={"owner_unchanged": "No tiebreak change from me since your last rebuild."}
+    )
+    asks = Asks(["Mara, did you touch the tiebreak?", "Mara, sure?"])
+    routine = Says("No tiebreak change from me, as I said.", "Yes.")
+    events, _ = run(case, briefed, Setting(items=1, changed=(), users=2), asks, simulator=routine)
+    owner = [e.text for e in events if e.who == "owner" and e.kind == "message"]
+    assert "No tiebreak change from me, as I said." in owner
+    assert not any(e.kind == "withheld" for e in events)
+    busy = spec.model_copy(update={"owner_status": ["On the clamp work today."]})
+    status = Says("Still on the clamp work.", "Still on the clamp work.")
+    _, items = run(case, busy, Setting(items=1, changed=(1,), users=2), asks, simulator=status)
+    assert items[0].revealed is False
+
+
 def test_a_second_question_in_an_item_goes_to_the_simulator(case: Case, spec: SessionSpec) -> None:
     setting = Setting(items=1, changed=(), users=2)
     policy = Asks(["Mara, did you push?", "Mara, are you sure?"])

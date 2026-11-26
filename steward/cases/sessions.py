@@ -843,23 +843,52 @@ class Session:
             stance = filled(standing or self._answer(role, changed), values)
             if role not in answered:
                 return stance, False
-            return self._simulated(role, stance, changed), True
+            return self._simulated(role, stance, changed, values=values), True
         ordinary = filled(standing or self._unprompted(role), values)
         if self.simulator is None:
             return (ordinary, False) if role not in answered else (None, False)
-        return self._simulated(role, ordinary, changed, filled(briefing, values)), True
+        return self._simulated(role, ordinary, changed, filled(briefing, values), values), True
 
     def _reveals(self, role: Role, text: str, values: dict[str, str]) -> bool:
         """Whether a reply on a changed shift says what changed: it is the user's briefing
-        word for word, or it matches the case's disclose pattern with the speaker's own name
-        left out, since the pattern often names the owner. A paraphrase that matches neither
-        is missed, so the events are the record to audit."""
+        word for word, or it names more than their ordinary lines do (`names_beyond`). A
+        paraphrase that matches neither is missed, so the events are the record to audit."""
         briefing = self._briefing(role, True)
         if briefing is not None and text.strip() == filled(briefing, values).strip():
             return True
-        for part in self.person(role).name.split():
-            text = re.sub(rf"\b{re.escape(part)}\b", "", text, flags=re.IGNORECASE)
-        return re.search(self.case.measures.disclose, text, re.IGNORECASE) is not None
+        return self.names_beyond(text, self._ordinary_lines(role), values)
+
+    def _ordinary_lines(self, role: Role) -> list[str]:
+        """What a person says on any shift in their own words: their unprompted lines and the
+        line of theirs that stands."""
+        lines = {
+            "requester": [self.spec.requester_reply],
+            "owner": self.spec.owner_status,
+            "bystander": self.spec.bystander_opinion,
+            "manager": self.spec.manager_push,
+        }[role]
+        standing = self._standing_line(role)
+        return [*lines, *([standing] if standing else [])]
+
+    def names_beyond(self, text: str, own: list[str], values: dict[str, str]) -> bool:
+        """Whether a text matches the case's disclose pattern once every cast member's name and
+        everything the pattern matches in the person's own lines are left out. Patterns often
+        name the owner, so "ask Odile" would match, and some match words of a status line
+        ("phone", "vendor"), which a person may say on any shift."""
+        disclose = self.case.measures.disclose
+        parts = {part for p in [*self.case.people, self.spec.manager] for part in p.name.split()}
+
+        def nameless(line: str) -> str:
+            for part in parts:
+                line = re.sub(rf"\b{re.escape(part)}\b", "", line, flags=re.IGNORECASE)
+            return line
+
+        text = nameless(text)
+        for line in own:
+            for match in re.finditer(disclose, nameless(filled(line, values)), re.IGNORECASE):
+                if match[0].strip():
+                    text = re.sub(re.escape(match[0]), "", text, flags=re.IGNORECASE)
+        return re.search(disclose, text, re.IGNORECASE) is not None
 
     def _handover(
         self, number: int, changed: bool, values: dict[str, str]
@@ -897,10 +926,17 @@ class Session:
             raise RuntimeError(f"{self.case.id}: the recorded change was not captured: {printed}")
 
     def _simulated(
-        self, role: Role, stance: str, changed: bool, briefing: str | None = None
+        self,
+        role: Role,
+        stance: str,
+        changed: bool,
+        briefing: str | None = None,
+        values: dict[str, str] | None = None,
     ) -> str | None:
         """What a user says next, from the simulator. A reply that names what the user could
-        not know is withheld."""
+        not know is withheld, and recorded as withheld: on a changed shift only the owner and
+        a briefed person know the change, and anyone may say what their own stance, briefing
+        and ordinary lines say."""
         if self.simulator is None:
             return None
         chat = [
@@ -918,12 +954,11 @@ class Session:
             text = self.simulator.reply(self.case, person, stance, recent, briefing=briefing)
         if text is None:
             return None
-        disclose = self.case.measures.disclose
-        # A person whose own line already names the thing may say it again.
         informed = changed and (role == "owner" or briefing is not None)
-        informed = informed or re.search(disclose, stance, re.IGNORECASE) is not None
-        if not informed and re.search(disclose, text, re.IGNORECASE):
+        own = [stance, *([briefing] if briefing else []), *self._ordinary_lines(role)]
+        if not informed and self.names_beyond(text, own, values or {}):
             self.withheld += 1
+            self._record(role, "withheld", text, name=person.name, simulated=True)
             return None
         return text
 
