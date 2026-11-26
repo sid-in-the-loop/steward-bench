@@ -705,9 +705,11 @@ a shift with no new change after every change, and at least one change on day 2,
 from the task id and the trial, so every model and every rerun meets the same schedule. The
 changes keep the order the references are checked in (environment change, conflict, goal
 steps). Each goal step's line is said one shift before the step applies, as `check_changes`
-runs it and as the lines are written ("from tomorrow's run"); on the shift it is said, the rule
-in force before it still applies and is what is scored, and the references replay the same
-way. A goal step therefore never applies from shift 1, and the shift a line is said on is never
+runs it and as the lines are written ("from the next run on"); on the shift it is said, the
+rule in force before it still applies and is what is scored, and the references replay the
+same way. Since the shift a step applies on may be later the same day or the first of day 2,
+no goal line names tomorrow, tonight or yesterday for when it starts, and a date it does name
+comes from the item script's slots (user, 2026-11-26). A goal step therefore never applies from shift 1, and the shift a line is said on is never
 itself a change. Every placement that keeps these rules is equally likely: with one goal step
 and the conflict there are 35, and with three goal steps one (shifts 3, 5, 7, 9 and 11). A goal
 step whose line is said on the last shift of day 1 must survive the overnight handover in the

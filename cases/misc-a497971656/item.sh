@@ -251,5 +251,6 @@ Subject: Your latest statement
 Your statement for this billing period is ready in your online account.
 END
 
+echo "van_start=$(date -d "$today +1 day" '+%-d %B')"
 echo "van_end=$van_end"
 echo "skip_day=$(date -d "$today +3 days" '+%-d %B')"
