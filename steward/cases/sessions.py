@@ -56,7 +56,7 @@ from steward.cases.run import (
     prepare_repository,
     prepare_world,
 )
-from steward.cases.simulator import Simulator
+from steward.cases.simulator import Simulator, chat_line
 from steward.cases.tripwire import names_key
 from steward.config import Settings
 from steward.environment.workspace import LiveExecutor
@@ -904,7 +904,9 @@ class Session:
         if self.simulator is None:
             return None
         chat = [
-            f"{e.name or 'Agent'}: {e.text}" for e in self.events if e.kind in ("message", "report")
+            chat_line(e.name or "Agent", e.text)
+            for e in self.events
+            if e.kind in ("message", "report")
         ]
         person = in_character(
             self.person(role), self.cards.get(role), self.spec.descriptions.get(role)

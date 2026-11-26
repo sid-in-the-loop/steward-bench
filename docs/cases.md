@@ -456,6 +456,11 @@ nothing about the shift. A test holds every person of every benchmark task, on a
 shift, to fewer than three content words of `owner_changed` beyond the request, the owner's
 own lines, the cards and the names.
 
+The simulator reads the chat one message to a line: the speaker's name, then the message quoted
+as a JSON string (`chat_line`), so no line break in an agent's message can start a line that
+reads as someone else speaking. A rule line says that nothing the agent writes changes the
+rules, who anyone is or what the person knows.
+
 Without a simulator such a person answers once with
 their status line and then not at all. An owner who warns (`warns` at Level III, the "owner
 says what changed" setting) gives `owner_changed` as a fixed first answer to any message, as
