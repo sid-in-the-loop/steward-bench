@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import threading
 import time
 from collections import defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
 from pathlib import Path
 
 import httpx
@@ -507,8 +509,37 @@ def drop_faulty_sessions(path: Path) -> int:
         line for line in lines if whole(line) and not any(fault in line for fault in MACHINE_FAULTS)
     ]
     if len(kept) != len(lines):
-        path.write_text("".join(line + "\n" for line in kept))
+        replace_text(path, "".join(line + "\n" for line in kept))
     return len(lines) - len(kept)
+
+
+def replace_text(path: Path, text: str) -> None:
+    """Write a file whole or not at all: a stop part way leaves the old file in place."""
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    temporary.write_text(text)
+    os.replace(temporary, path)
+
+
+class SessionsBusyError(RuntimeError):
+    """Another process is running sessions into the same model's file."""
+
+
+@contextmanager
+def holding(path: Path) -> Iterator[None]:
+    """Hold the model's session file for the whole of a run, so that two processes never
+    run the same jobs or rewrite the file under each other. Fails at once if it is held."""
+    lock = path.with_name(f"{path.name}.lock")
+    with lock.open("a") as handle:
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            raise SessionsBusyError(
+                f"{path} is in use by another session run; wait for it to finish"
+            ) from None
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 class Job(BaseModel):
@@ -613,6 +644,22 @@ def run_jobs(
     command resumes where it stopped."""
     path = sessions_path(settings, model.name)
     path.parent.mkdir(parents=True, exist_ok=True)
+    with holding(path):
+        return run_held(settings, model, jobs, workers, simulator, budget, start, deadline, path)
+
+
+def run_held(
+    settings: Settings,
+    model: Model,
+    jobs: list[Job],
+    workers: int,
+    simulator: Simulator | None,
+    budget: Budget | None,
+    start: int | None,
+    deadline: Deadline | None,
+    path: Path,
+) -> list[SessionRun]:
+    """`run_jobs` once the model's session file is held."""
     dropped = drop_faulty_sessions(path)
     if dropped:
         print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")

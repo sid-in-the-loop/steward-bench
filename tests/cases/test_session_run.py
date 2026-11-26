@@ -79,3 +79,23 @@ def test_the_benchmark_runs_only_tasks_with_both_conditions(
     other = case.model_copy(update={"id": "other"})
     jobs = session_commands.benchmark_jobs([(case, full), (other, spec)], ["State Drift"], 1)
     assert [job.case.id for job in jobs] == [case.id]
+
+
+def test_a_second_run_on_the_same_session_file_stops_at_once(tmp_path: Path) -> None:
+    path = tmp_path / "m.jsonl"
+    with (
+        session_commands.holding(path),
+        pytest.raises(session_commands.SessionsBusyError, match="in use"),
+        session_commands.holding(path),
+    ):
+        pass
+    with session_commands.holding(path):
+        pass
+
+
+def test_dropping_faulty_sessions_replaces_the_file_whole(tmp_path: Path) -> None:
+    path = tmp_path / "m.jsonl"
+    path.write_text('{"a": 1}\n{"cut short\n')
+    assert session_commands.drop_faulty_sessions(path) == 1
+    assert path.read_text() == '{"a": 1}\n'
+    assert [p.name for p in tmp_path.iterdir()] == ["m.jsonl"]
