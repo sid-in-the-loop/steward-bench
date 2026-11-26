@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import time
 from collections.abc import Callable
 from typing import Any, Literal, Protocol
@@ -66,6 +67,23 @@ Dialect = Literal["openrouter", "openai"]
 RETRY_BUDGET_FACTOR = 2
 # Sent when supported; a model that rejects one is run without it.
 OPTIONAL_PARAMETERS = ("temperature", "prompt_cache_retention", "prompt_cache_key")
+
+
+# The parameters each model has rejected in this process, so that later sessions of the
+# model do not send them and pay a refused request again.
+_known_drops: dict[str, list[str]] = {}
+_drops_lock = threading.Lock()
+
+
+def known_drops(model: str) -> list[str]:
+    with _drops_lock:
+        return list(_known_drops.get(model, []))
+
+
+def remember_drops(model: str, names: list[str]) -> None:
+    with _drops_lock:
+        known = _known_drops.setdefault(model, [])
+        known += [name for name in names if name not in known]
 
 
 class RunSettings(BaseModel):
@@ -214,7 +232,7 @@ class ModelPolicy:
         self.provider = provider
         self.dialect = dialect
         self.cache_key = cache_key
-        self.dropped: list[str] = []
+        self.dropped: list[str] = known_drops(model)
         self.usage = Usage()
         # The output budget of the next request, when it is not the run's own.
         self.output_budget: int | None = None
@@ -324,6 +342,7 @@ class ModelPolicy:
                 if error.response.status_code != 400 or rejected is None:
                     raise
                 self.dropped.append(rejected)
+                remember_drops(self.model, [rejected])
 
     @staticmethod
     def first_call(reply_body: dict[str, Any]) -> tuple[str, str] | None:

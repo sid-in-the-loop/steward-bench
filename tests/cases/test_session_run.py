@@ -16,7 +16,7 @@ from steward.cases.sessions import HARNESS, SessionRun, SessionSpec, Setting
 from steward.cases.simulator import OpenAISimulator
 from steward.cli import build_parser, run_benchmark
 from steward.config import Paths, Settings
-from steward.execution.policy import Message, Policy, Usage
+from steward.execution.policy import Message, Policy, Usage, known_drops
 
 
 def test_simulator_model_none_runs_the_benchmark_without_a_simulator(
@@ -181,6 +181,7 @@ def test_a_session_waiting_for_a_slot_does_not_start_past_the_limit(
                 "items": [],
                 "usage": Usage(),
                 "cost_usd": 5.0,
+                "dropped": ["reasoning"],
             }
         )
 
@@ -191,6 +192,8 @@ def test_a_session_waiting_for_a_slot_does_not_start_past_the_limit(
     # Two workers but one slot: the second job passes the first check and waits for the slot.
     session_commands.run_jobs(settings, MODELS["gpt-6-luna"], jobs, 2, budget=budget, start=1)
     assert started == [1] and budget.spent == 5.0
+    # What the session's policy dropped is kept for the model's later sessions.
+    assert known_drops("gpt-6-luna") == ["reasoning"]
 
 
 def test_the_estimate_matches_the_measured_benchmark_session() -> None:

@@ -47,7 +47,7 @@ from steward.cases.simulator import Simulator
 from steward.cases.throttle import Deadline, Throttle
 from steward.config import Settings
 from steward.execution.evaluate import workspace_image
-from steward.execution.policy import Message, Policy, Usage
+from steward.execution.policy import Message, Policy, Usage, remember_drops
 
 # What a session is assumed to use when estimating cost: requests per item, tokens the
 # conversation grows by per item, tokens it starts with, output tokens per request, and the
@@ -818,6 +818,8 @@ def run_held(
                 return None
         finally:
             throttle.release()
+        # A parameter a subclass dropped on its own is remembered for later sessions too.
+        remember_drops(model.name, run.dropped)
         seconds = time.monotonic() - began
         deadline.finished(setting.items, seconds)
         run.seconds = round(seconds, 1)

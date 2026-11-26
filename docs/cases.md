@@ -553,7 +553,10 @@ session stored before it is out of date; the tasks' own versions did not change.
 that none is left running alone at the end. A rate-limited request waits at least as long as
 the provider asks, up to a minute at a time and fifteen times, before the session is given up;
 a session given up is run again on the next pass. A reply that is not JSON is retried like a
-server error. A session that raises (a request refused with a status that is not retried, a
+server error. A parameter a model rejects with a 400 (temperature, cache retention, a
+reasoning summary) is dropped and the request sent again; each session records what it
+dropped (`dropped`), and later sessions of the model in the same run do not send it. A
+session that raises (a request refused with a status that is not retried, a
 request given up after every retry, a fault of the environment) is tried twice in a run; each
 failure is appended to `data/cases/sessions/<model>.failed.jsonl` with the session's key and
 simulator, the error's class and message, an excerpt of the response body and the tokens and

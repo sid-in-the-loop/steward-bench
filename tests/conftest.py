@@ -14,6 +14,14 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
+@pytest.fixture(autouse=True)
+def no_known_drops() -> None:
+    """Each test starts with no parameter known to be rejected by any model."""
+    from steward.execution import policy
+
+    policy._known_drops.clear()
+
+
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     root = tmp_path / "repo"

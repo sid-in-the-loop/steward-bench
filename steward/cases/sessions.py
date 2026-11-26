@@ -553,6 +553,8 @@ class SessionRun(BaseModel):
     simulator: str | None = None
     # The harness that ran the session (`HARNESS`); None for sessions stored before it.
     harness: str | None = None
+    # The request parameters the model rejected and was run without.
+    dropped: list[str] = []
     withheld_replies: int = 0
     # The version of the message bank the session drew from, from Level III.
     bank: str | None = None
@@ -1315,6 +1317,7 @@ def run_session(
         trial=trial,
         simulator=getattr(simulator, "model", None),
         harness=HARNESS,
+        dropped=list(getattr(policy, "dropped", [])),
         withheld_replies=session.withheld,
         bank=bank.version if bank and setting.voices else None,
         recording=recording_version(recording),
