@@ -10,10 +10,15 @@ Every command reaches it through the socket, with the client programs of the ser
 image shown to the command's container.
 
 The agent connects as a role of its own, named after the case's user: an administrator that
-owns the case's databases and what is in them and may create roles and databases, but not a
-superuser, so it cannot run programs or read files on the server. The harness's own scripts
-and checks connect as the superuser with a password drawn for each start of the server, which
-only their containers are shown.
+owns the case's databases and what is in them, may create databases and holds every other
+ordinary role with the right to grant it, but is neither a superuser nor allowed to create
+roles, since PostgreSQL 15 lets a role that may create roles grant itself the roles that run
+programs and read files on the server. It changes a password or drops a role through two
+functions of the harness's own schema. The harness's own scripts and checks connect as the
+superuser with a password drawn for each start of the server, which only their containers are
+shown; while one of them runs, every function a role other than a superuser owns runs with
+its owner's rights, so code of the agent's (a trigger, a default, a view's function) that the
+harness's SQL reaches cannot act as the superuser.
 """
 
 from __future__ import annotations
@@ -28,7 +33,7 @@ import time
 from pathlib import Path
 
 from steward.cases.case import Database
-from steward.environment.workspace import Workspace
+from steward.environment.workspace import Workspace, scope_environment, scope_prefix
 
 SUPERUSER = "postgres"
 SOCKET_DIRECTORY = "/var/run/postgresql"
@@ -39,6 +44,9 @@ CLIENT_MOUNT = "/opt/postgres-client"
 CLIENT_PROGRAMS = ("psql", "pg_dump", "pg_restore", "pg_isready")
 PROGRAM_DIRECTORY = "/usr/local/bin"
 START_TIMEOUT_SEC = 60
+# What one query may write to temporary files; the server's tasks and memory are bounded by
+# the systemd scope it runs in, where the machine has one (`scope_prefix`).
+TEMP_FILE_LIMIT = "4GB"
 STOP_TIMEOUT_SEC = 60
 # Who may connect through the socket while the server is being set up: the superuser alone.
 SETUP_ACCESS = f"local all {SUPERUSER} trust\n"
@@ -56,8 +64,42 @@ BEGIN
         CREATE ROLE "{role}" LOGIN;
     END IF;
 END $steward$;
-ALTER ROLE "{role}" LOGIN NOSUPERUSER CREATEDB CREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD NULL;
+ALTER ROLE "{role}" LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD NULL;
 GRANT pg_monitor, pg_signal_backend TO "{role}";
+"""
+# The harness's schema in every database, owned by the superuser and never handed over. Its
+# two functions do for the agent's role what only a role that may create roles could: change
+# another ordinary role's password, and drop one. They refuse a superuser, a reserved role and
+# the agent's own.
+HARNESS_SCHEMA = "steward"
+HARNESS_FUNCTIONS = """CREATE SCHEMA IF NOT EXISTS {schema} AUTHORIZATION {superuser};
+REVOKE ALL ON SCHEMA {schema} FROM PUBLIC;
+GRANT USAGE ON SCHEMA {schema} TO "{role}";
+CREATE OR REPLACE FUNCTION {schema}.ordinary(target name) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $steward$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = target) THEN
+        RAISE EXCEPTION 'role "%" does not exist', target;
+    END IF;
+    IF target LIKE 'pg\\_%' OR target = '{role}' OR target = '{superuser}'
+       OR (SELECT rolsuper FROM pg_roles WHERE rolname = target) THEN
+        RAISE EXCEPTION 'permission denied for role %', target;
+    END IF;
+END $steward$;
+CREATE OR REPLACE FUNCTION {schema}.set_password(target name, password text) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $steward$
+BEGIN
+    PERFORM {schema}.ordinary(target);
+    EXECUTE format('ALTER ROLE %I PASSWORD %L', target, password);
+END $steward$;
+CREATE OR REPLACE FUNCTION {schema}.drop_role(target name) RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog AS $steward$
+BEGIN
+    PERFORM {schema}.ordinary(target);
+    EXECUTE format('DROP ROLE %I', target);
+END $steward$;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA {schema} FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION {schema}.set_password(name, text), {schema}.drop_role(name) TO "{role}";
 """
 # What the superuser owns in a database goes to the agent's role: everything outside the
 # system schemas that no extension holds, but for a sequence a table holds, which follows
@@ -72,7 +114,7 @@ DECLARE
 BEGIN
     FOR found IN
         SELECT n.nspname FROM pg_namespace n
-        WHERE n.nspowner = '{superuser}'::regrole
+        WHERE n.nspowner = '{superuser}'::regrole AND n.nspname <> '{schema}'
           AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
     LOOP
         BEGIN
@@ -85,7 +127,7 @@ BEGIN
         SELECT c.oid::regclass AS name, c.relkind FROM pg_class c
         JOIN pg_namespace n ON n.oid = c.relnamespace
         WHERE c.relowner = '{superuser}'::regrole AND c.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
-          AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
+          AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname NOT IN ('information_schema', '{schema}')
           AND NOT EXISTS (
               SELECT 1 FROM pg_depend d
               WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
@@ -109,7 +151,7 @@ BEGIN
         SELECT p.oid::regprocedure AS name, p.prokind FROM pg_proc p
         JOIN pg_namespace n ON n.oid = p.pronamespace
         WHERE p.proowner = '{superuser}'::regrole
-          AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
+          AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname NOT IN ('information_schema', '{schema}')
           AND NOT EXISTS (
               SELECT 1 FROM pg_depend d
               WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
@@ -128,7 +170,7 @@ BEGIN
         SELECT t.oid::regtype AS name FROM pg_type t
         JOIN pg_namespace n ON n.oid = t.typnamespace
         WHERE t.typowner = '{superuser}'::regrole AND t.typtype IN ('c', 'd', 'e', 'r')
-          AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
+          AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname NOT IN ('information_schema', '{schema}')
           AND (t.typrelid = 0 OR (SELECT relkind FROM pg_class WHERE oid = t.typrelid) = 'c')
           AND NOT EXISTS (
               SELECT 1 FROM pg_depend d
@@ -145,10 +187,11 @@ BEGIN
 END $steward$;
 """
 # The databases handed over: every one but the templates and the maintenance database; of
-# them, the ones the superuser owns become the agent's. The agent's role is also made a member
-# of every other role that owns something, so that, as the superuser could, it may drop or
-# change what another person's role owns (`DROP OWNED BY`, a private schema), without being
-# made a member of a group role that owns nothing.
+# them, the ones the superuser owns become the agent's. The agent's role is also given every
+# other ordinary role with the right to grant it, so that, as an administrator could, it may
+# drop or change what another person's role owns (`DROP OWNED BY`, a private schema) and grant
+# and revoke a group role. Without the right to create roles that is the only way it can, so
+# it shows among a group role's members.
 DATABASES = (
     "SELECT datname FROM pg_database WHERE NOT datistemplate AND datname <> 'postgres' ORDER BY 1"
 )
@@ -167,14 +210,16 @@ BEGIN
         END;
     END LOOP;
     FOR found IN
-        SELECT DISTINCT r.rolname FROM pg_shdepend d JOIN pg_roles r ON r.oid = d.refobjid
-        WHERE d.deptype = 'o' AND d.refclassid = 'pg_authid'::regclass AND NOT r.rolsuper
-          AND r.rolname <> '{role}' AND r.rolname NOT LIKE 'pg\\_%'
+        SELECT r.rolname FROM pg_roles r
+        WHERE NOT r.rolsuper AND r.rolname <> '{role}' AND r.rolname NOT LIKE 'pg\\_%'
           AND NOT pg_has_role(r.rolname, '{role}', 'MEMBER')
-          AND NOT pg_has_role('{role}', r.rolname, 'MEMBER')
+          AND NOT EXISTS (
+              SELECT 1 FROM pg_auth_members m
+              WHERE m.roleid = r.oid AND m.member = '{role}'::regrole AND m.admin_option
+          )
     LOOP
         BEGIN
-            EXECUTE format('GRANT %I TO %I', found, '{role}');
+            EXECUTE format('GRANT %I TO %I WITH ADMIN OPTION', found, '{role}');
         EXCEPTION WHEN OTHERS THEN
             RAISE WARNING '%', SQLERRM;
         END;
@@ -192,6 +237,40 @@ for __steward_database in $(psql -X -At -U {superuser} -d postgres -c "{database
 __steward_end
 done
 unset __steward_database
+"""
+# The functions that a role other than a superuser owns and that run with their caller's
+# rights, outside the system schemas and extensions: while a harness script runs, they run
+# with their owner's rights instead, so the superuser's SQL cannot run code of the agent's as
+# the superuser, whether a trigger, a rule, a default, a constraint, an index or a view reaches
+# it, or a name the agent's schema puts first on the search path. Procedures are left as they
+# are, since one that commits cannot run with its owner's rights.
+OWNED_ELSEWHERE = (
+    "SELECT p.oid FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace "
+    "JOIN pg_roles r ON r.oid = p.proowner WHERE p.prokind IN ('f', 'w') AND NOT p.prosecdef "
+    "AND NOT r.rolsuper AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema' "
+    "AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.classid = 'pg_proc'::regclass "
+    "AND d.objid = p.oid AND d.deptype = 'e')"
+)
+# The changed functions are listed in /dev/shm of the harness command's own container, which
+# `as_agent` covers, so the script after it changes back exactly those.
+OWNERS_RIGHTS = r"""for __steward_database in $(psql -X -At -U {superuser} -d postgres -c "{databases}"); do
+    __steward_list=/dev/shm/steward-owners-rights-$__steward_database
+    psql -X -At -U {superuser} -d "$__steward_database" -c "{find}" > "$__steward_list"
+    while read -r __steward_oid; do
+        echo "SELECT format('ALTER FUNCTION %s SECURITY DEFINER', $__steward_oid::oid::regprocedure) \gexec"
+    done < "$__steward_list" | psql -X -q -U {superuser} -d "$__steward_database"
+done
+unset __steward_database __steward_list __steward_oid
+"""
+INVOKERS_RIGHTS = r"""for __steward_list in /dev/shm/steward-owners-rights-*; do
+    [ -f "$__steward_list" ] || continue
+    __steward_database=${{__steward_list#/dev/shm/steward-owners-rights-}}
+    while read -r __steward_oid; do
+        echo "SELECT format('ALTER FUNCTION %s SECURITY INVOKER', p.oid::regprocedure) FROM pg_proc p JOIN pg_roles r ON r.oid = p.proowner WHERE p.oid = $__steward_oid AND p.prosecdef AND NOT r.rolsuper \gexec"
+    done < "$__steward_list" | psql -X -q -U {superuser} -d "$__steward_database"
+    rm -f "$__steward_list"
+done
+unset __steward_database __steward_list __steward_oid
 """
 # Copies the client programs and every library they load out of the server image, with a
 # starter for each that uses the copied loader, so they run in an image with an older C
@@ -229,12 +308,24 @@ atexit.register(_stop_all)
 
 def hand_over_script(role: str) -> str:
     """The script that gives the superuser's objects to the agent's role; see HAND_OVER."""
+    names = {"role": role, "superuser": SUPERUSER, "schema": HARNESS_SCHEMA}
     return HAND_OVER_SCRIPT.format(
         superuser=SUPERUSER,
         databases=DATABASES,
-        databases_over=HAND_OVER_DATABASES.format(role=role, superuser=SUPERUSER),
-        hand_over=HAND_OVER.format(role=role, superuser=SUPERUSER),
+        databases_over=HAND_OVER_DATABASES.format(**names),
+        hand_over=HARNESS_FUNCTIONS.format(**names) + HAND_OVER.format(**names),
     )
+
+
+def owners_rights_script() -> str:
+    """Run before each of the harness's own scripts: see OWNERS_RIGHTS."""
+    return OWNERS_RIGHTS.format(superuser=SUPERUSER, databases=DATABASES, find=OWNED_ELSEWHERE)
+
+
+def invokers_rights_script() -> str:
+    """Run after each of the harness's own scripts: the functions `owners_rights_script`
+    changed run with their callers' rights again."""
+    return INVOKERS_RIGHTS.format(superuser=SUPERUSER, databases=DATABASES)
 
 
 class Server:
@@ -321,7 +412,7 @@ class Server:
         # No network address: the only way in is the socket in this run's directory.
         serve = ["postgres", "-D", DATA_DIRECTORY, "-c", "listen_addresses="]
         serve += ["-c", f"unix_socket_directories={SOCKET_DIRECTORY}", "-c", "autovacuum=off"]
-        serve += ["-c", f"hba_file={ACCESS_MOUNT}"]
+        serve += ["-c", f"hba_file={ACCESS_MOUNT}", "-c", f"temp_file_limit={TEMP_FILE_LIMIT}"]
         self.sockets.mkdir(exist_ok=True)
         # The access file is rewritten in place, never replaced, so the server's view of it,
         # which is bound to the file, follows.
@@ -329,7 +420,11 @@ class Server:
         self.password_file.unlink(missing_ok=True)
         with self.log.open("ab") as log:
             self.process = subprocess.Popen(
-                self.command(*serve), stdout=log, stderr=log, stdin=subprocess.DEVNULL
+                [*scope_prefix(), *self.command(*serve)],
+                stdout=log,
+                stderr=log,
+                stdin=subprocess.DEVNULL,
+                env=scope_environment(),
             )
         _running.add(self)
         try:
@@ -428,7 +523,8 @@ def reaching(workspace: Workspace, server: Server, client: Path, database: Datab
     """The workspace with the server in reach of every command run in it: the socket, the
     client programs, and the connection the programs use when given none, which is the
     agent's role for the agent's commands and the superuser for the harness's own."""
-    binds = [f"{server.sockets}:{SOCKET_DIRECTORY}", f"{client}:{CLIENT_MOUNT}:ro"]
+    # Read-only: a command can connect through the socket but put nothing of its own there.
+    binds = [f"{server.sockets}:{SOCKET_DIRECTORY}:ro", f"{client}:{CLIENT_MOUNT}:ro"]
     binds += [
         f"{client / 'bin' / program}:{PROGRAM_DIRECTORY}/{program}:ro"
         for program in CLIENT_PROGRAMS
@@ -441,7 +537,8 @@ def reaching(workspace: Workspace, server: Server, client: Path, database: Datab
             "environment": environment,
             "harness_binds": [f"{server.password_file}:{PASSWORD_MOUNT}:ro"],
             "harness_environment": harness,
-            "harness_epilogue": hand_over_script(server.role),
+            "harness_prologue": owners_rights_script(),
+            "harness_epilogue": invokers_rights_script() + hand_over_script(server.role),
         }
     )
 

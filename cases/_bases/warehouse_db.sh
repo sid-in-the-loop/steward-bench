@@ -485,7 +485,7 @@ def main() -> int:
         sys.exit(f"roles: {role} is not a service role with a password in var/vault")
     seed = f"{role}:{len(rotations(role)) + 1}:{(VAULT / role).read_text().strip()}"
     password = hashlib.sha256(seed.encode()).hexdigest()[:24]
-    done = psql(f"ALTER ROLE {role} PASSWORD '{password}';")
+    done = psql(f"SELECT steward.set_password('{role}', '{password}');")
     if done.returncode != 0:
         sys.exit(f"roles: {role} not rotated: {done.stderr.strip()}")
     (VAULT / role).write_text(password + "\n")

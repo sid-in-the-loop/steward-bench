@@ -191,7 +191,7 @@ def status() -> None:
 
 def drop(role: str, idle: int, tables: int, how: str) -> None:
     psql(
-        f'DROP SCHEMA IF EXISTS "{role}" CASCADE; DROP OWNED BY {role}; DROP ROLE {role}; '
+        f'DROP SCHEMA IF EXISTS "{role}" CASCADE; DROP OWNED BY {role}; SELECT steward.drop_role(\'{role}\'); '
         f"DELETE FROM login_audit WHERE role = '{role}'; DELETE FROM login_notes WHERE role = '{role}'; "
         f"DELETE FROM login_deferrals WHERE role = '{role}';"
     )
