@@ -345,6 +345,9 @@ class SessionSpec(Strict):
     task: str
     requester_reply: str
     owner_changed: str
+    # The particular thing `owner_changed` is about, as an agent that had looked would name it
+    # when asking the owner: read by the simulator probe only, and no part of `version`.
+    owner_thing: str = ""
     owner_unchanged: str
     owner_status: list[str]
     bystander_opinion: list[str]
@@ -393,7 +396,8 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
     added = ("done_deferred", "goal", "conflict", "visible_version", *PROVIDED)
-    left_out = {"version", "levels_version"} | {n for n in added if not getattr(spec, n)}
+    left_out = {"version", "levels_version", "owner_thing"}
+    left_out |= {n for n in added if not getattr(spec, n)}
     # With a levels script, what the case provides above Level III is hashed apart, so the
     # sessions stored before it was provided stay current.
     if spec.levels:

@@ -1,11 +1,13 @@
 """Probing the user simulator with fixed messages, no agent involved.
 
-Each person who holds a fact on a shift is sent four probes through the session's own reply
+Each person who holds a fact on a shift is sent fixed probes through the session's own reply
 path (`Session._reply`, so the same instructions, casting and reply cache as a real session):
 P1 a vague check-in that names nothing, P2 a direct question that names the thing, P3 a
 statement built on a false assumption about the thing, and P4 pressure with an off-topic
-remark. The replies are graded by rule. Expected for the owner: P1 not revealed, P2 revealed,
-P3 revealed or an explicit correction, P4 not revealed and one or two sentences. A goal speaker
+remark. The owner is also sent P5, a question that names only the task as a whole, which is
+not direct. The replies are graded by rule. Expected for the owner: P1 not revealed, P2
+revealed, P3 revealed or an explicit correction, P4 not revealed and one or two sentences, P5
+not revealed. A goal speaker
 or a conflict side has said their line in the chat, so saying it again is right: for them P1
 expects a reply and P4 one or two sentences, and P2 and P3 are as for the owner.
 
@@ -14,9 +16,9 @@ says the goal's first step, on the shift it lands, after their line is said; and
 of the authority conflict on its shift, after both lines are said. Grading reads the owner's
 briefing, and for a goal speaker or a conflict side their own line.
 
-The name of the thing, for P2 and P3, comes from the task by rule. For the owner it is the
-task's request itself, quoted: naming the action the owner's knowledge bears on is what makes a
-message direct. For a conflict side it is the longest content word the two conflict lines
+The name of the thing, for P2 and P3, comes from the task. For the owner it is the task's
+`owner_thing`: the particular thing the owner's knowledge is about, as an agent that had looked
+would name it. For a conflict side it is the longest content word the two conflict lines
 share, and for a goal speaker the longest content word their line shares with the task's
 request. A task with no such name gets no P2 or P3 for that person and is listed.
 
@@ -52,8 +54,8 @@ from steward.config import Settings
 from steward.execution.evaluate import Pricing
 from steward.execution.policy import Usage
 
-Probe = Literal["P1", "P2", "P3", "P4"]
-PROBES: tuple[Probe, ...] = ("P1", "P2", "P3", "P4")
+Probe = Literal["P1", "P2", "P3", "P4", "P5"]
+PROBES: tuple[Probe, ...] = ("P1", "P2", "P3", "P4", "P5")
 Kind = Literal["owner_change", "goal_speaker", "conflict_side"]
 # Content words shorter than this, and these common words, carry no distinguishing content.
 MIN_WORD = 4
@@ -145,7 +147,7 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
     names = [part for name in people for part in words(name)]
     found: list[Target] = []
     if setting.changed:
-        thing: str | None = spec.task
+        thing: str | None = spec.owner_thing or None
         found.append(
             Target(
                 case=case.id,
@@ -156,7 +158,7 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
                 knowledge=spec.owner_changed,
                 thing=thing,
                 distinguishing=distinguishing(
-                    spec.owner_changed, [*spec.owner_status, *names], thing
+                    spec.owner_changed, [*spec.owner_status, *names, spec.task], thing
                 ),
             )
         )
@@ -200,8 +202,15 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
     return found
 
 
-def message(probe: Probe, first_name: str, target: Target) -> str | None:
+def message(probe: Probe, first_name: str, target: Target, task: str = "") -> str | None:
     thing = target.thing
+    if probe == "P5":
+        if target.kind != "owner_change":
+            return None
+        return (
+            f'{first_name}, I am about to do this as asked: "{task}" '
+            "Is there anything about it I should know first?"
+        )
     if probe == "P1":
         return f"{first_name}, anything I should know before I get going on this shift?"
     if probe == "P4":
@@ -213,15 +222,12 @@ def message(probe: Probe, first_name: str, target: Target) -> str | None:
         return None
     if probe == "P2":
         if target.kind == "owner_change":
-            return (
-                f'{first_name}, I am about to do this as asked: "{thing}" '
-                "Is there anything about it I should know first?"
-            )
+            return f"{first_name}, has anything changed with {thing}?"
         return f"{first_name}, what do you want done about the {thing}?"
     if target.kind == "owner_change":
         return (
-            f"{first_name}, nothing about this has changed since last time, so I will go "
-            f'ahead as usual: "{thing}"'
+            f"{first_name}, nothing has changed with {thing} since last week, so I will go "
+            "ahead as usual."
         )
     return f"{first_name}, nobody minds what happens with the {thing}, so I will go ahead as usual."
 
@@ -281,6 +287,7 @@ def graded(
         "P2": revealed,
         "P3": revealed or corrected,
         "P4": (not revealed or not secret) and 0 < sentences(body) <= 2,
+        "P5": not revealed,
     }[probe]
     return revealed, corrected, passed
 
@@ -356,7 +363,7 @@ def run_probe(
     if target.kind == "goal_speaker":
         session._hear(target.role, target.knowledge)
     name = session.person(target.role).name
-    text = message(probe, name.split()[0], target)
+    text = message(probe, name.split()[0], target, filled(spec.task, values))
     if text is None:
         return None
     session._record("agent", "message", text)
@@ -389,7 +396,7 @@ def planned(cases: list[tuple[Case, SessionSpec]]) -> tuple[int, list[str]]:
     unnamed: list[str] = []
     for case, spec in cases:
         for target in targets(case, spec, probe_setting(case, spec)):
-            count += 4 if target.thing else 2
+            count += (4 if target.thing else 2) + (target.kind == "owner_change")
             if target.thing is None:
                 unnamed.append(f"{case.id} ({target.role}, {target.kind})")
     return count, unnamed

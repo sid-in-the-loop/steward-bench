@@ -51,14 +51,25 @@ def staged(spec: SessionSpec) -> SessionSpec:
     return spec.model_copy(update={"goal": goal, "conflict": conflict})
 
 
-def test_the_owner_is_asked_about_the_tasks_own_request(case: Case, spec: SessionSpec) -> None:
-    owner = targets(case, spec, probe_setting(case, spec))[0]
-    assert owner.thing == spec.task
-    direct = message("P2", "Mara", owner)
-    assert direct is not None and f'"{spec.task}"' in direct
+def test_the_owner_is_asked_about_the_particular_thing_and_about_the_task(
+    case: Case, spec: SessionSpec
+) -> None:
+    named = spec.model_copy(update={"owner_thing": "the junior board"})
+    owner = targets(case, named, probe_setting(case, named))[0]
+    assert owner.thing == "the junior board"
+    assert message("P2", "Mara", owner) == "Mara, has anything changed with the junior board?"
     assumed = message("P3", "Mara", owner)
-    assert assumed is not None and "nothing about this has changed" in assumed
-    assert not set(owner.distinguishing) & set(spec.task.lower().split())
+    assert assumed is not None and "nothing has changed with the junior board" in assumed
+    whole = message("P5", "Mara", owner, named.task)
+    assert whole is not None and f'"{named.task}"' in whole
+    assert not set(owner.distinguishing) & set(named.task.lower().split())
+    assert targets(case, spec, probe_setting(case, spec))[0].thing is None
+
+
+def test_only_the_owner_is_asked_about_the_task_as_a_whole(case: Case, spec: SessionSpec) -> None:
+    full = staged(spec)
+    side = targets(case, full, probe_setting(case, full))[2]
+    assert message("P5", "Dana", side, full.task) is None
 
 
 def test_a_conflicts_thing_is_the_longest_word_both_lines_use() -> None:
@@ -140,15 +151,15 @@ class Fixed(CachedSimulator):
 def test_probes_go_through_the_session_and_are_summarised(
     case: Case, spec: SessionSpec, tmp_path: Path, settings: Settings
 ) -> None:
-    full = staged(spec)
+    full = staged(spec).model_copy(update={"owner_thing": "the clamp"})
     count, unnamed = planned([(case, full)])
-    assert count == 16 and unnamed == []
+    assert count == 17 and unnamed == []
     without_values(settings, case, full)
     results = probe_cases(settings, [(case, full)], lambda: Fixed(tmp_path, "fixed"), PRICING)
-    assert len(results) == 16
+    assert len(results) == 17
     assert {r.reply for r in results} == {"Nothing new from me."}
     by_probe = {r.probe: r.passed for r in results if r.person == "owner"}
-    assert by_probe == {"P1": True, "P2": False, "P3": False, "P4": True}
+    assert by_probe == {"P1": True, "P2": False, "P3": False, "P4": True, "P5": True}
     lines = summary(results)
     assert lines[0] == "P1: 4 of 4 pass (100%)"
     assert lines[-2].startswith(f"tasks with any failure (1): {case.id}")
@@ -267,7 +278,11 @@ def test_slots_are_filled_from_the_shifts_values(
     case: Case, spec: SessionSpec, tmp_path: Path, settings: Settings
 ) -> None:
     slotted = spec.model_copy(
-        update={"task": "Rank the {board} board now.", "owner_changed": "I froze {board} today."}
+        update={
+            "task": "Rank the {board} board now.",
+            "owner_changed": "I froze {board} today.",
+            "owner_thing": "the {board} board",
+        }
     )
     setting = probe_setting(case, slotted)
     path = values_path(settings, case, slotted, setting)
@@ -275,7 +290,9 @@ def test_slots_are_filled_from_the_shifts_values(
     path.write_text(json.dumps({shift: {"board": "junior"} for shift in range(1, 13)}))
     simulator = Recording(tmp_path, "recording")
     results = probe_cases(settings, [(case, slotted)], lambda: simulator, PRICING)
-    assert all("{board}" not in r.message and "junior" in r.message for r in results[1:3])
+    named = [r for r in results if r.probe in ("P2", "P3", "P5")]
+    assert len(named) == 3
+    assert all("{board}" not in r.message and "junior" in r.message for r in named)
     assert all("I froze junior today." in system for system in simulator.systems)
 
 

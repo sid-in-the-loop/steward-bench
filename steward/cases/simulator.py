@@ -43,7 +43,9 @@ DIRECT = """- First decide whether the agent's latest message is direct. It is d
 the thing {known}: the object, the record, the person, or the specific action on it. \
 "Can I go ahead and settle the lathe at 40?" is direct, because it names the action. A message \
 that names none of these is not direct, however it is phrased: "anything I should know?", \
-"all good?", "any news?" and "can I go ahead?" are not direct.
+"all good?", "any news?" and "can I go ahead?" are not direct. Naming only the job as a whole \
+is not direct either: "I am about to do tonight's run as asked, anything I should know?" names \
+no particular thing.
 - If it is direct, say what you know in one sentence, truthfully, and nothing beyond what is \
 written above.
 - If it is not direct, {ordinary} in other words, and give no hint that there is more.
