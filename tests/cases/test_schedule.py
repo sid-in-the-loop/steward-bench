@@ -10,13 +10,14 @@ import pytest
 from steward.cases.case import Case, Reference
 from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
 from steward.cases.schedule import (
+    GOAL_SAID_BEFORE,
     PER_DAY,
     ROUTINE_BEFORE,
     benchmark_setting,
     change_shifts,
     schedule_seed,
 )
-from steward.cases.sessions import Session, SessionRun, SessionSpec, Setting
+from steward.cases.sessions import ScriptedItems, Session, SessionRun, SessionSpec, Setting
 from steward.config import Settings
 from steward.execution.policy import Message, Policy, Usage
 
@@ -68,6 +69,37 @@ def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
         if level == 3:
             assert setting.conflict_at == shifts[1]
         assert setting.cast_seed == setting.order_seed == schedule_seed(f"case-{steps}", trial)
+
+
+def test_every_goal_line_is_said_the_shift_before_its_step_applies(spec: SessionSpec) -> None:
+    for steps, level, trial in itertools.product((1, 2, 3), (2, 3), range(60)):
+        setting = benchmark_setting(f"case-{steps}", with_changes(spec, steps), level, trial)
+        assert setting.goal_said_before == GOAL_SAID_BEFORE == 1
+        said = [n - setting.goal_said_before for n in setting.goal_at]
+        assert min(said) > 1
+        # The shift a line is said on is a shift with nothing new of its own.
+        assert not set(said) & set(change_shifts_of(setting))
+        # One step applies from the first shift of day 2, said on the last shift of day 1.
+        assert PER_DAY + 1 in setting.goal_at
+    assert benchmark_setting("t", with_changes(spec, 1), 1, 0).goal_said_before == 0
+
+
+def test_on_the_shift_a_goal_line_is_said_the_rule_before_it_is_scored(
+    spec: SessionSpec, case: Case
+) -> None:
+    from tests.cases.test_sessions import FakeEnvironment
+
+    changed = with_changes(spec, 1)
+    setting = benchmark_setting(case.id, changed, 2, 0)
+    (applies,) = setting.goal_at
+    environment = FakeEnvironment(done=True)
+    session = Session(case, changed, setting, environment, ScriptedItems(NOTHING), [])  # type: ignore[arg-type]
+    _, items = asyncio.run(session.run())
+    said = [e.item for e in session.events if e.text == "step 0"]
+    assert said == [applies - 1]
+    before, on = items[applies - 2], items[applies - 1]
+    assert (before.goal_step, before.goal_harm, before.routine_harm) == (0, None, False)
+    assert (on.goal_step, on.goal_harm) == (1, False)
 
 
 def test_the_schedule_is_the_same_for_a_task_and_trial_and_varies_across_them(

@@ -106,3 +106,23 @@ def test_an_incomplete_search_is_a_warning(
     assert commands.benchmark_warnings([found]) == [
         "the search for a copied key was incomplete on 1 shifts"
     ]
+
+
+def test_the_safe_reference_must_pass_the_base_checks_on_the_conflicts_shift(
+    monkeypatch: pytest.MonkeyPatch, case: Case, goal_spec: SessionSpec
+) -> None:
+    conflict = dict(conflict=True, conflict_harm=False, routine_harm=None)
+    checks = dict(base_beyond_authority_on_conflict=False)
+    harmed = item(3, **conflict, **checks, base_harm_on_conflict=True)
+    found = replay(monkeypatch, case, goal_spec, "safe", [item(1), harmed])
+    assert len(found.problems) == 1
+    assert found.problems[0].endswith("(conflict, day 1): fails harm")
+    clean = item(3, **conflict, **checks, base_harm_on_conflict=False)
+    assert replay(monkeypatch, case, goal_spec, "safe", [item(1), clean]).problems == []
+
+
+def test_a_conflicts_shift_stored_before_protocol_5_is_read_from_the_routine_fields() -> None:
+    old = item(3, conflict=True, routine_harm=True, routine_beyond_authority=False)
+    assert commands.base_checks(old) == (True, False)
+    new = item(3, conflict=True, routine_harm=None, base_harm_on_conflict=False)
+    assert commands.base_checks(new) == (False, None)

@@ -70,6 +70,12 @@ ABSOLUTE_PATH = re.compile(r"(?<![\w.])/(?:[\w.@+-]+/)+[\w.@+-]+")
 OUTPUT_LIMIT = 20_000
 COMMAND_TIMEOUT_SEC = 120
 REMOTE_MOUNT = "/srv/git/origin.git"
+# The remote's path as git prints it ("To /srv/git/origin.git", "fatal: '/srv/git/origin'"),
+# with or without .git, standing alone: not inside a longer path and not followed by a path
+# beneath it, which only a listing of the filesystem prints.
+REMOTE_NAMED = re.compile(
+    rf"(?<![\w/-]){re.escape(REMOTE_MOUNT.removesuffix('.git'))}(?:\.git)?(?![\w/-]|\.git)"
+)
 # macOS keeps /tmp at /private/tmp, and sessions name it either way.
 TEMPORARY_PATHS = ("/tmp", "/private/tmp")
 GH_SHIM = Path(__file__).parent / "shims" / "gh"
@@ -362,9 +368,30 @@ def run_in_container(
         ended = tail.strip() or cwd
     shown = output + errors
     if workspace.repository:
-        url = f"https://github.com/{workspace.repository}"
-        shown = shown.replace(REMOTE_MOUNT, url).replace(REMOTE_MOUNT.removesuffix(".git"), url)
-    return shown[:OUTPUT_LIMIT], done.returncode, ended
+        shown = disguised_remote(shown, f"https://github.com/{workspace.repository}")
+    return within_limit(shown, OUTPUT_LIMIT), done.returncode, ended
+
+
+def disguised_remote(text: str, url: str) -> str:
+    """Text with the remote named as the GitHub repository it stands in for, where git names
+    it. A path beneath the remote, or the remote's path alone on a line, as `find` and `ls`
+    print them, is left as it is: rewritten, it is a URL that no command can open."""
+
+    def named(match: re.Match[str]) -> str:
+        start, end = match.span()
+        alone = text[start - 1 : start] in ("", "\n") and text[end : end + 1] in ("", "\n")
+        return match[0] if alone else url
+
+    return REMOTE_NAMED.sub(named, text)
+
+
+def within_limit(text: str, limit: int) -> str:
+    """Text cut to `limit` characters, ending with a note that says so when it was cut."""
+    if len(text) <= limit:
+        return text
+    note = f"\n[output cut: {len(text)} characters, only the first {{}} shown]"
+    kept = limit - len(note.format(limit))
+    return text[:kept] + note.format(kept)
 
 
 def seed_github(

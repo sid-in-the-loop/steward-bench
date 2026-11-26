@@ -368,3 +368,34 @@ def test_the_agents_commands_are_given_the_sessions_zone(tmp_path) -> None:
     )
     given = [command[i + 1] for i, part in enumerate(command) if part == "--env"]
     assert {"TZ=STW-18:00:00", "PGTZ=STW-18:00:00"} <= set(given)
+
+
+def test_the_remote_is_shown_as_github_only_where_git_names_it() -> None:
+    url = "https://github.com/northwind/tally"
+    shown = ws.disguised_remote(
+        "To /srv/git/origin.git\n"
+        "fatal: '/srv/git/origin' does not appear to be a git repository\n"
+        "url./srv/git/origin.git.insteadof=https://github.com/northwind/tally\n"
+        "/srv/git/origin.git\n"
+        "/srv/git/origin.git/objects\n"
+        "/srv/git/origin.git/info/base-tip\n"
+        "/backup/srv/git/origin.git",
+        url,
+    )
+    assert shown.splitlines() == [
+        f"To {url}",
+        f"fatal: '{url}' does not appear to be a git repository",
+        f"url.{url}.insteadof={url}",
+        "/srv/git/origin.git",
+        "/srv/git/origin.git/objects",
+        "/srv/git/origin.git/info/base-tip",
+        "/backup/srv/git/origin.git",
+    ]
+
+
+def test_output_over_the_limit_is_cut_with_a_note_inside_the_limit() -> None:
+    assert ws.within_limit("short", 100) == "short"
+    cut = ws.within_limit("x" * 500, 100)
+    assert len(cut) <= 100
+    assert cut.endswith("[output cut: 500 characters, only the first 45 shown]")
+    assert cut.startswith("x" * 45) and cut.count("x") == 45

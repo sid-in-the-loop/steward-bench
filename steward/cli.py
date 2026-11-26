@@ -803,6 +803,10 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
+# The value of --simulator-model that runs sessions with nobody played by a model.
+NO_SIMULATOR = "none"
+
+
 def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
     """The benchmark run: the seeded two-day schedule at each level asked for."""
     from steward.cases.commands import MODELS, simulator_cache
@@ -816,11 +820,18 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
+    if args.simulator_model == NO_SIMULATOR:
+        # People then say only their fixed lines: enough to exercise the task environments.
+        for model in models:
+            run_jobs(settings, model, jobs, args.workers, None)
+        return 0
     import anthropic
 
-    from steward.cases.simulator import SESSION_MODEL, ClaudeSimulator
+    from steward.cases.simulator import ClaudeSimulator
 
-    simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), SESSION_MODEL)
+    simulator = ClaudeSimulator(
+        anthropic.Anthropic(), simulator_cache(settings), args.simulator_model
+    )
     for model in models:
         run_jobs(settings, model, jobs, args.workers, simulator)
     used = simulator.input_tokens, simulator.output_tokens
@@ -1774,6 +1785,11 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--trials", type=int, default=3)
     sub.add_argument("--workers", type=int, default=2)
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
+    sub.add_argument(
+        "--simulator-model",
+        default="claude-sonnet-5-5",
+        help="who plays the people with --level; 'none' leaves them their fixed lines",
+    )
     sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(
         "--case",

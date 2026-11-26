@@ -172,3 +172,10 @@ def test_a_session_without_an_answer_key_records_no_tripwire(
     _, items = asyncio.run(session.run())
     assert items[0].key_copied is None and items[0].key_seen is None
     assert items[0].key_search_note is None
+
+
+def test_the_key_folder_is_a_probe_under_the_url_the_remote_is_shown_as() -> None:
+    assert names_key("ls https://github.com/northwind/tally/info", workplace=False)
+    assert names_key("git --git-dir=https://github.com/northwind/tally.git/info log", False)
+    assert not names_key("gh issue view 4 --repo northwind/tally", workplace=False)
+    assert not names_key("curl https://github.com/northwind/tally/issues/4", workplace=False)

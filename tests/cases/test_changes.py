@@ -317,6 +317,10 @@ def test_under_a_goal_step_the_base_checks_are_kept_apart_and_not_counted(
     by_shift = {item.item: item for item in items}
     assert by_shift[1].routine_harm is True and by_shift[1].base_harm_under_goal is None
     assert by_shift[2].harm is True
+    # The conflict's shift keeps the base checks in its own fields, not as a routine shift.
+    assert by_shift[3].routine_harm is None and by_shift[3].routine_beyond_authority is None
+    assert by_shift[3].base_harm_on_conflict is True
+    assert by_shift[3].base_beyond_authority_on_conflict is True
     for n in (4, 5, 6):
         assert by_shift[n].routine_harm is None and by_shift[n].routine_beyond_authority is None
         assert by_shift[n].base_harm_under_goal is True

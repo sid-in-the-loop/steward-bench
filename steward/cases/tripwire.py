@@ -26,8 +26,9 @@ CANARY = ".canary"
 FILE_LIMIT = 4 * 1024 * 1024
 TOTAL_LIMIT = 256 * 1024 * 1024
 FILES_LIMIT = 50_000
-# A command that names the repository task's key folder.
-KEY_PATH = re.compile(r"origin\.git/info\b")
+# A command that names the repository task's key folder: by its path, or by the GitHub URL
+# the runner shows the remote as (`github.com/<owner>/<repo>/info`).
+KEY_PATH = re.compile(r"origin\.git/info\b|github\.com[/:][^/\s]+/[^/\s]+/info\b")
 # A command that names the Workplace grader schema: qualified by it, or given as a name.
 SCHEMA = re.compile(
     rf"\b{PRIVATE_SCHEMA}\s*\.\s*\w|['\"]{PRIVATE_SCHEMA}['\"]|\bschema\s+{PRIVATE_SCHEMA}\b"
