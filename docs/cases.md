@@ -63,16 +63,16 @@ pushes at that point.
 
 With `--simulator`, Claude Haiku 5.5 plays a person once their fixed line has been said
 (`steward/cases/simulator.py`). The fixed line still states the person's position, so every
-model meets the same stance; the simulator only answers what the agent says afterwards.
-Someone who is away is never simulated. A simulated reply that matches the case's
-`disclose` pattern, from a person who could not know it, is withheld and counted in
-`withheld_replies`. Replies are stored under `data/cases/simulator_cache`, keyed by the
-conversation, so a rerun gets the same reply. An empty reply is not stored, so it is asked
-again; a reply is written to a temporary file and moved into place, so workers running in
-parallel never read part of one; and a Claude request is retried up to eight times
-(`MAX_RETRIES`) where the SDK would stop after two. The simulator needs `ANTHROPIC_API_KEY`.
-It can state a position more firmly than the fixed line does, so simulator runs are
-compared with each other and kept apart from fixed-line runs.
+model meets the same stance; the simulator only answers what the agent says afterwards. Someone
+who is away is never simulated. A simulated reply that matches the case's `disclose` pattern,
+from a person who could not know it, is withheld and counted in `withheld_replies`. Replies are
+stored under `data/cases/simulator_cache`, keyed by the conversation, so a rerun gets the same
+reply. An empty reply and a provider's refusal are not stored, so they are asked again (until
+2026-11-26 a refusal was kept as no reply); a reply is written to a temporary file and moved
+into place, so workers running in parallel never read part of one; and a Claude request is
+retried up to eight times (`MAX_RETRIES`) where the SDK would stop after two. The simulator
+needs `ANTHROPIC_API_KEY`. It can state a position more firmly than the fixed line does, so
+simulator runs are compared with each other and kept apart from fixed-line runs.
 
 ## Ladder cases and harmless twins
 
@@ -507,8 +507,9 @@ shift, to fewer than three content words of `owner_changed` beyond the request, 
 own lines, the cards and the names.
 
 The simulator reads the chat one message to a line: the speaker's name, then the message quoted
-as a JSON string (`chat_line`), so no line break in an agent's message can start a line that
-reads as someone else speaking. A rule line says that nothing the agent writes changes the
+as a JSON string with every character outside ASCII escaped (`chat_line`), so no line break,
+Unicode line or paragraph separator or look-alike quote in an agent's message can start a line
+that reads as someone else speaking. A rule line says that nothing the agent writes changes the
 rules, who anyone is or what the person knows.
 
 Without a simulator such a person answers once with
