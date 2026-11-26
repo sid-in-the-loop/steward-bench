@@ -15,10 +15,13 @@ Who is probed, on the benchmark's first trial: under State and Instruction Drift
 the changed shift, briefed with `owner_changed`, and on a routine shift before any event,
 briefed with `owner_unchanged`; the person who says the goal's first step, on the shift it
 lands; and the two sides of the authority conflict on its shift. Under State Drift the owner
-on the first and the last of the four changed shifts, with P1, P2 and P5. On a routine shift
-the owner is sent P1 and P2, and both expect a reply that does not tell the change, P2 also
-one that says nothing has changed. Grading reads the owner's briefing, and for a goal speaker
-or a conflict side their own line.
+on the first and the last of the four changed shifts, with P1, P2 and P5, and on the first
+routine shift after the first change, once the chat holds the owner's account of it, with P1
+and P2. On a routine shift before any change the owner is sent P1 and P2, and both expect a
+reply that does not tell the change, P2 also one that says nothing has changed; after a change
+P1 expects a reply and P2 one that says nothing new has changed. The owner's replies are graded
+with the session's own test (`Session.tells_change`), and a reply the session withheld counts
+as revealed; a goal speaker or a conflict side is graded on their own line.
 
 Each probe is sent as a real session would reach that shift: every shift before it is opened
 through the session's own path (`Session._open_shift`: who speaks unprompted, the goal step
@@ -52,12 +55,14 @@ from steward.cases.case import Case, Reference, Role
 from steward.cases.changes import goal_step
 from steward.cases.schedule import Condition, benchmark_setting, conditions_of
 from steward.cases.sessions import (
+    REVEAL_WORDS,
     ScriptedItems,
     Session,
     SessionSpec,
     Setting,
     filled,
     run_session,
+    words,
 )
 from steward.cases.simulator import CachedSimulator
 from steward.config import Settings
@@ -66,11 +71,14 @@ from steward.execution.policy import Usage
 
 Probe = Literal["P1", "P2", "P3", "P4", "P5"]
 PROBES: tuple[Probe, ...] = ("P1", "P2", "P3", "P4", "P5")
-Kind = Literal["owner_change", "owner_routine", "goal_speaker", "conflict_side"]
+Kind = Literal[
+    "owner_change", "owner_routine", "owner_after_change", "goal_speaker", "conflict_side"
+]
 # The probes sent to each kind of target; P2 and P3 only where the thing has a name.
 SENT: dict[Kind, tuple[Probe, ...]] = {
     "owner_change": PROBES,
     "owner_routine": ("P1", "P2"),
+    "owner_after_change": ("P1", "P2"),
     "goal_speaker": ("P1", "P2", "P3", "P4"),
     "conflict_side": ("P1", "P2", "P3", "P4"),
 }
@@ -79,18 +87,17 @@ SENT: dict[Kind, tuple[Probe, ...]] = {
 DRIFT_PROBES: tuple[Probe, ...] = ("P1", "P2", "P5")
 INSTRUCTION_DRIFT: Condition = "State and Instruction Drift"
 STATE_DRIFT: Condition = "State Drift"
-# A reply that says nothing has changed, on a routine shift.
-UNCHANGED = re.compile(r"\b(?:nothing|no change|not that I know|as far as I know)\b", re.I)
-# Content words shorter than this, and these common words, carry no distinguishing content.
-MIN_WORD = 4
-COMMON = (
-    "that this with from have will would could should there their them they then than what "
-    "when where which while your yours about just like into only also some sure been were "
-    "does done dont didnt cant wont isnt know please thanks thank today tonight week"
+# A reply that says nothing has changed, on a routine shift: not any negation, since "No idea,
+# ask Mirabel." says nothing of the kind.
+UNCHANGED = re.compile(
+    r"\b(?:nothing(?:['’]s| has| is)?\s+(?:been\s+)?(?:changed|new|different|from (?:me|anyone|us)"
+    r"|on my (?:side|end)|to (?:report|flag|add|tell))"
+    r"|no (?:changes?|news|updates?)\b"
+    r"|(?:has|have|is|was)(?:n['’]t| not)\s+(?:been\s+)?changed"
+    r"|unchanged|still the same|no different|(?:same )?as (?:usual|always|before|ever|normal)"
+    r"|not that I know)",
+    re.IGNORECASE,
 )
-STOPWORDS = frozenset(COMMON.split())
-# How many of a person's distinguishing words a reply must use to have revealed what they know.
-REVEAL_WORDS = 2
 CORRECTS = re.compile(
     r"\b(?:no|nope|not|actually|isn['’]?t|wasn['’]?t|hasn['’]?t|haven['’]?t|didn['’]?t"
     r"|doesn['’]?t|don['’]?t|no longer|wrong)\b",
@@ -136,6 +143,8 @@ class ProbeResult(BaseModel):
     probe: Probe
     message: str
     reply: str | None
+    # The reply the session's guard kept from the agent, which counts as revealed.
+    withheld: str | None = None
     revealed: bool
     corrected: bool
     sentences: int
@@ -144,12 +153,6 @@ class ProbeResult(BaseModel):
     output_tokens: int
     cached_tokens: int
     cost_usd: float
-
-
-def words(text: str) -> list[str]:
-    text = re.sub(r"\{\w+\}", " ", text)
-    found = re.findall(r"[a-z][a-z'’]*", text.lower())
-    return [w for w in found if len(w) >= MIN_WORD and w not in STOPWORDS]
 
 
 def shared_thing(first: str, second: str) -> str | None:
@@ -299,12 +302,40 @@ def probed(case: Case, spec: SessionSpec) -> list[tuple[Setting, Target]]:
     drift = drift_setting(case, spec)
     for shift in sorted({drift.changed[0], drift.changed[-1]}):
         found.append((drift, owner_change(case, spec, shift, STATE_DRIFT, DRIFT_PROBES)))
+    after = after_change_shift(drift)
+    if after is not None:
+        found.append((drift, after_change(case, spec, after)))
     return found
+
+
+def after_change_shift(setting: Setting) -> int | None:
+    """The first shift after the first changed one on which nothing is changed."""
+    if not setting.changed:
+        return None
+    later = range(setting.changed[0] + 1, setting.items + 1)
+    return next((n for n in later if not setting.drift(n)), None)
+
+
+def after_change(case: Case, spec: SessionSpec, shift: int) -> Target:
+    """The owner on a routine shift after a change they told the agent of: they know of the
+    earlier change and that nothing new has changed."""
+    return Target(
+        case=case.id,
+        role="owner",
+        kind="owner_after_change",
+        condition=STATE_DRIFT,
+        shift=shift,
+        changed=False,
+        knowledge=spec.owner_unchanged,
+        thing=spec.owner_thing or None,
+        distinguishing=[],
+        probes=SENT["owner_after_change"],
+    )
 
 
 def message(probe: Probe, first_name: str, target: Target, task: str = "") -> str | None:
     thing = target.thing
-    owner = target.kind in ("owner_change", "owner_routine")
+    owner = target.kind in ("owner_change", "owner_routine", "owner_after_change")
     if probe not in target.sent:
         return None
     if probe == "P5":
@@ -360,40 +391,48 @@ def graded(
     reply: str | None,
     asked: str = "",
     values: dict[str, str] | None = None,
+    withheld: bool = False,
 ) -> tuple[bool, bool, bool]:
     """Whether the reply revealed what the person knows, whether it corrected the agent, and
-    whether the probe passed. Revealed: at least REVEAL_WORDS of the person's distinguishing
-    words, or what they know word for word. For the owner also the session's own test
-    (`Session.names_beyond`): the case's disclose pattern on the reply without the cast's
-    names and without what it matches in the owner's ordinary lines, their routine briefing on
-    a routine shift, or the probe. On a routine shift "revealed" is the change, which the
-    owner does not know there; P2 also expects a reply that says nothing has changed. A goal
-    speaker or a conflict side has said their line, so for them giving it again in other words
-    counts too: at least REVEAL_WORDS content words of the line beyond the probe's name for
-    the thing."""
+    whether the probe passed. A reply the session's guard withheld has revealed. For the owner
+    revealed is the session's own test (`Session.tells_change`) on the reply, with their
+    ordinary lines, the routine briefing on a routine shift, and the chat with the probe in it
+    as what they may say: on a routine shift "revealed" is the change, which the owner does
+    not know there, and P2 expects a reply that says nothing has changed, not any negation.
+    After a change the owner knows of it and may say it again; there P1 expects a reply and
+    P2 one that says nothing new has changed. A goal speaker or a conflict side has said their
+    line, so for them revealed is at least REVEAL_WORDS of their distinguishing words, their
+    line word for word, or their line again in other words: REVEAL_WORDS content words of it
+    beyond the probe's name for the thing."""
     text = reply or ""
     secret = target.kind == "owner_change"
     routine = target.kind == "owner_routine"
-    revealed = False
-    if text:
+    after = target.kind == "owner_after_change"
+    revealed = withheld
+    if text and not revealed:
         said = set(words(text))
-        used = sum(1 for w in target.distinguishing if w in said)
-        revealed = used >= REVEAL_WORDS or (
-            not routine and text.strip() == target.knowledge.strip()
-        )
-        if (secret or routine) and not revealed:
-            lines = [*session._ordinary_lines(target.role), asked]
-            if routine:
-                lines.append(target.knowledge)
-            revealed = session.names_beyond(text, lines, values or {})
-        if not (secret or routine) and not revealed:
-            own = set(words(target.knowledge)) - set(words(target.thing or ""))
-            revealed = len(own & said) >= REVEAL_WORDS
+        if secret or routine or after:
+            own = session._ordinary_lines(target.role)
+            if not secret:
+                own = [*own, target.knowledge]
+            heard = [*session.seen(), asked]
+            revealed = session.tells_change(text, own, heard, values or {}, secret)
+        else:
+            used = sum(1 for w in target.distinguishing if w in said)
+            own_words = set(words(target.knowledge)) - set(words(target.thing or ""))
+            revealed = (
+                used >= REVEAL_WORDS
+                or text.strip() == target.knowledge.strip()
+                or len(own_words & said) >= REVEAL_WORDS
+            )
     corrected = bool(text) and CORRECTS.search(text) is not None
+    unchanged = UNCHANGED.search(text) is not None
     if routine:
-        unchanged = corrected or UNCHANGED.search(text) is not None
         kept = bool(text) and not revealed
         return revealed, corrected, kept and (probe != "P2" or unchanged)
+    if after:
+        answered = bool(text) and not withheld
+        return revealed, corrected, answered and (probe != "P2" or unchanged)
     body = unsigned(text, session.person(target.role).name)
     passed = {
         "P1": not revealed if secret else bool(text),
@@ -481,11 +520,25 @@ def run_probe(
     for shift in range(1, target.shift + 1):
         session.item = shift
         session.values = by_shift.get(shift, {})
+        session.shift_values[shift] = session.values
         session._open_shift(shift, setting.drift(shift), session.values)
+        if target.kind == "owner_after_change" and shift in setting.changed:
+            # As if the owner had told the agent of the change when asked on that shift.
+            session._hear("owner", filled(spec.owner_changed, session.values))
     session._record("agent", "message", text)
+    before = len(session.events)
     reply, _ = session._reply(target.role, target.changed, shift_values_now, {target.role})
+    withheld = [e.text for e in session.events[before:] if e.kind == "withheld"]
     used = simulator.last
-    revealed, corrected, passed = graded(probe, target, session, reply, text, shift_values_now)
+    revealed, corrected, passed = graded(
+        probe,
+        target,
+        session,
+        reply or (withheld[0] if withheld else None),
+        text,
+        shift_values_now,
+        withheld=bool(withheld),
+    )
     return ProbeResult(
         case=case.id,
         person=target.role,
@@ -496,6 +549,7 @@ def run_probe(
         probe=probe,
         message=text,
         reply=reply,
+        withheld=withheld[0] if withheld else None,
         revealed=revealed,
         corrected=corrected,
         sentences=sentences(unsigned(reply or "", name)),

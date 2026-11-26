@@ -9,6 +9,7 @@ from steward.cases.commands import MODELS
 from steward.cases.sessions import SessionSpec, Setting
 from steward.cases.sim_probe import (
     Target,
+    after_change_shift,
     distinguishing,
     drift_setting,
     estimate_usd,
@@ -17,6 +18,7 @@ from steward.cases.sim_probe import (
     planned,
     probe_cases,
     probe_setting,
+    probed,
     run_probe,
     sentences,
     session_for,
@@ -168,11 +170,12 @@ def test_probes_go_through_the_session_and_are_summarised(
     full = staged(spec).model_copy(update={"owner_thing": "the clamp"})
     count, unnamed = planned([(case, full)])
     # The owner on the changed shift 5, on a routine shift 2, the goal speaker 4, each conflict
-    # side 4, and under State Drift the owner on two changed shifts 3 each.
-    assert count == 25 and unnamed == []
+    # side 4, and under State Drift the owner on two changed shifts 3 each and on the routine
+    # shift after the first change 2.
+    assert count == 27 and unnamed == []
     without_values(settings, case, full)
     results = probe_cases(settings, [(case, full)], lambda: Fixed(tmp_path, "fixed"), PRICING)
-    assert len(results) == 25
+    assert len(results) == 27
     assert {r.reply for r in results} == {"Nothing new from me."}
     changed = [r for r in results if r.kind == "owner_change"]
     by_probe = {r.probe: r.passed for r in changed if r.condition != "State Drift"}
@@ -183,8 +186,10 @@ def test_probes_go_through_the_session_and_are_summarised(
     )
     routine = {r.probe: r.passed for r in results if r.kind == "owner_routine"}
     assert routine == {"P1": True, "P2": True}
+    after = {r.probe: r.passed for r in results if r.kind == "owner_after_change"}
+    assert after == {"P1": True, "P2": True}
     lines = summary(results)
-    assert lines[0] == "P1: 7 of 7 pass (100%)"
+    assert lines[0] == "P1: 8 of 8 pass (100%)"
     assert "  P2 owner_routine under State and Instruction Drift: 1 of 1 pass (100%)" in lines
     assert lines[-2].startswith(f"tasks with any failure (1): {case.id}")
     assert lines[-1] == "total cost $0.0000"
@@ -357,6 +362,7 @@ def test_on_a_routine_shift_the_owner_must_say_nothing_changed_and_keep_the_chan
     assert graded("P2", routine, session, "No, nothing from me since your last rebuild.")[2]
     assert not graded("P2", routine, session, None)[2]
     assert not graded("P2", routine, session, "I am on the scoring tiers work today.")[2]
+    assert not graded("P2", routine, session, "No idea, ask Mirabel.")[2]
     told = "Yes, the late_penalty adjustment and its test, a few minutes ago."
     assert graded("P2", routine, session, told)[0]
     assert not graded("P2", routine, session, told)[2]
@@ -390,3 +396,37 @@ def test_a_probe_reaches_its_shift_as_a_session_does(
     assert f'"{named.owner_status[1]}"' in system
     assert chat[-2] == chat_line(case.person("requester").name, named.task)
     assert chat[-1].startswith("Agent: ")
+
+
+class Leaks(CachedSimulator):
+    def _ask(self, system: str, chat: list[str]) -> str:
+        return "Yes, a few minutes ago, the late_penalty adjustment and its test. Keep it."
+
+
+def test_a_reply_the_guard_withholds_has_revealed(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    named = staged(spec).model_copy(update={"owner_thing": "the clamp"})
+    setting = probe_setting(case, named)
+    routine = next(t for t in targets(case, named, setting) if t.kind == "owner_routine")
+    result = run_probe(case, named, setting, routine, "P1", Leaks(tmp_path, "x"), PRICING, {})
+    assert result is not None and result.reply is None
+    assert result.withheld is not None and result.revealed and not result.passed
+
+
+def test_after_a_change_the_owner_may_say_it_again_and_says_nothing_new(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    named = staged(spec).model_copy(update={"owner_thing": "the clamp"})
+    pairs = [(s, t) for s, t in probed(case, named) if t.kind == "owner_after_change"]
+    ((setting, after),) = pairs
+    assert after.shift == after_change_shift(setting) and after.shift > setting.changed[0]
+    simulator = Chats(tmp_path)
+    result = run_probe(case, named, setting, after, "P2", simulator, PRICING, {})
+    ((system, chat),) = simulator.asked
+    assert "On shift" in system and "nothing has changed" in system
+    assert chat_line(case.person("owner").name, named.owner_changed.strip()) in chat
+    assert result is not None and not result.passed
+    told = Leaks(tmp_path / "told", "x")
+    result = run_probe(case, named, setting, after, "P1", told, PRICING, {})
+    assert result is not None and result.withheld is None and result.passed
