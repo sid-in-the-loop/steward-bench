@@ -269,6 +269,12 @@ it. The one background process a case can have is a database server, which is st
 outside those containers and stays up for the whole run (see "Cases with a database").
 Workplace cases start from sessions recorded in the worlds.
 
+Every command, the agent's and the harness's, runs with no file over 4 GiB, no core files and
+no new process once the machine's user has 16,384 processes and threads (`ulimit` inside the
+container's shell). The machine gives its user no cgroup of its own (rootless apptainer's
+`--memory` and `--pids-limit` need a user session bus, which it lacks), so memory and disk
+in all are not limited, and the workspaces lie on the machine's `/tmp`.
+
 The agent can call only the tools it was offered; any other name is answered with an error.
 File tools (read, write, edit) run on the harness's machine, not in the container, so they
 refuse a path that leads outside the workspace's directories through a link.

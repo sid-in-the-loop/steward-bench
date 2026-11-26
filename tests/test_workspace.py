@@ -493,3 +493,19 @@ def test_a_tool_that_was_not_offered_is_refused(tmp_path) -> None:
     assert asyncio.run(executor.execute(read)) == "Error: there is no tool named Read."
     executor.offered = None
     assert "hello" in asyncio.run(executor.execute(read))
+
+
+def test_every_command_runs_under_limits_on_processes_and_file_size(tmp_path) -> None:
+    workspace = make_workspace(tmp_path)
+    for harness in (False, True):
+        command = ws.container_command(
+            workspace, "image.sif", workspace.mount, "true", 60, harness=harness
+        )
+        assert command[-1].startswith(ws.RESOURCE_LIMITS)
+    limited = subprocess.run(
+        ["bash", "-c", ws.RESOURCE_LIMITS + "ulimit -u; ulimit -f"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert limited.stdout.split() == ["16384", "4194304"]

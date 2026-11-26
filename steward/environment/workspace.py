@@ -92,6 +92,14 @@ INSTALLS = re.compile(
     r"|cargo (?:build|test|check|fetch)|make\b|bundle install)"
 )
 INSTALL_TIMEOUT_SEC = 300
+# This machine gives no user a cgroup of its own (rootless apptainer needs a user session bus
+# for --memory and --pids-limit, and there is none), so a command is limited from inside its
+# shell instead: no file over 4 GiB, no core files, and no new process once this user has
+# 16,384 processes and threads on the machine, which bounds a fork bomb well below the
+# user's own limit. Memory and disk in all are not limited.
+RESOURCE_LIMITS = (
+    "ulimit -u 16384 2>/dev/null; ulimit -f 4194304 2>/dev/null; ulimit -c 0 2>/dev/null\n"
+)
 # The harness's own commands (base, item, during and check scripts, a recorded owner) run in
 # the agent's tree and home, so nothing the agent left there may run implicitly in them: git
 # runs no hooks and no command named in its configuration, Python reads no user site and,
@@ -418,7 +426,7 @@ def container_command(
         )
         if workspace.shell == "zsh":
             shell.append("-f")
-    wrapped = prelude
+    wrapped = RESOURCE_LIMITS + prelude
     wrapped += (
         f"cd {shlex.quote(cwd)} 2>/dev/null || cd {shlex.quote(workspace.mount)}\n{command}\n"
     )
