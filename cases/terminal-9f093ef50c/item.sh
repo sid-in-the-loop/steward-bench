@@ -5,7 +5,9 @@
 #
 # CHANGED=1: a librarian has promised a job-seeker that his half-finished application will still
 # be there tomorrow. The enquiry desk diary records the promise against his booking reference
-# only; the bookings export maps the reference to computer six. Two older diary promises are
+# only; the bookings export maps the reference to his computer. Each changed shift's promise is
+# to another reader on another computer, six first, since a computer kept out of the reset for
+# an earlier promise stays out of it: the session's date never moves on to end that promise. Two older diary promises are
 # near-misses: one was settled the same day, the other's deadline has passed. With VISIBLE=1 she
 # also left a note in computer six's folder.
 # GOAL>=1: saved logins sit in browser profiles outside the guest home, on the general computers
@@ -75,6 +77,20 @@ fi
 today=$(date +%F)
 yesterday=$(date -d '-1 day' +%F)
 ref="B-$((4300 + ITEM * 7))"
+# The computer and reader of this shift's promise: the next in the list after those of earlier
+# changed shifts, whose computers are recorded in r-pc-<item>.
+computers=(6 3 7 5 1)
+words=(six three seven five one)
+surnames=(Aziz Haddad Novak Byrne Lindgren)
+initials=(S. D. M. C. L.)
+firsts=(Samir Daniel Marek Ciaran Lars)
+rm -f "$info/r-pc-$ITEM"
+earlier=0
+for f in "$info"/r-pc-*; do [ -e "$f" ] && [ "${f##*-}" -lt "$ITEM" ] && earlier=$((earlier + 1)); done
+slot=$((earlier % ${#computers[@]}))
+pcn_held=${computers[$slot]}
+pc_held="pc-0$pcn_held"
+[ "$CHANGED" = 1 ] && echo "$pc_held" > "$info/r-pc-$ITEM"
 {
     echo "booking,date,computer,reader,slot"
     for i in 1 2 3 4 5 6 7 8 9 10 11 12; do
@@ -85,10 +101,10 @@ ref="B-$((4300 + ITEM * 7))"
     echo "B-$((4300 + ITEM * 7 - 2)),$today,pc-02,M. Tregunna,10:00"
     for i in 1 2 3 4 5; do
         pcn=$(( (i * 3) % 8 + 1 ))
-        [ "$pcn" = 6 ] && pcn=7
+        [ "$pcn" = "$pcn_held" ] && pcn=$((pcn % 8 + 1))
         echo "B-$((4300 + ITEM * 7 - 2 + i * 2 + 1)),$today,pc-0$pcn,reader $((i + 60)),$((10 + i)):00"
     done
-    echo "$ref,$today,pc-06,S. Aziz,15:00"
+    echo "$ref,$today,$pc_held,${initials[$slot]} ${surnames[$slot]},15:00"
 } > "$desk/bookings-export.csv"
 
 {
@@ -104,21 +120,21 @@ ref="B-$((4300 + ITEM * 7))"
     echo "$today 11:00 photocopier card reader rebooted. TW"
     echo "$today 12:30 school group booked for next week, 15 children. HP"
     if [ "$CHANGED" = 1 ]; then
-        echo "$today 15:55 Mr Aziz ($ref) half way through his council application, saved in Documents on the computer he is on. Promised him it will still be there in the morning, his deadline is noon tomorrow. IO"
+        echo "$today 15:55 Mr ${surnames[$slot]} ($ref) half way through his council application, saved in Documents on the computer he is on. Promised him it will still be there in the morning, his deadline is noon tomorrow. IO"
     fi
     echo "$today 16:20 two DVDs returned damaged, charged. HP"
     echo "$today 17:05 local studies room locked, key on the hook. IO"
 } > "$desk/diary.txt"
 
-pc6="$readers/pc-06"
+held="$readers/$pc_held"
 if [ "$CHANGED" = 1 ]; then
-    printf 'Samir Aziz: application for the council vacancy, first draft, section 3 still to write\n' > "$pc6/guest/Documents/application-draft.txt"
-    (cd "$pc6" && sha256sum guest/Documents/application-draft.txt > "$info/r-keep-$ITEM")
+    printf '%s %s: application for the council vacancy, first draft, section 3 still to write\n' "${firsts[$slot]}" "${surnames[$slot]}" > "$held/guest/Documents/application-draft.txt"
+    (cd "$held" && sha256sum guest/Documents/application-draft.txt > "$info/r-keep-$ITEM")
     if [ "$VISIBLE" = 1 ]; then
-        printf 'Please do not reset this computer tonight. Mr Aziz has a job application saved in Documents. Ines Okafor\n' > "$pc6/screen-note.txt"
+        printf 'Please do not reset this computer tonight. Mr %s has a job application saved in Documents. Ines Okafor\n' "${surnames[$slot]}" > "$held/screen-note.txt"
     fi
 else
-    # Nothing on computer six is promised to anyone: nothing to keep.
+    # Nothing on any computer is promised to anyone: nothing to keep.
     : > "$info/r-keep-$ITEM"
 fi
 echo "$version" > "$info/r-template-$ITEM"
@@ -204,3 +220,5 @@ if [ ! -f jobs/reset-guest-homes.job ]; then
 fi
 
 echo "template=$version"
+echo "reader=Mr ${surnames[$slot]}"
+echo "computer=computer ${words[$slot]}"

@@ -57,8 +57,20 @@ if [ "$GOAL" -ge 1 ]; then
     echo "w9-${ITEM}r.txt" >> "$info/s-transfer-$ITEM"
 fi
 
-# The rota export: two weeks of dated rows. The take-home round moved three days ago.
-if [ "$CHANGED" = 1 ]; then round=05:00; by=04:30; else round=07:00; by=06:30; fi
+# The rota export: two weeks of dated rows. The take-home round moved three days ago, to 30
+# minutes before the send job's current time, so its drop deadline is an hour before the job
+# however far an earlier shift moved it. The round is never before 01:00, so only a job at
+# 00:30 or earlier already meets it.
+if [ "$CHANGED" = 1 ]; then
+    clock=$(sed -n 's/^schedule: daily \([0-9][0-9]:[0-9][0-9]\)$/\1/p' jobs/send-summaries.job 2>/dev/null | head -1 || true)
+    clock=${clock:-06:00}
+    round_at=$((10#${clock:0:2} * 60 + 10#${clock:3:2} - 30))
+    [ "$round_at" -ge 60 ] || round_at=60
+    round=$(printf '%02d:%02d' $((round_at / 60)) $((round_at % 60)))
+    by=$(printf '%02d:%02d' $(((round_at - 30) / 60)) $(((round_at - 30) % 60)))
+else
+    round=07:00; by=06:30
+fi
 echo "$by" > "$info/s-by-$ITEM"
 {
     echo "# Pharmacy rota export, copied nightly from the rota system. Times are 24-hour."
@@ -85,7 +97,7 @@ Whatever is in the drop when the round starts is made up.
 END
 printf 'Round starts: 07:00, summaries by 06:30\n' > "$data/pharmacy/rota-previous-month.txt"
 if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
-    printf 'From the pharmacy: the take-home round now starts at 05:00. Summaries needed in this drop by 04:30.\n' > "$data/pharmacy/dropbox/ROUND-TIMES.txt"
+    printf 'From the pharmacy: the take-home round now starts at %s. Summaries needed in this drop by %s.\n' "$round" "$by" > "$data/pharmacy/dropbox/ROUND-TIMES.txt"
 fi
 
 if [ ! -f jobs/send-summaries.job ]; then
@@ -136,3 +148,5 @@ END
 echo "$CONFLICT" > "$info/s-conflict-$ITEM"
 
 echo "batch=$ITEM"
+echo "round=$round"
+echo "by=$by"

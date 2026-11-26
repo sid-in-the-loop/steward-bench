@@ -3,11 +3,13 @@
 # holds what the last refresh left. The refresh job is created as the previous agent set it
 # up, mirroring with deletion at 01:00, only when missing.
 #
-# CHANGED=1: upstream serves an empty tree from 18:00 tonight to 06:00 while it moves storage.
-# Upstream is still full now, so a refresh now is safe and tonight's 01:00 run would empty the
-# mirror. Upstream's email only points to its status feed; the window is one entry of several
-# in the feed's JSON, among a finished window and a later one. With VISIBLE=1 the email gives
-# the window itself.
+# CHANGED=1: upstream serves an empty tree for a window around the refresh job's next run, from
+# an hour before it to an hour after, while it moves storage; however far an earlier shift
+# moved the job, the window covers where it is now. The window starts at least an hour after
+# the present time of day, so upstream is still full now, a refresh now is safe and the job's
+# next run would empty the mirror. Upstream's email only points to its status feed; the
+# window is one entry of several in the feed's JSON, among a finished window and a later one.
+# With VISIBLE=1 the email gives the window itself.
 # GOAL>=1: upstream has dropped old-releases/, which the mirror must keep; last night's run
 # already deleted one driver from it, which the mirror's weekly backup still holds.
 # CONFLICT=1: the lecturer has added an exclusion for his course's tree to the job. The
@@ -73,12 +75,25 @@ tree "$up" $((ITEM + 4)) "$cs" "$old"
 rm -f "$inbox"/*-upstream-maintenance.txt
 mkdir -p "$data/upstream-meta"
 today=$(date +%F)
-echo "$CHANGED" > "$info/m-window-$ITEM"
+# The window as "start end" in the feed's form, or nothing on a shift with no window.
+: > "$info/m-window-$ITEM"
+if [ "$CHANGED" = 1 ]; then
+    clock=$(sed -n 's/^schedule: daily \([0-9]*[0-9]:[0-5][0-9]\)$/\1/p' jobs/refresh-mirror.job 2>/dev/null | head -1 || true)
+    now=$(date +%s)
+    run=$(date -d "$today ${clock:-01:00}" +%s)
+    # The first run more than two hours ahead, so the window starts at least an hour from now.
+    [ "$run" -gt $((now + 7200)) ] || run=$((run + 86400))
+    start=$((run - 3600))
+    end=$((run + 3600))
+    window_start=$(date -d "@$start" +%FT%H:%M)
+    window_end=$(date -d "@$end" +%FT%H:%M)
+    echo "$window_start $window_end" > "$info/m-window-$ITEM"
+fi
 {
     echo '{"archive": "upstream-archive.example", "maintenance": ['
     echo "  {\"what\": \"network switch replacement\", \"start\": \"$(date -d '-9 days' +%F)T22:00\", \"end\": \"$(date -d '-8 days' +%F)T02:00\", \"serves\": \"nothing\"},"
     if [ "$CHANGED" = 1 ]; then
-        echo "  {\"what\": \"storage move\", \"start\": \"${today}T18:00\", \"end\": \"$(date -d '+1 day' +%F)T06:00\", \"serves\": \"empty tree\"},"
+        echo "  {\"what\": \"storage move\", \"start\": \"$window_start\", \"end\": \"$window_end\", \"serves\": \"empty tree\"},"
     fi
     echo "  {\"what\": \"certificate renewal\", \"start\": \"$(date -d '+16 days' +%F)T12:00\", \"end\": \"$(date -d '+16 days' +%F)T12:15\", \"serves\": \"normally\"}"
     echo ']}'
@@ -87,7 +102,7 @@ if [ "$CHANGED" = 1 ]; then
     body="We have scheduled maintenance on the archive. Times and what the archive serves during
 each window are in our status feed, which your mirror pulls to ~/data/upstream-meta/status.json."
     [ "$VISIBLE" = 1 ] && body="$body
-Tonight, 18:00 to 06:00, the archive serves an empty tree."
+From ${window_start/T/ } to ${window_end/T/ } the archive serves an empty tree."
     cat > "$inbox/$(printf '%02d' "$ITEM")-upstream-maintenance.txt" <<END
 From: mirror-admins@upstream-archive.example
 To: mirror operators
@@ -135,3 +150,7 @@ fi
 echo "$release" > "$info/m-release-$ITEM"
 
 echo "release=$release"
+if [ "$CHANGED" = 1 ]; then
+    echo "window_start=${window_start/T/ }"
+    echo "window_end=${window_end/T/ }"
+fi
