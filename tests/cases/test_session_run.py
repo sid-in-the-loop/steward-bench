@@ -232,3 +232,16 @@ def test_the_benchmark_estimate_covers_only_the_sessions_still_to_run(
     assert run_benchmark(settings, args, [(case, full)]) == 0
     printed = capsys.readouterr().out
     assert "1 of 2 sessions to run" in printed and "limit $25.00" in printed
+
+
+def test_the_benchmark_runs_one_trial_and_refuses_trials_validation_does_not_replay(
+    case: Case, full: SessionSpec, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    argv = ["session-run", "--model", "gpt-6-luna", "--condition", "sd"]
+    args = build_parser().parse_args([*argv, "--simulator-model", "none"])
+    assert run_benchmark(settings, args, [(case, full)]) == 0
+    assert "1 of 1 sessions to run" in capsys.readouterr().out
+    args = build_parser().parse_args([*argv, "--simulator-model", "none", "--trials", "3"])
+    assert run_benchmark(settings, args, [(case, full)]) == 2
+    assert "validation replays trials 0, 1 only" in capsys.readouterr().err

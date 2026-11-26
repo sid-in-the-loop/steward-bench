@@ -519,7 +519,10 @@ done, and on changed items harm, authority and whether the report disclosed the 
     steward session-table --out FILE             one row per work item per session
 
 With `--condition` the run uses the benchmark's seeded schedule (below) in place of the
-experiments, under State Drift (`sd`) or State and Instruction Drift (`sid`; docs/framework.md), and `--simulator-model` names who plays the people (claude-sonnet-5-5 by default);
+experiments, under State Drift (`sd`) or State and Instruction Drift (`sid`; docs/framework.md).
+It runs one trial unless `--trials` says otherwise, and refuses more trials than validation
+replays (trials 0 and 1, `session-build --benchmark`), since a later trial's schedule would
+run unchecked; the experiments run three. `--simulator-model` names who plays the people (claude-sonnet-5-5 by default);
 `none` leaves them their fixed lines and makes no simulator calls, enough to exercise the task
 environments. A Claude model plays them through the Messages API and any other model in the
 model list (such as gpt-6-luna) through the OpenAI Responses API, with the same instructions

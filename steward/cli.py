@@ -775,6 +775,7 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     cases = load_sessions(settings, args.case)
     if args.condition:
         return run_benchmark(settings, args, cases)
+    trials = EXPERIMENT_TRIALS if args.trials is None else args.trials
     chosen: dict[str, Setting] = {}
     for name in args.experiment or list(EXPERIMENTS):
         for setting in EXPERIMENTS[name]:
@@ -784,8 +785,8 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
     models = [MODELS[name] for name in args.model]
     for model in models:
         each = sum(estimate_usd(model, setting) for setting in chosen.values())
-        count = len(cases) * len(chosen) * args.trials
-        print(f"{model.name}: up to {count} sessions, about ${each * len(cases) * args.trials:.2f}")
+        count = len(cases) * len(chosen) * trials
+        print(f"{model.name}: up to {count} sessions, about ${each * len(cases) * trials:.2f}")
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
@@ -795,9 +796,7 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
     simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), SESSION_MODEL)
     for model in models:
-        run_sessions(
-            settings, model, cases, list(chosen.values()), args.trials, args.workers, simulator
-        )
+        run_sessions(settings, model, cases, list(chosen.values()), trials, args.workers, simulator)
     used = simulator.input_tokens, simulator.output_tokens
     print(f"simulator: {used[0]} input tokens, {used[1]} output tokens")
     return 0
@@ -805,6 +804,8 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
 # The value of --simulator-model that runs sessions with nobody played by a model.
 NO_SIMULATOR = "none"
+# Trials of each experiment setting when --trials is not given; the benchmark runs one.
+EXPERIMENT_TRIALS = 3
 # What a benchmark run may spend without --max-usd, the tested models and the simulator
 # together.
 BENCHMARK_MAX_USD = 25.0
@@ -817,6 +818,7 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     from steward.cases.commands import MODELS
     from steward.cases.schedule import SHORT_FORMS
     from steward.cases.session_commands import (
+        BENCHMARK_TRIALS,
         Budget,
         benchmark_jobs,
         estimate_usd,
@@ -825,8 +827,16 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
         sessions_path,
     )
 
+    trials = 1 if args.trials is None else args.trials
+    if not 1 <= trials <= len(BENCHMARK_TRIALS):
+        print(
+            f"Refused: validation replays trials {', '.join(map(str, BENCHMARK_TRIALS))} only, "
+            f"so the benchmark runs 1 to {len(BENCHMARK_TRIALS)} trials, not {trials}",
+            file=sys.stderr,
+        )
+        return 2
     conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition)]
-    jobs = benchmark_jobs(cases, conditions, args.trials)
+    jobs = benchmark_jobs(cases, conditions, trials)
     models = [MODELS[name] for name in args.model]
     played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
     limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
@@ -1854,7 +1864,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="run the benchmark's seeded two-day schedule under this condition, not the "
         "experiments: sd is State Drift, sid is State and Instruction Drift",
     )
-    sub.add_argument("--trials", type=int, default=3)
+    sub.add_argument(
+        "--trials",
+        type=int,
+        help="trials of each session: 3 for the experiments; with --condition 1, and at most "
+        "the trials validation replays (2)",
+    )
     sub.add_argument("--workers", type=int, default=2)
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub.add_argument(
