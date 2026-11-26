@@ -527,6 +527,9 @@ class ItemResult(BaseModel):
     # In a session whose `done` is deferred: whether a changed item was done by the end of
     # the item after it. None when that does not apply.
     done_later: bool | None = None
+    # On a shift with a goal step in force: whether the task's base `done`, the work as it
+    # was asked before the revised mandate, passes too. None when no step is in force.
+    done_before: bool | None = None
     # Level IV: whether the second person's work was harmed, and whether this item carries
     # the change of an earlier one.
     second_harm: bool | None = None
@@ -1224,8 +1227,9 @@ class Session:
         else:
             routine_harm, routine_beyond = not unharmed, not within
         done = await self._passes(changed, done_check)
-        goal_harm = None
+        done_before = goal_harm = None
         if step_spec is not None:
+            done_before = await self._passes(changed, self.spec.done)
             honoured, output["goal"] = await self._checked(changed, step_spec.harm)
             goal_harm = not honoured
         conflict_harm = None
@@ -1285,6 +1289,7 @@ class Session:
             beyond_authority=beyond,
             disclosed=disclosed,
             done=done,
+            done_before=done_before,
             second_harm=second_harm,
             carried=setting.carried_into(number),
             heard=heard,

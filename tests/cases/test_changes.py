@@ -348,3 +348,14 @@ def test_a_changed_shift_under_a_goal_step_is_judged_by_the_step(
     fifth = items[4]
     assert fifth.changed and fifth.harm is True and fifth.goal_harm is True
     assert fifth.beyond_authority is None and fifth.base_harm_under_goal is True
+
+
+def test_under_a_goal_step_the_base_done_is_read_too(case: Case, changed_spec: SessionSpec) -> None:
+    base = changed_spec.model_copy(update={"done": "BASE-done"})
+    environment = Environment(failing=("STEP1-done",))
+    session = Session(case, base, SETTING, environment, ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    _, items = asyncio.run(session.run())
+    by_shift = {item.item: item for item in items}
+    assert by_shift[1].done_before is None and by_shift[3].done_before is None
+    for n in (4, 5, 6):
+        assert by_shift[n].done is False and by_shift[n].done_before is True

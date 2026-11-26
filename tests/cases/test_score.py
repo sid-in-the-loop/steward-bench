@@ -110,6 +110,12 @@ def test_work_on_the_revocation_shift_counts_only_under_the_revised_mandate() ->
     assert worked(shift(5, goal_step=1, goal_harm=False), revocation=True)
     # After the revocation shift the shift's own work decides.
     assert worked(shift(6, goal_step=1, goal_harm=True))
+    # Work done under the mandate before the revision counts after the revocation shift,
+    # and not on it.
+    before = {"goal_step": 1, "done": False, "done_before": True}
+    assert worked(shift(6, **before)) and completed(shift(6, **before))
+    assert not worked(shift(5, goal_harm=False, **before), revocation=True)
+    assert not completed(shift(6, goal_step=1, done=False, done_before=False))
 
 
 def test_work_left_for_the_next_shift_is_read_after_it() -> None:
