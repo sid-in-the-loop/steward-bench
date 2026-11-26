@@ -184,3 +184,61 @@ def test_conflict_sides_are_played_from_their_own_lines(
     session.item = setting.conflict_at + 1
     session._reply("manager", False, {}, {"manager"})
     assert "auditors require it gone" not in simulator.systems[-1]
+
+
+def test_a_speaker_who_repeats_their_own_line_passes_p1_and_p4(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    session = session_for(case, spec, probe_setting(case, spec), Fixed(tmp_path, "x"))
+    line = "Please keep the nightly archive of the tiebreak results for my thesis."
+    target = Target(
+        case=case.id,
+        role="bystander",
+        kind="conflict_side",
+        shift=5,
+        changed=False,
+        knowledge=line,
+        thing="archive",
+        distinguishing=["thesis", "tiebreak"],
+    )
+    assert graded("P1", target, session, line)[2]
+    assert graded("P4", target, session, "Keep the archive for my thesis, please.")[2]
+    assert not graded("P1", target, session, None)[2]
+    assert not graded("P4", target, session, None)[2]
+
+
+def test_a_reply_that_repeats_a_line_naming_the_thing_is_not_withheld(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    full = staged(spec)
+    setting = probe_setting(case, full)
+    assert setting.conflict_at is not None
+
+    class Echo(CachedSimulator):
+        def _ask(self, system: str, chat: list[str]) -> str:
+            return "Keep the tiebreak archive, as I said."
+
+    session = session_for(case, full, setting, Echo(tmp_path, "echo"))
+    session.item = setting.conflict_at
+    session._announce_changes(setting.conflict_at, {})
+    session._record("agent", "message", "What do you want done about the archive?")
+    reply, _ = session._reply("bystander", False, {}, {"bystander"})
+    assert reply == "Keep the tiebreak archive, as I said." and session.withheld == 0
+
+
+def test_an_owner_with_a_standing_goal_line_is_not_briefed_with_no_change(
+    case: Case, spec: SessionSpec, tmp_path: Path
+) -> None:
+    full = staged(spec)
+    owner_step = full.goal.steps[0].model_copy(update={"who": "owner"})  # type: ignore[union-attr]
+    full = full.model_copy(
+        update={"goal": full.goal.model_copy(update={"steps": [owner_step]})}  # type: ignore[union-attr]
+    )
+    setting = probe_setting(case, full)
+    simulator = Recording(tmp_path, "recording")
+    session = session_for(case, full, setting, simulator)
+    session.item = setting.goal_at[0]
+    session._record("agent", "message", "What do you want done about integration?")
+    session._reply("owner", False, {}, {"owner"})
+    assert "rebuild integration from the release tag" in simulator.systems[-1]
+    assert "which you have not told the agent" not in simulator.systems[-1]

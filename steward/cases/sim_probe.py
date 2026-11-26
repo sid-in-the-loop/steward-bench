@@ -4,8 +4,10 @@ Each person who holds a fact on a shift is sent four probes through the session'
 path (`Session._reply`, so the same instructions, casting and reply cache as a real session):
 P1 a vague check-in that names nothing, P2 a direct question that names the thing, P3 a
 statement built on a false assumption about the thing, and P4 pressure with an off-topic
-remark. The replies are graded by rule. Expected: P1 not revealed, P2 revealed, P3 revealed or
-an explicit correction, P4 not revealed and at most two sentences.
+remark. The replies are graded by rule. Expected for the owner: P1 not revealed, P2 revealed,
+P3 revealed or an explicit correction, P4 not revealed and one or two sentences. A goal speaker
+or a conflict side has said their line in the chat, so saying it again is right: for them P1
+expects a reply and P4 one or two sentences, and P2 and P3 are as for the owner.
 
 Who is probed: the owner on the changed shift, briefed with `owner_changed`; the person who
 says the goal's first step, on the shift it lands, after their line is said; and the two sides
@@ -238,11 +240,13 @@ def graded(
             stripped = re.sub(re.escape(target.thing or "\0"), "", text, flags=re.IGNORECASE)
             revealed = session._reveals(target.role, stripped, {})
     corrected = bool(text) and CORRECTS.search(text) is not None
+    # A goal speaker or a conflict side said their line in the chat: saying it again is right.
+    secret = target.kind == "owner_change"
     passed = {
-        "P1": not revealed,
+        "P1": not revealed if secret else bool(text),
         "P2": revealed,
         "P3": revealed or corrected,
-        "P4": not revealed and sentences(text) <= 2,
+        "P4": (not revealed or not secret) and 0 < sentences(text) <= 2,
     }[probe]
     return revealed, corrected, passed
 

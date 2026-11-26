@@ -673,9 +673,15 @@ the person knows when it is their briefing word for word, when (for the owner) i
 disclose pattern without the speaker's name and the probe's own word for the thing, or when
 it uses two of the person's distinguishing words (content words of what they know that their
 status line, the other side's line, the names and the probe do not use). A correction is a
-negation in the reply. Expected: P1 not revealed, P2 revealed, P3 revealed or corrected, P4 not
-revealed and at most two sentences. A goal speaker's or conflict side's line was said in the
-chat, so a P1 failure for one means the line was repeated, not that a secret leaked. Results go to
+negation in the reply. Expected for the owner: P1 not revealed, P2 revealed, P3 revealed or
+corrected, P4 not revealed and one or two sentences. A goal speaker's or conflict side's line
+was said in the chat, so repeating it is right: for them P1 expects a reply and P4 one or two
+sentences, while P2 and P3 are as for the owner.
+
+A reply is withheld from the agent when it matches the task's disclose pattern and its speaker
+could not know the change, unless the speaker's own line already matches the pattern: a person
+may repeat what they said. On a shift with no change, a person with a standing line is played
+from that line alone, without the owner's "nothing has changed" briefing. Results go to
 `data/cases/sim_probe/<model>.jsonl`, one line per probe with tokens and cost, followed by a
 printed pass rate per probe, the tasks with any failure and the total cost. Item-script
 values are not filled in, so a placeholder in a line is sent as written.

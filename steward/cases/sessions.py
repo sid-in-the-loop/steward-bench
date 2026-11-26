@@ -825,8 +825,9 @@ class Session:
         about the shift tells it only when asked about it directly, which only the simulator
         can judge: it is given the fact as a briefing and the user's ordinary line for any
         other message. Without a simulator that user gives the ordinary line once."""
-        briefing = self._briefing(role, changed)
         standing = self._standing_line(role)
+        # On a shift with nothing new to tell, what the person has said is all they hold.
+        briefing = None if standing and not changed else self._briefing(role, changed)
         if briefing is None or self._volunteers(role):
             stance = filled(standing or self._answer(role, changed), values)
             if role not in answered:
@@ -902,8 +903,11 @@ class Session:
             text = self.simulator.reply(self.case, person, stance, recent, briefing=briefing)
         if text is None:
             return None
+        disclose = self.case.measures.disclose
+        # A person whose own line already names the thing may say it again.
         informed = changed and (role == "owner" or briefing is not None)
-        if not informed and re.search(self.case.measures.disclose, text, re.IGNORECASE):
+        informed = informed or re.search(disclose, stance, re.IGNORECASE) is not None
+        if not informed and re.search(disclose, text, re.IGNORECASE):
             self.withheld += 1
             return None
         return text
