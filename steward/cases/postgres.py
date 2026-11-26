@@ -60,7 +60,9 @@ ALTER ROLE "{role}" LOGIN NOSUPERUSER CREATEDB CREATEROLE NOREPLICATION NOBYPASS
 GRANT pg_monitor, pg_signal_backend TO "{role}";
 """
 # What the superuser owns in a database goes to the agent's role: everything outside the
-# system schemas that no extension or table holds. Run after every script of the harness, so
+# system schemas that no extension holds, but for a sequence a table holds, which follows
+# its table. Each change is made on its own, so one that fails leaves the rest. Run after
+# every script of the harness, so
 # what an item script creates is the agent's to change, as it was when the agent connected as
 # the superuser.
 HAND_OVER = """DO $steward$
@@ -73,7 +75,11 @@ BEGIN
         WHERE n.nspowner = '{superuser}'::regrole
           AND n.nspname NOT LIKE 'pg\\_%' AND n.nspname <> 'information_schema'
     LOOP
-        EXECUTE format('ALTER SCHEMA %I OWNER TO %I', found.nspname, agent);
+        BEGIN
+            EXECUTE format('ALTER SCHEMA %I OWNER TO %I', found.nspname, agent);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '%', SQLERRM;
+        END;
     END LOOP;
     FOR found IN
         SELECT c.oid::regclass AS name, c.relkind FROM pg_class c
@@ -83,17 +89,21 @@ BEGIN
           AND NOT EXISTS (
               SELECT 1 FROM pg_depend d
               WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid
-                AND d.deptype IN ('a', 'i', 'e')
+                AND (d.deptype = 'e' OR (c.relkind = 'S' AND d.deptype IN ('a', 'i')))
           )
     LOOP
-        EXECUTE format(
-            'ALTER %s %s OWNER TO %I',
-            CASE found.relkind
-                WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'
-                WHEN 'f' THEN 'FOREIGN TABLE' WHEN 'S' THEN 'SEQUENCE' ELSE 'TABLE'
-            END,
-            found.name, agent
-        );
+        BEGIN
+            EXECUTE format(
+                'ALTER %s %s OWNER TO %I',
+                CASE found.relkind
+                    WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW'
+                    WHEN 'f' THEN 'FOREIGN TABLE' WHEN 'S' THEN 'SEQUENCE' ELSE 'TABLE'
+                END,
+                found.name, agent
+            );
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '%', SQLERRM;
+        END;
     END LOOP;
     FOR found IN
         SELECT p.oid::regprocedure AS name, p.prokind FROM pg_proc p
@@ -105,10 +115,14 @@ BEGIN
               WHERE d.classid = 'pg_proc'::regclass AND d.objid = p.oid AND d.deptype = 'e'
           )
     LOOP
-        EXECUTE format(
-            'ALTER %s %s OWNER TO %I',
-            CASE WHEN found.prokind = 'a' THEN 'AGGREGATE' ELSE 'ROUTINE' END, found.name, agent
-        );
+        BEGIN
+            EXECUTE format(
+                'ALTER %s %s OWNER TO %I',
+                CASE WHEN found.prokind = 'a' THEN 'AGGREGATE' ELSE 'ROUTINE' END, found.name, agent
+            );
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '%', SQLERRM;
+        END;
     END LOOP;
     FOR found IN
         SELECT t.oid::regtype AS name FROM pg_type t
@@ -122,7 +136,11 @@ BEGIN
                 AND d.deptype IN ('e', 'i')
           )
     LOOP
-        EXECUTE format('ALTER TYPE %s OWNER TO %I', found.name, agent);
+        BEGIN
+            EXECUTE format('ALTER TYPE %s OWNER TO %I', found.name, agent);
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '%', SQLERRM;
+        END;
     END LOOP;
 END $steward$;
 """
@@ -142,7 +160,11 @@ BEGIN
         SELECT datname FROM pg_database
         WHERE NOT datistemplate AND datname <> 'postgres' AND datdba = '{superuser}'::regrole
     LOOP
-        EXECUTE format('ALTER DATABASE %I OWNER TO %I', found, '{role}');
+        BEGIN
+            EXECUTE format('ALTER DATABASE %I OWNER TO %I', found, '{role}');
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '%', SQLERRM;
+        END;
     END LOOP;
     FOR found IN
         SELECT DISTINCT r.rolname FROM pg_shdepend d JOIN pg_roles r ON r.oid = d.refobjid
@@ -151,7 +173,11 @@ BEGIN
           AND NOT pg_has_role(r.rolname, '{role}', 'MEMBER')
           AND NOT pg_has_role('{role}', r.rolname, 'MEMBER')
     LOOP
-        EXECUTE format('GRANT %I TO %I', found, '{role}');
+        BEGIN
+            EXECUTE format('GRANT %I TO %I', found, '{role}');
+        EXCEPTION WHEN OTHERS THEN
+            RAISE WARNING '%', SQLERRM;
+        END;
     END LOOP;
 END $steward$;
 """
