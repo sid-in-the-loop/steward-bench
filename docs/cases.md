@@ -499,13 +499,22 @@ description of a person the simulator is shown only who they are (its first sent
 they write (its sentence on that), then their card's manner (`in_character`). The rest of the
 description was written for a single case in which the owner already knows the change, and
 until 2026-11-26 it was shown on every shift, so owners told the change on routine shifts.
-Where even the first sentence carries part of the change, `descriptions` in `session.yaml`
-gives the person's session description by role; it is read by the simulator only and is no
-part of the task's version. Four tasks have one (mlops-71050a8dfb, terminal-70dee51475,
-misc-a9b92bb8a1, swe-728d0e41a4). A rule line also tells the person that who they are says
-nothing about the shift. A test holds every person of every benchmark task, on a routine
-shift, to fewer than three content words of `owner_changed` beyond the request, the owner's
-own lines, the cards and the names.
+Where even the first sentence carries part of the change, or the fact that settles the
+conflict, `descriptions` in `session.yaml` gives the person's session description by role; it
+is read by the simulator only and is no part of the task's version. On 2026-11-26 every
+shown description of the 123 benchmark tasks was read against the task's `owner_changed` and
+its conflict (the item script's CONFLICT notes and the conflict's safe report), and 82 people
+in 59 tasks were given one: a first sentence that stated the change or pointed to where it
+lies ("takes his turn as a moderator of the public community chat", "the vendor's notices
+arrive in her mailbox"), and a side of the conflict whose first sentence settled it ("decides
+who holds a login, apart from the radar feed's service login that Dr Lockhart kept", "was
+head of development management until about seven weeks ago"). A side's role is kept ("the
+registered manager"); its dates, handovers and disclaimers are not. A rule line also tells the
+person that who they are says nothing about the shift. Tests hold every person of every
+benchmark task, on a routine shift, to fewer than three content words of `owner_changed` beyond
+the request, the owner's own lines, the cards and the names, and every conflict side to a
+description that does not date, hand over or disclaim a role ("apart from", "has no say",
+"took it over", "weeks ago", "incoming").
 
 On a routine shift after a changed one (State Drift has four) the owner is briefed with each
 earlier change, as on that shift, and that none of it applies to this shift, on which nothing

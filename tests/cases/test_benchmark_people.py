@@ -139,6 +139,33 @@ def test_no_owner_thing_can_be_written_from_the_request_alone() -> None:
     assert from_request == []
 
 
+# Wording that dates a role, hands it over or disclaims it: what settles most conflicts, which
+# a side shown it on every shift could concede or claim from who they are.
+SAY = re.compile(
+    r"apart from|\bexcept\b|(?:has|holds) no say|not on the|"
+    r"until (?:last|this|next) (?:week|month|quarter)|since (?:last|this) (?:week|month)|"
+    r"(?:days?|weeks?|months?) ago|\btook (?:\w+ ){0,3}over|\btakes? (?:\w+ ){0,3}over|"
+    r"until (?:she|he|they) hands?|handed (?:\w+ ){0,3}over|for (?:the last|a) month|"
+    r"\bincoming\b|(?:until|since) the handover",
+    re.IGNORECASE,
+)
+
+
+@pytest.mark.parametrize("side", ["first", "second"])
+def test_no_conflict_side_is_shown_who_has_the_say(side: str, tmp_path: Path) -> None:
+    found = {}
+    for case, spec in benchmark_tasks():
+        assert spec.conflict is not None
+        role = getattr(spec.conflict, side)
+        description = shown_on_a_routine_shift(case, spec, role, tmp_path)
+        said = SAY.search(description)
+        if said:
+            found[case.id] = said[0]
+    assert found == {}
+    before = "is the database administrator who decides who holds a login, apart from the"
+    assert SAY.search(before) and SAY.search("who is moving on and holds no say over it")
+
+
 def test_an_article_before_a_slot_is_not_doubled_by_its_value() -> None:
     values = {"meeting": "the council meeting of 3 March", "fleet": "The walking fleet"}
     assert filled("the {meeting} recording", values) == "the council meeting of 3 March recording"
@@ -151,7 +178,7 @@ def test_a_written_session_description_is_no_part_of_the_version(tmp_path: Path)
     directory = ROOT / "mlops-71050a8dfb"
     case = load_case(directory)
     written = load_session_spec(directory, case)
-    assert written is not None and set(written.descriptions) == {"owner"}
+    assert written is not None and set(written.descriptions) == {"owner", "bystander"}
     copy = tmp_path / directory.name
     shutil.copytree(directory, copy)
     raw = yaml.safe_load((copy / "session.yaml").read_text())
