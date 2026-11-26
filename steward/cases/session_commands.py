@@ -19,6 +19,7 @@ from steward.cases.case import Case, Reference, Repo, Role
 from steward.cases.changes import reference_for
 from steward.cases.commands import cases_root, load_cases, wait_for_room
 from steward.cases.levels import Bank, Voice
+from steward.cases.rate_log import log_while, rate_log
 from steward.cases.run import Model, model_policy
 from steward.cases.sandbox import MACHINE_FAULTS
 from steward.cases.schedule import BenchmarkLevel, benchmark_setting
@@ -613,11 +614,12 @@ def run_jobs(
     deadline = deadline or Deadline(None)
     throttle = Throttle(model.name, start or workers, workers)
     lock = threading.Lock()
+    rates = rate_log(settings, model.name)
     client = httpx.Client(
         base_url=model.base_url,
         headers={"Authorization": f"Bearer {os.environ.get(model.api_key_env, '')}"},
         timeout=httpx.Timeout(300.0, connect=30.0),
-        event_hooks={"response": [throttle.observe]},
+        event_hooks={"response": [throttle.observe, rates.hook("agent")]},
     )
     skipped = 0
 
@@ -674,12 +676,18 @@ def run_jobs(
 
     stop = threading.Event()
     throttle.run_adjusting(stop)
+    logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop)]
+    played_by = getattr(simulator, "model", None)
+    if played_by and played_by != model.name:
+        logged.append(log_while(rate_log(settings, played_by), lambda: (0, 0), stop))
     try:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             finished = [r for r in pool.map(work, todo) if r is not None]
     finally:
         stop.set()
         client.close()
+        for thread in logged:
+            thread.join()
     if not budget.room:
         left = len(todo) - len(finished)
         print(f"{model.name}: stopped at the ${budget.limit:.2f} limit with {left} sessions left")

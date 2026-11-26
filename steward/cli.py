@@ -1028,6 +1028,7 @@ def bench_simulator(settings: Settings, model: str) -> CachedSimulator:
     import httpx
 
     from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.rate_log import rate_log
     from steward.cases.simulator import ClaudeSimulator, OpenAISimulator
 
     if model.startswith("claude-"):
@@ -1039,6 +1040,7 @@ def bench_simulator(settings: Settings, model: str) -> CachedSimulator:
         base_url=endpoint.base_url,
         headers={"Authorization": f"Bearer {os.environ.get(endpoint.api_key_env, '')}"},
         timeout=httpx.Timeout(300.0, connect=30.0),
+        event_hooks={"response": [rate_log(settings, model).hook("simulator")]},
     )
     return OpenAISimulator(client, simulator_cache(settings), model)
 

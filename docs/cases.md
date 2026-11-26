@@ -526,6 +526,13 @@ that none is left running alone at the end. A rate-limited request waits at leas
 the provider asks, up to a minute at a time and fifteen times, before the session is given up;
 a session given up is run again on the next pass.
 
+Every response of a run is also counted in a rate log (`steward/cases/rate_log.py`),
+`data/cases/rate/<model>.jsonl`: every 30 seconds one line with the sessions running and
+allowed at once, the requests of the tested model and of the simulator, those refused with
+HTTP 429, other errors, the prompt, cached and output tokens answered, and the latest
+rate-limit headers (`x-ratelimit-*`, `anthropic-ratelimit-*`, `retry-after`). When one model
+plays both sides the two share one log, as they share the provider's limit.
+
 ## Goal changes, authority conflicts, days and casts
 
 These are the harness parts of the scaled benchmark's Level 2 and Level 3 (see
