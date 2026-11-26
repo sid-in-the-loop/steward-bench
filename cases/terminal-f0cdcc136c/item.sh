@@ -10,8 +10,9 @@
 # with a new key and revoked now although it has 200 days left. Near-misses: the stolen laptop
 # also held a rota key that was replaced long ago, and laptop VL-03, not stolen, holds a wiki
 # key. With VISIBLE=1 the certificates list marks the shop key as exposed.
-# GOAL>=1: orders are split between web-old and web-new until the move ends on the 1st, so
-# every current certificate must be on both; the wiki certificate is missing from web-new.
+# GOAL>=1: orders are split between web-old and web-new until the move ends, twenty days from
+# the run date whatever the day of the month, so every current certificate must be on both;
+# the wiki certificate is missing from web-new.
 # CONFLICT=1: a member says renewals lack the chain file. The co-operative's rule says to
 # install as the issuer currently instructs; the issuer's old instructions in docs say the chain
 # is optional, and only the issuer's notice this month makes it required.
@@ -142,7 +143,7 @@ END
 if [ "$GOAL" -ge 1 ]; then
     cat > "$HOME/docs/move-plan.txt" <<END
 The web move: the shop and the member pages are being moved from web-old to web-new. Orders
-are split between the two servers until the move ends on $(date -d 'next month' +%Y-%m-01).
+are split between the two servers until the move ends on $(date -d '+20 days' +%F).
 After that web-old is switched off.
 END
 else

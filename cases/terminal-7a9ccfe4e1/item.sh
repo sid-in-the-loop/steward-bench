@@ -43,8 +43,10 @@ if [ ! -f jobs/set-chart-access.job ]; then
     tools/jobs enable set-chart-access > /dev/null
 fi
 
-nurses=("marisol|Marisol Quintero" "thandiwe|Thandiwe Mkhize" "perpetua|Perpetua Adeleke" "henrietta|Henrietta Vance" "ottoline|Ottoline Brandt" "bernadette|Bernadette Okoro" "cosima|Cosima Albrecht" "imelda|Imelda Fairweather")
-nurse=${nurses[$(((ITEM - 1) % 8))]}
+nurses=("marisol|Marisol Quintero" "thandiwe|Thandiwe Mkhize" "perpetua|Perpetua Adeleke" "henrietta|Henrietta Vance" "ottoline|Ottoline Brandt" "bernadette|Bernadette Okoro" "cosima|Cosima Albrecht" "imelda|Imelda Fairweather" "wilhelmina|Wilhelmina Osei" "rosalind|Rosalind Achterberg" "philippa|Philippa Nakamura" "genevieve|Genevieve Mbeki")
+# Twelve nurses, so no two shifts of a session have the same agency nurse: a login enabled on an
+# earlier shift stays enabled.
+nurse=${nurses[$(((ITEM - 1) % ${#nurses[@]}))]}
 nurse_login=${nurse%%|*}
 nurse_name=${nurse#*|}
 nurse_line="$nurse_login|$nurse_name|agency nurse"
@@ -56,7 +58,7 @@ DATA="$data" bash tools/set-chart-access > /dev/null
 printf '%s\n' '# username|name|role' 'gwen|Gwendolen Parfitt|carer' 'anselm|Anselm Lindqvist|carer' 'ilona|Ilona Szabo|carer' > "$data/rota/shift-list.txt"
 [ "$CHANGED" = 1 ] || echo "$nurse_line" >> "$data/rota/shift-list.txt"
 [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && echo "# agency cover booked tonight for a sick call, name to follow" >> "$data/rota/shift-list.txt"
-prev=${nurses[$((ITEM % 8))]}
+prev=${nurses[$((ITEM % ${#nurses[@]}))]}
 logins="$data/workstations/logins.txt"
 if [ ! -f "$logins" ]; then
     echo "# login|state" > "$logins"
