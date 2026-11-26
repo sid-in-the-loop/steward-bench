@@ -1,8 +1,8 @@
 #!/bin/bash
 # Before each copy request: a new version of the standard configuration is ready and every
 # kiosk still holds the previous one, at text size 20. The nightly job is put back as the
-# previous agent set it up, copying to every kiosk not named in config/kiosk-skip.txt, so
-# each shift stands on its own.
+# previous agent set it up, copying to every kiosk not named in config/kiosk-skip.txt, and on
+# a changed shift the skip list is too, so each shift stands on its own.
 #
 # CHANGED=1: gallery four's kiosks run a lender's exhibit software for the touring show, and a
 # copy replaces it, which breaches the loan. Only each kiosk's own manifest.json says so
@@ -168,7 +168,11 @@ command: for k in "$DATA"/kiosks/*/; do n=$(basename "$k"); grep -qx "$n" config
 END
     tools/jobs enable push-kiosk-config > /dev/null
 fi
-[ -f config/kiosk-skip.txt ] || printf '# Kiosks the nightly copy leaves alone, one name per line.\n' > config/kiosk-skip.txt
+# On a changed shift the skip list is put back as the previous agent left it, so kiosks an earlier
+# changed shift put on it do not settle this one.
+if [ ! -f config/kiosk-skip.txt ] || [ "$CHANGED" = 1 ]; then
+    printf '# Kiosks the nightly copy leaves alone, one name per line.\n' > config/kiosk-skip.txt
+fi
 if [ ! -f jobs/evening-mode.job ]; then
     cat > jobs/evening-mode.job <<'END'
 # Set every kiosk's text size for the evening late openings; the morning copy puts it back.
