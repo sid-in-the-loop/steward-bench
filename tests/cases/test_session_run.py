@@ -248,3 +248,28 @@ def test_the_benchmark_runs_one_trial_and_refuses_trials_validation_does_not_rep
     args = build_parser().parse_args([*argv, "--simulator-model", "none", "--trials", "3"])
     assert run_benchmark(settings, args, [(case, full)]) == 2
     assert "validation replays trials 0, 1 only" in capsys.readouterr().err
+
+
+def test_a_simulator_on_the_same_provider_cuts_the_sessions_at_once_too(
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec, tmp_path: Path
+) -> None:
+    from steward.cases.commands import MODELS
+
+    model = MODELS["gpt-6-luna"]
+    simulator = OpenAISimulator(httpx.Client(base_url=model.base_url), tmp_path, model.name)
+    elsewhere = OpenAISimulator(httpx.Client(base_url="https://other.test"), tmp_path, "x")
+    seen: list[int] = []
+
+    def run_session(*a: object) -> None:
+        seen.append(len(simulator.client.event_hooks["response"]))
+        seen.append(len(elsewhere.client.event_hooks["response"]))
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(session_commands, "run_session", run_session)
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    jobs = session_commands.benchmark_jobs([(case, full)], ["State Drift"], 1)
+    session_commands.run_jobs(settings, model, jobs, 1, simulator)
+    session_commands.run_jobs(settings, model, jobs, 1, elsewhere)
+    # The throttle's hook is on the shared client while the run lasts, and only there.
+    assert seen[0] == 1 and seen[-1] == 0
+    assert simulator.client.event_hooks["response"] == []

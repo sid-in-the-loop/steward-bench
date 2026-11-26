@@ -836,6 +836,15 @@ def run_held(
         )
         return run
 
+    # A simulator served by the same provider shares its rate limit, so its refusals cut
+    # the number of sessions at once as the tested model's do.
+    played_client = getattr(simulator, "client", None)
+    shared = played_client if isinstance(played_client, httpx.Client) else None
+    if shared is not None and shared.base_url != client.base_url:
+        shared = None
+    hooks = shared.event_hooks if shared is not None else {}
+    if shared is not None:
+        shared.event_hooks = {**hooks, "response": [*hooks["response"], throttle.observe]}
     stop = threading.Event()
     throttle.run_adjusting(stop)
     logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop)]
@@ -847,6 +856,8 @@ def run_held(
     finally:
         stop.set()
         client.close()
+        if shared is not None:
+            shared.event_hooks = hooks
         for thread in logged:
             thread.join()
     if not budget.room:

@@ -63,6 +63,9 @@ class RateLog:
         self.path = path
         self.clock = clock
         self.lock = threading.Lock()
+        # Held by the one thread that flushes the log, so that two runs sharing it in one
+        # process never split one window's counts between them.
+        self.flusher = threading.Lock()
         self.started = clock()
         self._reset()
 
@@ -143,12 +146,20 @@ def rate_log(settings: Settings, model: str) -> RateLog:
 def log_while(
     log: RateLog, active: Callable[[], tuple[int, int]], stop: threading.Event
 ) -> threading.Thread:
-    """Flush `log` every window until `stop` is set, and once more at the end."""
+    """Flush `log` every window until `stop` is set, and once more at the end. A log that
+    another thread already flushes is left to it: the returned thread does nothing."""
+    if not log.flusher.acquire(blocking=False):
+        thread = threading.Thread(target=lambda: None, daemon=True)
+        thread.start()
+        return thread
 
     def loop() -> None:
-        while not stop.wait(WINDOW_SECONDS):
+        try:
+            while not stop.wait(WINDOW_SECONDS):
+                log.flush(*active())
             log.flush(*active())
-        log.flush(*active())
+        finally:
+            log.flusher.release()
 
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()

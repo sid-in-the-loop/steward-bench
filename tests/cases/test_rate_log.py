@@ -54,3 +54,20 @@ def test_logging_writes_a_last_window_when_stopped(tmp_path: Path) -> None:
     thread.join(timeout=5)
     [line] = (tmp_path / "m.jsonl").read_text().splitlines()
     assert json.loads(line)["active"] == 3
+
+
+def test_a_log_has_one_flusher_at_a_time(tmp_path: Path) -> None:
+    log = RateLog(tmp_path / "m.jsonl")
+    stop = threading.Event()
+    first = log_while(log, lambda: (3, 4), stop)
+    second = log_while(log, lambda: (0, 0), stop)
+    stop.set()
+    first.join(timeout=5)
+    second.join(timeout=5)
+    [line] = (tmp_path / "m.jsonl").read_text().splitlines()
+    assert json.loads(line)["active"] == 3
+    # Once the first has finished, the log can be flushed again.
+    again = threading.Event()
+    again.set()
+    log_while(log, lambda: (1, 1), again).join(timeout=5)
+    assert len((tmp_path / "m.jsonl").read_text().splitlines()) == 2

@@ -571,7 +571,10 @@ Every response of a run is also counted in a rate log (`steward/cases/rate_log.p
 allowed at once, the requests of the tested model and of the simulator, those refused with
 HTTP 429, other errors, the prompt, cached and output tokens answered, and the latest
 rate-limit headers (`x-ratelimit-*`, `anthropic-ratelimit-*`, `retry-after`). When one model
-plays both sides the two share one log, as they share the provider's limit.
+plays both sides the two share one log, as they share the provider's limit. One thread at a
+time writes a log, so two runs in one process never split a window between them. A simulator
+served from the tested model's own endpoint shares its limit too, so its HTTP 429 answers cut
+the sessions at once as the tested model's do.
 
 ## Goal changes, authority conflicts, days and casts
 
