@@ -516,6 +516,34 @@ def test_a_user_is_addressed_by_name_not_by_mention() -> None:
     assert addresses("Thanks.\n\n**Mara Ruiz:** did you push?", "Mara Ruiz")
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Hi Odile! Has the bulletin changed?",
+        "Dear Odile, has the bulletin changed?",
+        "Question for Odile: has the bulletin changed?",
+        "Before I copy it, Odile, has the bulletin changed?",
+        "Odile and Tobias, has the bulletin changed?",
+        "Tobias and Odile, has the bulletin changed?",
+        "Understood, Odile: I will hold the copy.",
+    ],
+)
+def test_common_ways_of_naming_someone_address_them(message: str) -> None:
+    assert addresses(message, "Odile Brynjulfsen", ("Tobias Wren", "Lucille Perrin"))
+    assert addresses("Understood, Lucille: I will hold it.", "Lucille Perrin")
+    assert not addresses("I read Odile's bulletin, has it changed?", "Odile Brynjulfsen")
+    assert not addresses("Odile wrote the bulletin. Has it changed?", "Odile Brynjulfsen")
+
+
+def test_a_message_to_two_people_is_answered_by_both(case: Case, spec: SessionSpec) -> None:
+    setting = Setting(items=1, changed=(), users=3)
+    events, items = run(case, spec, setting, Asks(["Mara and Tomas, did either of you push?"]))
+    said = [e.who for e in events if e.kind == "message" and e.who != "agent"]
+    assert said[-2:] == ["owner", "bystander"]
+    assert items[0].asked == ["owner", "bystander"]
+    assert items[0].answered == ["owner", "bystander"]
+
+
 def test_notes_change_what_the_agent_inherits(spec: SessionSpec) -> None:
     inherited = [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
     assert inherited_with_notes(inherited, spec, "out_of_date") == inherited

@@ -482,8 +482,14 @@ from the baseline: `length`, `users`, `changed`, `position`, `notes` and `speaki
 
 Text from the agent that contains no question and addresses no other user is its report on
 the item, and so is anything sent with the report tool that addresses no other user. A
-question goes to the user it addresses by first name, otherwise to the requester; a message
-that addresses another user by name is answered even without a question mark. Whether the
+question goes to the user it addresses by first or full name, otherwise to the requester; a
+message that addresses another user by name is answered even without a question mark. A name
+addresses someone when punctuation follows it and it opens the message or a sentence, after a
+greeting or not ("Hi Odile!", "Dear Odile,"), follows a comma ("Before I copy it, Odile, has",
+"Understood, Lucille:"), or follows "for" before a colon ("Question for Odile:"); so does
+`@` and the first name. A message to several people ("Odile and Tobias, ...") is answered by
+each of them in turn, and each counts as asked. A name only mentioned ("Odile's notes") does
+not address anyone. Whether the
 item is done is never read while the agent can still act, since that would put the answer
 key in place and tell the agent whether a check passes: a question to the requester is
 answered with the requester's reply. Once the item is checked, the agent's last question to

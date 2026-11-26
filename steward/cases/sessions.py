@@ -422,18 +422,40 @@ def session_case(case: Case, spec: SessionSpec) -> Case:
     return case.model_copy(update={"setup": spec.start, "history": history})
 
 
-def addresses(message: str, name: str) -> bool:
-    """Whether a message speaks to the person: their first or full name opens the message or
-    a sentence and is followed by a comma, colon or dash, or their first name is written with
-    @, or their first or full name closes a sentence after a comma. Markdown emphasis around
-    the name, as in `**Mara**,`, is ignored."""
-    message = re.sub(r"[*_]+", "", message)
+# A word that can open a message before the name of the person it is for.
+GREETING = (
+    r"(?:hi|hey|hello|dear|morning|good (?:morning|afternoon|evening)|thanks|thank you|ok|okay"
+    r"|understood|right|sure|great|sorry)"
+)
+# What can follow a name that someone is addressed by.
+AFTER_NAME = r"[,:;.!?\u2014\u2013-]"
+
+
+def _named(name: str) -> str:
     parts = name.split()
-    first = re.escape(parts[0])
-    who = rf"(?:{r'\s+'.join(re.escape(part) for part in parts)}|{first})"
-    opens = rf"(^|[.!?\n]\s*)(hi |hey |hello )?{who}\s*[,:\u2014-]"
-    closes = rf",\s*{who}\s*[.!?]"
-    return re.search(rf"{opens}|@{first}\b|{closes}", message, re.IGNORECASE) is not None
+    return rf"(?:{r'\s+'.join(re.escape(part) for part in parts)}|{re.escape(parts[0])})"
+
+
+def addresses(message: str, name: str, others: tuple[str, ...] = ()) -> bool:
+    """Whether a message speaks to the person, by their first or full name followed by
+    punctuation: opening the message or a sentence, after a greeting or not ("Hi Odile!",
+    "Dear Odile,"); after a comma, mid-sentence or closing it ("Before I copy it, Odile, has",
+    "Understood, Lucille:"); after "for" and before a colon ("Question for Odile:"); or their
+    first name written with @. Named together with any of `others` ("Odile and Tobias,"), each
+    of them is addressed. A name that is only mentioned ("Odile's notes") does not count.
+    Markdown emphasis around the name, as in `**Mara**,`, is ignored."""
+    message = re.sub(r"[*_]+", "", message)
+    who = _named(name)
+    if others:
+        anyone = "|".join(_named(other) for other in others)
+        joined = r"\s*(?:,|&|\band\b)\s*"
+        who = rf"(?:(?:{anyone}){joined})*{who}(?:{joined}(?:{anyone}))*"
+    opens = rf"(?:^|[.!?\n]\s*)(?:{GREETING}\s*[,!]?\s*)?{who}\s*{AFTER_NAME}"
+    after_comma = rf",\s*{who}\s*{AFTER_NAME}"
+    for_them = rf"\bfor\s+{who}\s*[:\u2014\u2013-]"
+    at = rf"@{re.escape(name.split()[0])}\b"
+    found = re.search(rf"{opens}|{after_comma}|{for_them}|{at}", message, re.IGNORECASE)
+    return found is not None
 
 
 def filled(text: str, values: dict[str, str]) -> str:
@@ -762,13 +784,17 @@ class Session:
             return FIRST_SHIFT_ITEM_TURNS.get(domain, FIRST_SHIFT_TURNS)
         return ITEM_TURNS.get(domain, MAX_ITEM_TURNS)
 
-    def _addressed(self, message: str) -> Role:
-        """The user a question from the agent is for: someone present who is addressed by
-        first name, otherwise the requester. A name that is only mentioned does not count."""
-        for role in self.setting.present[1:]:
-            if addresses(message, self.person(role).name):
-                return role
-        return "requester"
+    def _addressed(self, message: str) -> list[Role]:
+        """The users a message from the agent is for: everyone present who is addressed by
+        name, in the order they are present, otherwise the requester. A name that is only
+        mentioned does not count."""
+        names = {role: self.person(role).name for role in self.setting.present[1:]}
+        found = [
+            role
+            for role, name in names.items()
+            if addresses(message, name, tuple(n for r, n in names.items() if r != role))
+        ]
+        return found or ["requester"]
 
     def _answer(self, role: Role, changed: bool) -> str:
         """A user's fixed answer: what they say when asked, whatever is asked."""
@@ -1073,9 +1099,11 @@ class Session:
             # Text that asks nothing and addresses no other user is the agent's report on the
             # item, however it is sent; so is anything sent with the report tool that
             # addresses no other user.
-            role = self._addressed(text)
+            roles = self._addressed(text)
+            role = roles[0]
             final = role == "requester" and ("?" not in text or turn.report is not None)
             self._record("agent", "report" if final else "message", text, thought=self._thought())
+            sent = self.events[-1]
             self.messages.append({"role": "assistant", "content": text})
             if final:
                 report, ending = text, "reported"
@@ -1087,24 +1115,29 @@ class Session:
             # with nothing run after it on a shift that was done counts as a closing one.
             asks = ASKS.search(text) is not None
             first = not any(re.search(measures.change, c) for c in commands)
-            if asks and first:
-                asked_first.append(role)
-            if not asks:
-                informed.append(role)
-            reply, simulated = self._reply(role, changed, values, answered)
-            if asks:
-                asked.append(role)
-            if asks and reply is not None:
-                replied.append(role)
             to_requester = None
-            if role == "requester" and asks:
-                place = len(replied) - 1 if reply is not None else None
-                to_requester = (len(asked) - 1, place, first, len(commands))
-            if reply is not None:
+            spoke = False
+            # A message to several people is answered by each of them in turn.
+            for role in roles:
+                if asks and first:
+                    asked_first.append(role)
+                if not asks:
+                    informed.append(role)
+                reply, simulated = self._reply(role, changed, values, answered)
+                if asks:
+                    asked.append(role)
+                if asks and reply is not None:
+                    replied.append(role)
+                if role == "requester" and asks:
+                    place = len(replied) - 1 if reply is not None else None
+                    to_requester = (len(asked) - 1, place, first, len(commands))
+                if reply is not None:
+                    spoke = True
+                    revealed = revealed or (changed and self._reveals(role, reply, values))
+                    self._hear(role, reply, simulated=simulated)
+                    answered.add(role)
+            if spoke:
                 unanswered = 0
-                revealed = revealed or (changed and self._reveals(role, reply, values))
-                self._hear(role, reply, simulated=simulated)
-                answered.add(role)
                 continue
             unanswered += 1
             if unanswered < UNANSWERED_LIMIT:
@@ -1116,8 +1149,8 @@ class Session:
             else:
                 report, ending = text, "reported"
                 self.reports.append(text)
-                self.events[-1].kind = "report"
-                informed.pop()
+                sent.kind = "report"
+                del informed[-len(roles) :]
             break
 
         attempts = self._attempts() - attempts_before
