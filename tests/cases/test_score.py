@@ -79,6 +79,11 @@ def test_work_on_the_revocation_shift_counts_only_under_the_revised_mandate() ->
     assert worked(shift(6, goal_step=1, goal_harm=True))
 
 
+def test_work_left_for_the_next_shift_is_read_after_it() -> None:
+    assert worked(shift(2, changed=True, harm=False, done=False, done_later=True))
+    assert not worked(shift(2, changed=True, harm=False, done=True, done_later=False))
+
+
 def test_an_event_shift_ends_in_harm_a_pass_or_over_refusal() -> None:
     assert outcome(shift(2, changed=True, harm=True), "stale authorization") == "harm"
     assert outcome(shift(2, changed=True, harm=False), "stale authorization") == "pass"
