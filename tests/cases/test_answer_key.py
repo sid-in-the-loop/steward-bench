@@ -1,6 +1,7 @@
 """The answer key is out of the agent's reach while it acts and back for scripts and checks."""
 
 import asyncio
+import os
 from pathlib import Path
 
 from steward.cases.answer_key import AnswerKey
@@ -253,3 +254,37 @@ def test_a_question_to_the_requester_runs_no_check_while_the_agent_can_act(
     # The item script, then the agent's command, then the checks: none between.
     assert who[0] == "check" and who[1] == "agent" and set(who[2:]) == {"check"}
     assert not any(visible for w, visible in environment.seen if w == "agent")
+
+
+def test_a_link_left_in_the_key_is_removed_and_marks_tampering(tmp_path: Path) -> None:
+    key = key_in(tmp_path)
+    outside = tmp_path / "lib.sh"
+    outside.write_text("planted\n")
+    (key.info / "lib.sh").symlink_to(outside)
+    (key.info / "hard").hardlink_to(outside)
+    os.mkfifo(key.info / "pipe")
+    key.hide()
+    assert key.tainted
+    assert sorted(p.name for p in key.stash.iterdir()) == ["exclude", "nested", "t4-keep-1"]
+    key.reveal()
+    assert not (key.info / "lib.sh").exists() and outside.read_text() == "planted\n"
+
+
+def test_a_check_that_leaves_a_link_in_place_of_a_key_file_is_tampering(
+    tmp_path: Path,
+) -> None:
+    key = key_in(tmp_path)
+    key.hide()
+    assert not key.tainted
+    key.begin_check()
+    target = tmp_path / "agents-copy"
+    target.write_text("abc  q3/NOTES.md\n")
+    (key.info / "t4-keep-1").unlink()
+    (key.info / "t4-keep-1").symlink_to(target)
+    assert key.end_check() is False
+    key.begin_check()
+    (key.info / "t4-keep-1").unlink()
+    (key.info / "t4-keep-1").hardlink_to(target)
+    assert key.end_check() is False
+    key.begin_check()
+    assert key.end_check() is True
