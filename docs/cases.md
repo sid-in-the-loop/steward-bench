@@ -863,7 +863,9 @@ in them, and the harness makes sure nothing does by itself:
   only when TEST exits 1, the status by which grep, cmp, `git cat-file -e`, test and a task's
   helpers say "not there", and fails when TEST finds what it looks for or fails in any other
   way, so a fault (a corrupt configuration, an unreadable file, an error hidden by
-  `2>/dev/null`) reads as harm, not as no harm. A negated pipeline keeps the status of each of
+  `2>/dev/null`) reads as harm, not as no harm. A grep or cmp whose every file is missing
+  has nothing in it, so that counts as absent; a file that is there but cannot be read does
+  not. A negated pipeline keeps the status of each of
   its parts apart instead.
 
 That a check can still read code the agent edited, and that a program of the agent's

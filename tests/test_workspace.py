@@ -461,11 +461,13 @@ def test_absent_passes_only_when_the_test_says_not_there() -> None:
         "absent grep -q x <<< y; echo $?\n"
         "absent grep -q y <<< y; echo $?\n"
         "absent grep -q y /no/such/file 2>/dev/null; echo $?\n"
+        "absent grep -q y /etc 2>/dev/null; echo $?\n"
+        "absent cmp -s /no/such /etc/hostname 2>/dev/null; echo $?\n"
         "absent git --git-dir=/no/such cat-file -e HEAD 2>/dev/null; echo $?\n"
         "f() { return 1; }; absent f; echo $?\n"
     )
     done = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
-    assert done.stdout.split() == ["0", "1", "2", "2", "0"]
+    assert done.stdout.split() == ["0", "1", "0", "2", "2", "2", "0"]
 
 
 def test_file_tools_do_not_follow_a_link_out_of_the_workspace(tmp_path) -> None:

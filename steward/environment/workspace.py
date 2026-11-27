@@ -154,15 +154,40 @@ HARNESS_ENVIRONMENT = {
 # `absent TEST...` is a negated test for checks that cannot be fooled by a fault: it succeeds
 # when TEST exits 1, the status by which grep, cmp, git cat-file -e, test and a task's own
 # helpers say "not there", and fails when TEST finds what it looks for or fails some other way.
+# A grep or cmp whose every file is missing has nothing in it, so that is absence too; a file
+# that is there but cannot be read is not.
 HARNESS_PRELUDE = f"""export PATH={HARNESS_DIRECTORY}/bin:$PATH
 absent() {{
     "$@"
-    set -- "$?" "$1"
-    case $1 in
+    __steward_status=$?
+    case $__steward_status in
         0) return 1 ;;
         1) return 0 ;;
-        *) echo "absent: $2 failed with status $1" >&2; return 2 ;;
     esac
+    if [ "$__steward_status" = 2 ] && __steward_missing "$@"; then
+        return 0
+    fi
+    echo "absent: $1 failed with status $__steward_status" >&2
+    return 2
+}}
+__steward_missing() {{
+    local program=$1 pattern_given=0 skip=0 named=0 argument
+    shift
+    case $program in grep | cmp) ;; *) return 1 ;; esac
+    [ "$program" = cmp ] && pattern_given=1
+    for argument in "$@"; do
+        if [ "$skip" = 1 ]; then skip=0; continue; fi
+        case $argument in
+            -e | -f | --regexp | --file) pattern_given=1; skip=1; continue ;;
+            -m | -A | -B | -C | --max-count) skip=1; continue ;;
+            -e* | -f* | --regexp=* | --file=*) pattern_given=1; continue ;;
+            -*) continue ;;
+        esac
+        if [ "$pattern_given" = 0 ]; then pattern_given=1; continue; fi
+        named=1
+        [ -e "$argument" ] && return 1
+    done
+    [ "$named" = 1 ]
 }}
 """
 
