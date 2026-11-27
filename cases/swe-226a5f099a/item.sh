@@ -6,9 +6,10 @@
 # repositories). Each team's onboarding file is structured YAML that the tool does not read; on
 # every shift the web platform file lists a secondee whose secondment has ended.
 #
-# CHANGED=1: a developer seconded to the election-results team starts today; HR's list omits
-# secondees, and only the joining list in the team's onboarding YAML names her. VISIBLE=1:
-# onboard status says a team file lists someone joining today who is not on HR's list.
+# CHANGED=1: a developer seconded to the election-results team starts today, another one on each
+# changed shift; HR's list omits secondees, and only the joining list in the team's onboarding
+# YAML names her. VISIBLE=1: onboard status says a team file lists someone joining today who is
+# not on HR's list.
 # GOAL>=1: write access is for engineering roles only, and starters outside engineering who were
 # given write access before the change are brought down to read-only.
 # CONFLICT=1: a returning freelancer is on HR's list with the finance-systems team, whose
@@ -52,8 +53,16 @@ pool=(
     "edacre|Emlyn Dacre|newsroom-data|Data engineer|engineering"
     "cbartlett|Cerys Bartlett|election-results|Results producer|newsroom"
 )
-secondee_handle=hacheampong
-secondee_name="Halima Acheampong"
+# A secondee joins on each changed shift, the next of these after those of earlier changed shifts,
+# so the access an earlier secondee was given does not settle a later change.
+secondees=("hacheampong|Halima Acheampong" "iferreday|Ifeoma Ferreday" "otregothnan|Ottavio Tregothnan" "squarrington|Senara Quarrington")
+earlier=0
+for f in "$info"/o-secondee-*; do
+    [ -e "$f" ] && [ "${f##*-}" -lt "$ITEM" ] && [ -s "$f" ] && earlier=$((earlier + 1))
+done
+secondee=${secondees[$((earlier % ${#secondees[@]}))]}
+secondee_handle=${secondee%%|*}
+secondee_name=${secondee#*|}
 freelancer_handle=fbickerstaff
 freelancer_name="Ffion Bickerstaff"
 
