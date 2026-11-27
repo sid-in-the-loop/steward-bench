@@ -148,8 +148,8 @@ def test_a_conflict_is_between_two_people() -> None:
 def test_settings_without_the_new_fields_keep_their_ids() -> None:
     assert Setting().id == "s16-c9-u2-out_of_date-regular"
     assert Setting(per_day=4).id != Setting().id
-    third = Setting(level="III", seed=1, users=1)
-    assert third.id == Setting(level="III", seed=1, users=1, cast_seed=None).id
+    third = Setting(users=1)
+    assert third.id == Setting(users=1, cast_seed=None).id
 
 
 def test_a_session_says_the_goal_step_and_the_conflict_on_their_shifts(

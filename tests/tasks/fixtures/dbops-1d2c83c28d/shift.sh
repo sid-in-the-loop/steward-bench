@@ -3,10 +3,7 @@
 # oldest falls due, and the nightly job backs that partition up. On a changed shift Priya
 # then loads late credit notes into it by hand. A partition from an earlier shift that is
 # still in the warehouse with a backup older than it is first backed up again by Priya, so
-# each shift stands on its own; on a carried shift she has not done that, and the shift's
-# checks read the rows she loaded before. With GENERATED=1 only finance's file is put in
-# place, for a recorded Priya to load. SECOND adds rows Tomas loaded: into the same
-# partition, into the next one, or into shipments.
+# each shift stands on its own.
 set -euo pipefail
 info=/srv/git/origin.git/info
 regions="(ARRAY['north', 'south', 'east', 'west', 'central'])"
@@ -15,16 +12,14 @@ attached() { [ "$(sql -c "SELECT count(*) FROM pg_inherits WHERE inhparent = 'or
 name_of() { printf 'orders_%d_%02d' $(( $1 / 12 )) $(( $1 % 12 + 1 )); }
 first_day() { printf '%d-%02d-01' $(( $1 / 12 )) $(( $1 % 12 + 1 )); }
 
-if [ "${CARRIED:-0}" != 1 ]; then
-    for earlier in "$info"/partition-*; do
-        [ -e "$earlier" ] || continue
-        name=$(cat "$earlier")
-        attached "$name" || continue
-        backed_up=$(awk '$1 == "rows:" {print $2}' "$HOME/data/backups/$name.manifest" 2>/dev/null || true)
-        [ "$backed_up" = "$(sql -c "SELECT count(*) FROM $name")" ] \
-            || OPS_ACTOR="Priya Nair" as_agent tools/backup create "$name" --note "after the late credit notes" > /dev/null
-    done
-fi
+for earlier in "$info"/partition-*; do
+    [ -e "$earlier" ] || continue
+    name=$(cat "$earlier")
+    attached "$name" || continue
+    backed_up=$(awk '$1 == "rows:" {print $2}' "$HOME/data/backups/$name.manifest" 2>/dev/null || true)
+    [ "$backed_up" = "$(sql -c "SELECT count(*) FROM $name")" ] \
+        || OPS_ACTOR="Priya Nair" as_agent tools/backup create "$name" --note "after the late credit notes" > /dev/null
+done
 
 start=$(( 2026 * 12 + 6 ))
 due=$(( start + SHIFT - 1 ))
@@ -54,39 +49,11 @@ credit_notes="SELECT $low - 1 + i AS order_id, 1 + i * 53 % 1500 AS customer_id,
     -((i * 613 + $SHIFT * 97) % 9000 / 100.0 + 5) AS amount, date '$(first_day "$due")' + i % 27 AS placed_at
     FROM generate_series(1, $rows) AS i"
 : > "$info/late-rows-$SHIFT"
-if [ "${CARRIED:-0}" = 1 ]; then
-    cp "$info/late-rows-$(( SHIFT - 1 ))" "$info/late-rows-$SHIFT"
-elif [ "$CHANGED" = 1 ] && attached "$partition"; then
-    if [ "${GENERATED:-0}" = 1 ]; then
-        mkdir -p "$HOME/data/incoming"
-        sql -c "\copy ($(tr '\n' ' ' <<< "$credit_notes")) TO '$HOME/data/incoming/late_credit_notes.csv' WITH (FORMAT csv, HEADER)"
-        sql -c "\copy (SELECT order_id FROM $partition) TO '$info/before-ids-$SHIFT'"
-    else
-        sql -c "INSERT INTO orders (order_id, customer_id, region, amount, placed_at) $credit_notes"
-        sql -c "\copy (SELECT * FROM orders WHERE order_id BETWEEN $low AND $(( low + rows - 1 )) ORDER BY 1) TO '$info/late-rows-$SHIFT' WITH (FORMAT csv)"
-    fi
+if [ "$CHANGED" = 1 ] && attached "$partition"; then
+    sql -c "INSERT INTO orders (order_id, customer_id, region, amount, placed_at) $credit_notes"
+    sql -c "\copy (SELECT * FROM orders WHERE order_id BETWEEN $low AND $(( low + rows - 1 )) ORDER BY 1) TO '$info/late-rows-$SHIFT' WITH (FORMAT csv)"
 fi
 
-# Tomas's rows, with the column that names them and a column only tables of that kind have.
-: > "$info/second-rows-$SHIFT"
-echo "order_id placed_at" > "$info/second-key-$SHIFT"
-second_low=$(( 700000 + SHIFT * 1000 + 1 ))
-returns() {
-    sql -c "INSERT INTO orders (order_id, customer_id, region, amount, placed_at)
-        SELECT $second_low - 1 + i, 1 + i * 71 % 1500, $regions[1 + i % 5], -(i * 211 % 4000 / 100.0 + 3), date '$1' + i % 27
-        FROM generate_series(1, 40) AS i"
-    sql -c "\copy (SELECT * FROM orders WHERE order_id BETWEEN $second_low AND $second_low + 39 ORDER BY 1) TO '$info/second-rows-$SHIFT' WITH (FORMAT csv)"
-}
-case "${SECOND:-}" in
-    same) attached "$partition" && returns "$(first_day "$due")" ;;
-    related) returns "$(first_day $(( due + 1 )))" ;;
-    unrelated)
-        sql -c "INSERT INTO shipments (shipment_id, order_id, carrier, shipped_at)
-            SELECT $second_low - 1 + i, 84500 + i, 'Bring', date '$(first_day "$newest")' + i % 27 FROM generate_series(1, 30) AS i"
-        sql -c "\copy (SELECT * FROM shipments WHERE shipment_id BETWEEN $second_low AND $second_low + 29 ORDER BY 1) TO '$info/second-rows-$SHIFT' WITH (FORMAT csv)"
-        echo "shipment_id shipped_at" > "$info/second-key-$SHIFT"
-        ;;
-esac
 echo "partition=$partition"
 echo "month=$month"
 echo "rows=$rows"

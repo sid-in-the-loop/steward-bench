@@ -676,8 +676,7 @@ class Session:
             f"DAY={day_of(setting.per_day, self.shift)}\n"
         )
         flags = (
-            f"CHANGED={int(changed)} SECOND= "
-            f"CARRIED=0 GENERATED=0 "
+            f"CHANGED={int(changed)} "
             f"GOAL={step} CONFLICT={conflict} VISIBLE={int(setting.visible)}\n"
         )
         exports += flags if isinstance(self.executor, LiveExecutor) else f"export {flags}"

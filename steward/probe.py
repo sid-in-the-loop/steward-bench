@@ -176,8 +176,8 @@ def distinguishing(knowledge: str, apart_from: list[str], thing: str | None) -> 
 
 
 def probe_setting(task: Task, spec: SessionSpec) -> Setting:
-    """The benchmark's first trial at the highest level the task has, for its cast and its
-    changed and conflict shifts."""
+    """The benchmark's first trial under the task's last condition, State and Instruction Drift
+    where the task has it, for its cast and its event shifts."""
     return benchmark_setting(task.id, spec, conditions_of(spec)[-1], 0)
 
 
