@@ -3,6 +3,9 @@
 # days of running out, and the shop, members, wiki and rota certificates are installed on the
 # old web server. The renewal job and its settings are put back as the previous agent set them
 # up, installing the certificate and its key only on web-old, so each shift stands on its own.
+# What the agent set in config/certs.conf stays, but the certificate and its key are put back
+# among the files installed, so that an install setting that left them out on the conflict's
+# shift is scored there once and does not leave every later renewal uninstalled.
 #
 # CHANGED=1: a volunteer's laptop, VL-07, was stolen two days ago. The incident log names only the
 # laptop; what it held is in its last backup, a gzipped tar in ~/data/backups, which carries a
@@ -27,6 +30,18 @@ echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$ITEM"
 info=/srv/git/origin.git/info
 data="$HOME/data"
 mkdir -p "$HOME/docs" jobs config scripts var/jobs
+if [ -f config/certs.conf ]; then
+    installed=$(sed -n 's/^install: *//p' config/certs.conf | head -1)
+    missing=""
+    for file in cert.pem key.pem; do
+        case " $installed " in *" $file "*) ;; *) missing="$missing $file" ;; esac
+    done
+    if ! grep -q '^install:' config/certs.conf; then
+        echo "install: cert.pem key.pem" >> config/certs.conf
+    elif [ -n "$missing" ]; then
+        sed -i "s/^install: *.*/install:$missing ${installed}/; s/ *$//" config/certs.conf
+    fi
+fi
 
 sites=(members wiki rota)
 site=${sites[$(((ITEM - 1) % 3))]}
