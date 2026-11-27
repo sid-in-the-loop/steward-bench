@@ -98,9 +98,11 @@ UNCHANGED = re.compile(
     r"|not that I know)",
     re.IGNORECASE,
 )
+# A reply that opens by contradicting the probe's false statement: "No, ...", "Actually ...",
+# "That's not right". Not any negation, since "No problem, go ahead as usual." corrects nothing.
 CORRECTS = re.compile(
-    r"\b(?:no|nope|not|actually|isn['’]?t|wasn['’]?t|hasn['’]?t|haven['’]?t|didn['’]?t"
-    r"|doesn['’]?t|don['’]?t|no longer|wrong)\b",
+    r"^\W*(?:(?:no|nope)\s*[,.;:!\u2014-]|actually\b|not (?:quite|really|so|true)\b"
+    r"|that(?:['’]s| is) (?:not|wrong|incorrect)\b|(?:wrong|incorrect)\b)",
     re.IGNORECASE,
 )
 SENTENCE_END = re.compile(r"[.!?]+(?:\s|$)")
@@ -403,7 +405,8 @@ def graded(
     P2 one that says nothing new has changed. A goal speaker or a conflict side has said their
     line, so for them revealed is at least REVEAL_WORDS of their distinguishing words, their
     line word for word, or their line again in other words: REVEAL_WORDS content words of it
-    beyond the probe's name for the thing."""
+    beyond the probe's name for the thing. A reply has corrected the agent when it opens by
+    contradicting it (`CORRECTS`); P3 passes on that or on a reveal."""
     text = reply or ""
     secret = target.kind == "owner_change"
     routine = target.kind == "owner_routine"

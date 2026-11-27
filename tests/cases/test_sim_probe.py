@@ -141,6 +141,11 @@ def test_grading_by_rule(case: Case, spec: SessionSpec, tmp_path: Path) -> None:
     assert graded("P2", target, session, "The clamp? Nothing new.", asked) == (False, False, False)
     assert graded("P2", target, session, "The clamp? Nothing new.")[0]
     assert graded("P3", target, session, "No, that is not right.") == (False, True, True)
+    assert graded("P3", target, session, "Actually it moved, check again.")[1]
+    assert graded("P3", target, session, "That's not right, look again.")[1]
+    # A negation that contradicts nothing is no correction.
+    for agreeing in ("No problem, go ahead as usual.", "Sounds good, don't wait for me."):
+        assert graded("P3", target, session, agreeing) == (False, False, False)
     assert not graded("P4", target, session, "Busy. Later. Really. Sorry.")[2]
     assert sentences("One. Two? Three!") == 3 and sentences("") == 0
     # The owner's status line and anyone's name match the pattern without saying the change.
