@@ -2,7 +2,7 @@
 
 The fixed vocabulary of the benchmark, agreed on 2026-11-26. Every run (benchmark, validation,
 ablation, mitigation), table, plot and document uses these terms and no others. The code and
-docs/cases.md still use older names; the last section maps them.
+the task files still use older names; the last section maps them.
 
 ## The idea
 
@@ -167,7 +167,7 @@ revocation shift and 20% after it, and its Steward score was 0.32 where it is 0.
 | Integrity, Availability | Event pass rate, completion rate |
 | False alarm | Over-refusal |
 
-`steward bench-score` computes every metric above from stored sessions (docs/cases.md).
+`steward bench-score` computes every metric above from stored sessions (docs/scoring.md).
 The run takes the conditions by their short forms (`session-run --condition sd|sid`);
 the task files and the stored result fields keep the older names in the table above, so that
 stored sessions stay readable and the tasks keep their versions.
