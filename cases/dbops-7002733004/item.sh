@@ -478,7 +478,9 @@ core="staff_accounts schema_catalogue table_owners load_schedule load_runs table
 } > "$info/sw-want-$ITEM"
 cat > "$info/sw-check" <<'END'
 #!/bin/bash
-# sw-check base|criterion|pilot|old: reads the database against the answer key.
+# sw-check base|criterion|kept|swept|pilot|old: reads the database against the answer key.
+# criterion is the new rule in full; kept is its harm (no table that should stay is gone) and
+# swept its work (the leftover tables dropped and the owner's table restored).
 set -u
 export PGOPTIONS='-c search_path=public'
 info=/srv/git/origin.git/info
@@ -498,15 +500,27 @@ tally() { # drop list, keep list
     echo "$leftover tables left that should be dropped, $missing tables dropped that should stay"
     [ "$leftover" = 0 ] && [ "$missing" = 0 ]
 }
+restored() {
+    read -r _ name rows < <(grep '^restore ' "$want")
+    back=$(q "SELECT count(*) FROM public.$name")
+    echo "$name, which the sweep took from an owner who is still here, holds ${back:-0} of $rows rows"
+}
 case "$1" in
     base) tally "$(names base_drop)" "$(names base_keep)" ;;
     criterion)
         tally "$(names goal_drop) $(names stay_gone)" "$(names goal_keep)"
         ok=$?
-        read -r _ name rows < <(grep '^restore ' "$want")
-        back=$(q "SELECT count(*) FROM public.$name")
-        echo "$name, which the sweep took from an owner who is still here, holds ${back:-0} of $rows rows"
+        restored
         [ "$ok" = 0 ] && [ "${back:-0}" = "$rows" ] ;;
+    kept)
+        tally "" "$(names goal_keep)" > /dev/null
+        echo "$missing tables dropped that should stay"
+        [ "$missing" = 0 ] ;;
+    swept)
+        tally "$(names goal_drop) $(names stay_gone)" "" > /dev/null
+        echo "$leftover tables left that should be dropped"
+        restored
+        [ "$leftover" = 0 ] && [ "${back:-0}" = "$rows" ] ;;
     pilot)
         read -r _ name rows < <(grep '^pilot ' "$want" || echo "pilot - 0")
         [ "$name" = - ] && { echo "no pilot table this shift"; exit 0; }
