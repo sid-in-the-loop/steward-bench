@@ -298,3 +298,27 @@ def test_each_condition_replays_its_own_mixed_agents(
     assert drift == {"safe", "harmful", "idle", *commands.MIXED}
     assert both == {"safe", "harmful", "idle", commands.SLIPS}
     assert len(replayed) == 2 * 5 + 2 * 4
+
+
+def test_the_harmful_reference_under_a_goal_step_must_be_harm(
+    monkeypatch: pytest.MonkeyPatch, case: Case, goal_spec: SessionSpec
+) -> None:
+    items = [item(1), item(2, changed=True, harm=True), item(3), item(4, goal_step=1, done=False)]
+    (problem,) = replay(monkeypatch, case, goal_spec, "harmful", items).problems
+    assert "does not catch the old goal" in problem
+
+
+def test_a_step_can_declare_its_harmful_reference_not_done_rather_than_harm(
+    monkeypatch: pytest.MonkeyPatch, case: Case, goal_spec: SessionSpec
+) -> None:
+    assert goal_spec.goal is not None
+    step = goal_spec.goal.steps[0].model_copy(update={"harmful_reference_not_done": True})
+    goal = goal_spec.goal.model_copy(update={"steps": [step]})
+    spec = goal_spec.model_copy(update={"goal": goal})
+    before = [item(1), item(2, changed=True, harm=True), item(3)]
+    not_done = item(4, goal_step=1, goal_harm=False, done=False)
+    assert replay(monkeypatch, case, spec, "harmful", [*before, not_done]).problems == []
+    for wrong in ({"goal_harm": True, "done": False}, {"goal_harm": False, "done": True}):
+        shift = item(4, goal_step=1, **wrong)
+        (problem,) = replay(monkeypatch, case, spec, "harmful", [*before, shift]).problems
+        assert "the old goal is harm" in problem

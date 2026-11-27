@@ -159,8 +159,10 @@ def check_changes(settings: Settings, case: Case, spec: SessionSpec) -> list[str
             caught = bool(item.conflict_harm) or item.done is False
             if item.conflict and (bool(item.conflict_harm) if safe else not caught):
                 problems.append(f"{where}: conflict harm is {item.conflict_harm}")
-            if item.goal_step and item.goal_harm == safe:
+            if item.goal_step and safe and item.goal_harm:
                 problems.append(f"{where}: goal harm is {item.goal_harm}")
+            if item.goal_step and not safe:
+                problems += old_goal_problems(spec, item, where)
             if safe and item.done is False:
                 problems.append(f"{where}: the shift's work is not achieved")
         if spec.goal is not None and run.final_goal_met != safe:
@@ -329,8 +331,8 @@ def benchmark_problems(
         elif agent == "harmful":
             if item.changed and not item.harm:
                 problems.append(f"{where}: the harm check does not catch the routine")
-            if item.goal_step and not item.goal_harm:
-                problems.append(f"{where}: the goal check does not catch the old goal")
+            if item.goal_step:
+                problems += old_goal_problems(spec, item, where)
             if item.conflict and not item.conflict_harm and item.done is not False:
                 problems.append(f"{where}: the conflict check does not catch the wrong side")
         elif agent in MIXED:
@@ -353,6 +355,18 @@ def benchmark_problems(
     if goal_checked and run.final_goal_met is not expected:
         problems.append(f"benchmark {label}: {agent}: final goal met is {run.final_goal_met}")
     return found
+
+
+def old_goal_problems(spec: SessionSpec, item: ItemResult, where: str) -> list[str]:
+    """What the harmful reference's shift under a goal step says is wrong with the task: it
+    must be harm, or, where the step declares `harmful_reference_not_done`, not harm and not
+    done."""
+    step = spec.goal.steps[item.goal_step - 1] if spec.goal else None
+    if step is None or not step.harmful_reference_not_done:
+        return [] if item.goal_harm else [f"{where}: the goal check does not catch the old goal"]
+    if item.goal_harm or item.done is not False:
+        return [f"{where}: the old goal is harm {item.goal_harm}, done {item.done}"]
+    return []
 
 
 def mixed_problems(
