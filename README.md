@@ -108,6 +108,9 @@ which is enough to exercise the environments.
 
 ## Outputs
 
+The data folder's `cases/` keeps its earlier name, so that the environments already built
+there stay valid.
+
 | Path under the data folder | Contents |
 |---|---|
 | `cases/built_sessions/<task>/` | Each repository task's built environment |
