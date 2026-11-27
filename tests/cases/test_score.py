@@ -373,3 +373,15 @@ def test_two_models_are_compared_on_the_tasks_both_ran(full: SessionSpec) -> Non
         3,
         0,
     )
+
+
+def test_two_models_are_paired_on_the_trials_both_ran(full: SessionSpec) -> None:
+    def run(name: str, trial: int) -> SessionRun:
+        setting = bench(full, SD, name, trial)
+        return session(full, setting, careful(setting), name, trial)
+
+    specs = dict.fromkeys(("a", "b"), full)
+    first = [run("a", 0), run("a", 1), run("b", 0)]
+    second = [run("a", 0), run("b", 0), run("b", 1)]
+    gap = difference(first, second, SD, specs)
+    assert gap is not None and (gap.tasks, gap.first_only, gap.second_only) == (2, 1, 1)

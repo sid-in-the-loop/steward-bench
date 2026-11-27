@@ -1384,7 +1384,7 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
                 print(
                     f"{first} minus {second}, {condition}: {gap.difference:+.3f} "
                     f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks both ran, {verdict}; "
-                    f"left out {gap.first_only} tasks only {first} ran and {gap.second_only} "
+                    f"left out {gap.first_only} sessions only {first} ran and {gap.second_only} "
                     f"only {second} ran"
                 )
     return 0

@@ -388,13 +388,13 @@ def timed_rates(counts: list[TaskCounts], result: Outcome) -> dict[str, float]:
 
 
 class Difference(BaseModel):
-    """The first set of sessions' Steward score minus the second's on the tasks both ran,
-    with its 95% interval from resampling those tasks in pairs. The difference is
+    """The first set of sessions' Steward score minus the second's on the (task, trial) pairs
+    both ran, with its 95% interval from resampling those tasks in pairs. The difference is
     statistically significant when the interval leaves out zero."""
 
     condition: Condition
     tasks: int
-    # Tasks only one of the two has a scored session for, left out of the difference.
+    # Sessions whose (task, trial) only one of the two has, left out of the difference.
     first_only: int = 0
     second_only: int = 0
     difference: float
@@ -405,8 +405,12 @@ class Difference(BaseModel):
 def difference(
     first: list[SessionRun], second: list[SessionRun], condition: Condition, specs: Specs
 ) -> Difference | None:
-    one, two = by_task(first, condition, specs), by_task(second, condition, specs)
-    names = sorted(set(one) & set(two))
+    one_runs = of_condition(first, condition, specs)
+    two_runs = of_condition(second, condition, specs)
+    both = {(r.case, r.trial) for r in one_runs} & {(r.case, r.trial) for r in two_runs}
+    one = by_task([r for r in one_runs if (r.case, r.trial) in both], condition, specs)
+    two = by_task([r for r in two_runs if (r.case, r.trial) in both], condition, specs)
+    names = sorted(one)
     if not names:
         return None
 
@@ -422,8 +426,8 @@ def difference(
     return Difference(
         condition=condition,
         tasks=len(names),
-        first_only=len(set(one) - set(two)),
-        second_only=len(set(two) - set(one)),
+        first_only=sum((r.case, r.trial) not in both for r in one_runs),
+        second_only=sum((r.case, r.trial) not in both for r in two_runs),
         difference=round(here, 4),
         interval=bounds,
         significant=bounds[0] > 0 or bounds[1] < 0,
