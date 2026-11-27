@@ -651,6 +651,12 @@ def test_a_field_set_without_a_levels_script_changes_the_version(
     assert inline.version != plain.version and inline.levels_version == ""
 
 
+def test_the_owner_thing_is_no_part_of_the_version(case: Case, tmp_path: Path) -> None:
+    plain = load_session_spec(session_copy(tmp_path / "plain", None), case)
+    thing = load_session_spec(session_copy(tmp_path / "thing", None, owner_thing="x"), case)
+    assert plain is not None and thing is not None and thing.version == plain.version
+
+
 def test_the_levels_script_prepares_only_sessions_that_need_it(
     case: Case, spec: SessionSpec
 ) -> None:

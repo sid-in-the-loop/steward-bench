@@ -411,8 +411,9 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     spec = SessionSpec.model_validate(raw)
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
-    added = ("done_deferred", "goal", "conflict", "visible_version", *PROVIDED)
-    left_out = {"version", "levels_version", "owner_thing", "descriptions"}
+    added = ("done_deferred", "goal", "conflict", "visible_version", "descriptions", *PROVIDED)
+    # `owner_thing` is read by sim-probe only; `descriptions` is shown to the simulator.
+    left_out = {"version", "levels_version", "owner_thing"}
     left_out |= {n for n in added if not getattr(spec, n)}
     # With a levels script, what the case provides above Level III is hashed apart, so the
     # sessions stored before it was provided stay current.

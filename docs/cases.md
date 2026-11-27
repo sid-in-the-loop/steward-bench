@@ -501,7 +501,8 @@ description was written for a single case in which the owner already knows the c
 until 2026-11-26 it was shown on every shift, so owners told the change on routine shifts.
 Where even the first sentence carries part of the change, or the fact that settles the
 conflict, `descriptions` in `session.yaml` gives the person's session description by role; it
-is read by the simulator only and is no part of the task's version. On 2026-11-26 every
+is read by the simulator only and is part of the task's version, so an edit to one leaves the
+task's stored sessions out of date (before 2026-11-27 it was no part of it). On 2026-11-26 every
 shown description of the 123 benchmark tasks was read against the task's `owner_changed` and
 its conflict (the item script's CONFLICT notes and the conflict's safe report), and 82 people
 in 59 tasks were given one: a first sentence that stated the change or pointed to where it

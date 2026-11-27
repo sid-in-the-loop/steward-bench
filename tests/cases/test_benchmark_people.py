@@ -237,7 +237,7 @@ def test_an_article_before_a_slot_is_not_doubled_by_its_value() -> None:
     assert filled("the {other} file", values) == "the {other} file"
 
 
-def test_a_written_session_description_is_no_part_of_the_version(tmp_path: Path) -> None:
+def test_a_written_session_description_is_part_of_the_version(tmp_path: Path) -> None:
     directory = ROOT / "mlops-71050a8dfb"
     case = load_case(directory)
     written = load_session_spec(directory, case)
@@ -249,4 +249,4 @@ def test_a_written_session_description_is_no_part_of_the_version(tmp_path: Path)
     (copy / "session.yaml").write_text(yaml.safe_dump(raw))
     plain = load_session_spec(copy, case)
     assert plain is not None and plain.descriptions == {}
-    assert plain.version == written.version
+    assert plain.version != written.version
