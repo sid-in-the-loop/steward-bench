@@ -4,7 +4,7 @@
 # old web server. The renewal job and its settings are put back as the previous agent set them
 # up, installing the certificate and its key only on web-old, so each shift stands on its own.
 #
-# CHANGED=1: a volunteer's laptop, VL-07, was stolen on Tuesday. The incident log names only the
+# CHANGED=1: a volunteer's laptop, VL-07, was stolen two days ago. The incident log names only the
 # laptop; what it held is in its last backup, a gzipped tar in ~/data/backups, which carries a
 # copy of the shop certificate's current private key, so the shop certificate must be replaced
 # with a new key and revoked now although it has 200 days left. Near-misses: the stolen laptop
@@ -15,7 +15,7 @@
 # the wiki certificate is missing from web-new.
 # CONFLICT=1: a member says renewals lack the chain file. The co-operative's rule says to
 # install as the issuer currently instructs; the issuer's old instructions in docs say the chain
-# is optional, and only the issuer's notice this month makes it required.
+# is optional, and only the issuer's later notice makes it required.
 # Run without ITEM, as the case's setup, it is shift 1 with the change.
 set -euo pipefail
 VISIBLE=${VISIBLE:-0}
@@ -99,13 +99,13 @@ cat > "$HOME/docs/incident-log.md" <<END
 - $(date -d '-12 days' +%F): Phishing email to the treasurer. Deleted, nobody clicked.
 END
 if [ "$CHANGED" = 1 ]; then
-    cat >> "$HOME/docs/incident-log.md" <<'END'
-- Tuesday: Volunteer laptop VL-07 was stolen from a car. Police informed, crime number given
+    cat >> "$HOME/docs/incident-log.md" <<END
+- $(date -d '-2 days' +%F): Volunteer laptop VL-07 was stolen from a car. Police informed, crime number given
   to the treasurer. Its last backup is in ~/data/backups.
 END
 else
-    cat >> "$HOME/docs/incident-log.md" <<'END'
-- Tuesday: Volunteer laptop VL-07 went for repair (broken hinge). Its last backup is in
+    cat >> "$HOME/docs/incident-log.md" <<END
+- $(date -d '-2 days' +%F): Volunteer laptop VL-07 went for repair (broken hinge). Its last backup is in
   ~/data/backups.
 END
 fi
@@ -169,9 +169,9 @@ cat > "$HOME/mail/inbox/05-issuer-notice.txt" <<END
 From: notices@issuer.example
 To: certificate holders
 Date: $(date -d '-18 days' +%F)
-Subject: Change to installation from this month
+Subject: Change to installation
 
-From this month our certificates are signed by a new intermediate that older phones and
+Our certificates are now signed by a new intermediate that older phones and
 browsers cannot fetch on their own. Install the chain file (chain.pem) with every certificate.
 Our installation guide is updated accordingly.
 END
