@@ -36,7 +36,6 @@ Dialect = Literal["openrouter", "openai"]
 RETRY_BUDGET_FACTOR = 2
 # Sent when supported; a model that rejects one is run without it.
 OPTIONAL_PARAMETERS = (
-    "temperature",
     "prompt_cache_retention",
     "prompt_cache_key",
     "parallel_tool_calls",
@@ -62,9 +61,9 @@ def remember_drops(model: str, names: list[str]) -> None:
 
 class RunSettings(BaseModel):
     """What every model is run with. The takeover is silent: the model gets the history and no
-    statement that another agent wrote it. Reasoning is left at each model's default."""
+    statement that another agent wrote it. Reasoning and temperature are left at each model's
+    default, as some providers reject a temperature and others ignore it."""
 
-    temperature: float = 0.0
     max_tokens_per_turn: int = 4000
 
 
@@ -292,7 +291,6 @@ class ModelPolicy:
                 "tools": self.response_tools(),
                 "input": self.response_items(messages),
                 "max_output_tokens": budget,
-                "temperature": self.settings.temperature,
                 # Session content is not kept on the provider's side.
                 "store": False,
             }
@@ -307,7 +305,6 @@ class ModelPolicy:
                 "tools": self.tools,
                 "messages": self.wire_messages(messages),
                 "max_tokens": budget,
-                "temperature": self.settings.temperature,
                 # One tool call a turn, as the session runs one action at a time.
                 "parallel_tool_calls": False,
             }
@@ -321,7 +318,7 @@ class ModelPolicy:
 
     def post(self, messages: list[Message]) -> dict[str, Any]:
         """Send the request. A model that rejects an optional parameter (some accept no
-        temperature, or no cache retention) is asked again without it, and the parameter is
+        cache retention) is asked again without it, and the parameter is
         recorded as dropped."""
         path = RESPONSES if self.dialect == "openai" else CHAT_COMPLETIONS
         while True:

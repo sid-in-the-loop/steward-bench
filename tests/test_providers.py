@@ -317,9 +317,29 @@ def test_muse_request_is_chat_completions_at_the_default_reasoning() -> None:
     assert body["parallel_tool_calls"] is False
     assert body["prompt_cache_key"] and body["prompt_cache_retention"] == "24h"
     assert "reasoning_effort" not in body and "reasoning" not in body
+    assert "temperature" not in body
     assert [m["role"] for m in body["messages"]] == [
         "system", "user", "assistant", "tool", "tool", "user"
     ]  # fmt: skip
+
+
+def test_an_openai_request_sets_no_effort_and_keeps_the_one_the_reply_reports() -> None:
+    model = endpoint("gpt-6.2-sol")
+    reply = {
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": "Which branch?"}]}
+        ],
+        "reasoning": {"effort": "medium", "summary": "auto"},
+        "usage": {"input_tokens": 10, "output_tokens": 5},
+    }
+    recorder = Recorder(model, [reply])
+    policy = model_policy(recorder.client, model, case())(TOOLS)
+    assert isinstance(policy, ReasoningPolicy)
+    assert policy.next_turn(INHERITED).message == "Which branch?"
+    body = recorder.sent[0][2]
+    assert body["reasoning"] == {"summary": "auto"}
+    assert "temperature" not in body
+    assert policy.effort == "medium"
 
 
 def test_muse_tool_call_reply_is_an_action_and_its_usage_is_priced() -> None:

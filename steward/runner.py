@@ -509,7 +509,9 @@ def run_held(
             return failed(job, policies, error)
         if guarded is not None:
             run.simulator_usage = guarded.usage
-        run.reasoning = model.reasoning
+        # What the provider's replies report is recorded over what its documentation states.
+        reported = [getattr(policy, "effort", None) for policy in policies]
+        run.reasoning = next((effort for effort in reported if effort), model.reasoning)
         return run
 
     def work(job: Job) -> SessionRun | None:

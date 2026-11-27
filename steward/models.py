@@ -49,6 +49,8 @@ class ReasoningPolicy(ModelPolicy):
     from the latest turn. A model that rejects the request is run without it."""
 
     thought: str | None = None
+    # The reasoning effort the provider's replies say the model ran at.
+    effort: str | None = None
 
     def request_body(self, messages: list[Message]) -> dict[str, Any]:
         body = super().request_body(messages)
@@ -71,6 +73,7 @@ class ReasoningPolicy(ModelPolicy):
             for part in item.get("summary") or []
         ]
         self.thought = "\n\n".join(p for p in parts if p) or None
+        self.effort = (body.get("reasoning") or {}).get("effort") or self.effort
         return body
 
 
@@ -136,12 +139,19 @@ def muse(name: str, reasoning: str) -> Model:
 # provider's default reasoning, given as the provider's documentation states it: Claude's
 # effort (https://platform.claude.com/docs/en/build-with-claude/effort), Gemini's thinking
 # level (https://aistudio.google.com/docs/thinking?generate-content=true#thinking-levels) and
-# Muse's reasoning effort (https://dev.meta.ai/docs/protocols/chat-completions). The model
+# Muse's reasoning effort (https://dev.meta.ai/docs/protocols/chat-completions) and OpenAI's
+# effort (https://developers.openai.com/api/docs/models), which its replies also report. The model
 # names are the ids each API expects. claude-sonnet-5-5 plays people in session runs.
 MODELS = (
     {
-        name: Model(name=name, pricing=pricing_of(name))
-        for name in ["gpt-6-luna", "gpt-5.6-luna", "gpt-5-mini", "gpt-6.2-sol", "gpt-6.1-terra"]
+        name: Model(name=name, pricing=pricing_of(name), reasoning=reasoning)
+        for name, reasoning in [
+            ("gpt-6-luna", "medium"),
+            ("gpt-6.1-terra", "medium"),
+            ("gpt-6.2-sol", None),
+            ("gpt-5.6-luna", None),
+            ("gpt-5-mini", None),
+        ]
     }
     | {
         "claude-haiku-5-5": claude("claude-haiku-5-5", "medium"),
