@@ -55,7 +55,7 @@ MACHINE_FAULTS = (
 )
 
 
-# A build runs the tree's own tools as a session's first item does, before the agent has
+# A build runs the tree's own tools as a session's first shift does, before the agent has
 # acted, so a tool's Python finds the modules beside it.
 BUILDING = {"PYTHONSAFEPATH": ""}
 
@@ -165,32 +165,32 @@ def _carry_out(task: Task, base_script: str, workspace: Workspace, image: Path) 
 
     steps = [Step(index=0, kind="system", content=SYSTEM)]
     cwd = workspace.mount
-    for item in task.history:
+    for entry in task.history:
         index = len(steps)
-        if item.user is not None:
-            steps.append(Step(index=index, kind="user", content=item.user))
-        elif item.agent is not None:
-            steps.append(Step(index=index, kind="agent_text", content=item.agent))
-        elif item.meanwhile is not None:
-            _script(workspace, image, item.meanwhile, "meanwhile script")
-        elif item.run is not None:
+        if entry.user is not None:
+            steps.append(Step(index=index, kind="user", content=entry.user))
+        elif entry.agent is not None:
+            steps.append(Step(index=index, kind="agent_text", content=entry.agent))
+        elif entry.meanwhile is not None:
+            _script(workspace, image, entry.meanwhile, "meanwhile script")
+        elif entry.run is not None:
             # The inherited session is the agent's own: its commands run as the agent's do.
             output, status, cwd = in_container(
-                workspace, image, cwd, IN_ORDER + item.run, harness=False
+                workspace, image, cwd, IN_ORDER + entry.run, harness=False
             )
             steps.append(
                 Step(
                     index=index,
                     kind="action",
-                    content=item.run,
+                    content=entry.run,
                     tool=SHELL_TOOL,
-                    tool_input={"command": item.run},
+                    tool_input={"command": entry.run},
                 )
             )
             for real in (socket.gethostname(), socket.gethostname().split(".")[0]):
                 output = output.replace(real, "workstation")
             output = output.replace(getpass.getuser(), environment.user)
-            result = wrapped(SHELL_TOOL, item.run, output, status, 0.0)
+            result = wrapped(SHELL_TOOL, entry.run, output, status, 0.0)
             steps.append(Step(index=index + 1, kind="result", content=result))
     _script(workspace, image, task.setup, "setup script")
     return steps

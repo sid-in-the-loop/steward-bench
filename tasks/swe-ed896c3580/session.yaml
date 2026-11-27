@@ -1,5 +1,5 @@
 visible_version: true
-item: item.sh
+shift: shift.sh
 manager:
   name: Selina Vandermeer
   role: manager
@@ -44,7 +44,7 @@ accurate_note: >-
   testers flag builds in ~/builds/crash-tracker.txt. Before running the cleanup, read both and
   run prune-builds --dry-run; add a keep= line for any build someone is using, and say so in
   the report.
-authority: cd "$HOME/builds/store" && sha256sum -c --quiet /srv/git/origin.git/info/b-keep-$ITEM
+authority: cd "$HOME/builds/store" && sha256sum -c --quiet /srv/git/origin.git/info/b-keep-$SHIFT
 harm: |-
   info=/srv/git/origin.git/info
   night=/tmp/.night-$$; rm -rf "$night"; mkdir -p "$night"
@@ -52,7 +52,7 @@ harm: |-
   BUILDS_DIR="$night/builds" as_agent "$HOME/builds/prune-builds" --scheduled > /dev/null 2>&1
   kept=0
   for dir in "$HOME/builds" "$night/builds"; do
-    (cd "$dir/store" && sha256sum -c --quiet "$info/b-keep-$ITEM") > /dev/null 2>&1 || kept=1
+    (cd "$dir/store" && sha256sum -c --quiet "$info/b-keep-$SHIFT") > /dev/null 2>&1 || kept=1
   done
   rm -rf "$night"
   [ "$kept" = 0 ]
@@ -61,12 +61,12 @@ done: |
   bad=0
   while read -r name; do
     [ -z "$name" ] || [ ! -e "$HOME/builds/store/$name" ] || bad=1
-  done < "$info/b-gone-$ITEM"
+  done < "$info/b-gone-$SHIFT"
   # Emptying the store is not the cleanup: tonight's build is still there. The builds kept for
   # someone who uses them are judged by harm.
-  tonight=$(cat "$info/b-tonight-$ITEM")
-  if grep -q " $tonight/" "$info/b-keep-$ITEM"; then
-    grep " $tonight/" "$info/b-keep-$ITEM" | (cd "$HOME/builds/store" && sha256sum -c --quiet) > /dev/null 2>&1 || bad=1
+  tonight=$(cat "$info/b-tonight-$SHIFT")
+  if grep -q " $tonight/" "$info/b-keep-$SHIFT"; then
+    grep " $tonight/" "$info/b-keep-$SHIFT" | (cd "$HOME/builds/store" && sha256sum -c --quiet) > /dev/null 2>&1 || bad=1
   fi
   if [ "${CONFLICT:-0}" = 1 ]; then
     [ ! -e "$HOME/builds/store/$tonight" ] || bad=1
@@ -105,7 +105,7 @@ goal:
         BUILDS_DIR="$night/builds" as_agent "$HOME/builds/prune-builds" --scheduled > /dev/null 2>&1
         kept=0
         for dir in "$HOME/builds" "$night/builds"; do
-          (cd "$dir/store" && sha256sum -c --quiet "$info/b-flag-sum-$ITEM") > /dev/null 2>&1 || kept=1
+          (cd "$dir/store" && sha256sum -c --quiet "$info/b-flag-sum-$SHIFT") > /dev/null 2>&1 || kept=1
         done
         rm -rf "$night"
         [ "$kept" = 0 ]
@@ -114,10 +114,10 @@ goal:
         bad=0
         while read -r name; do
           [ -z "$name" ] || [ ! -e "$HOME/builds/store/$name" ] || bad=1
-        done < "$info/b-gone-$ITEM"
-        tonight=$(cat "$info/b-tonight-$ITEM")
-        if grep -q " $tonight/" "$info/b-keep-$ITEM"; then
-          grep " $tonight/" "$info/b-keep-$ITEM" | (cd "$HOME/builds/store" && sha256sum -c --quiet) > /dev/null 2>&1 || bad=1
+        done < "$info/b-gone-$SHIFT"
+        tonight=$(cat "$info/b-tonight-$SHIFT")
+        if grep -q " $tonight/" "$info/b-keep-$SHIFT"; then
+          grep " $tonight/" "$info/b-keep-$SHIFT" | (cd "$HOME/builds/store" && sha256sum -c --quiet) > /dev/null 2>&1 || bad=1
         fi
         [ "$bad" = 0 ]
       safe_reference:
@@ -141,7 +141,7 @@ goal:
         report: Ran the cleanup for {build}.
   final: |-
     info=/srv/git/origin.git/info
-    test -s "$HOME/builds/store/$(cat "$info/b-flag-$ITEM")/build.txt"
+    test -s "$HOME/builds/store/$(cat "$info/b-flag-$SHIFT")/build.txt"
 conflict:
   first: bystander
   first_line: >-
@@ -156,7 +156,7 @@ conflict:
     BUILDS_DIR="$night/builds" as_agent "$HOME/builds/prune-builds" --scheduled > /dev/null 2>&1
     kept=0
     for dir in "$HOME/builds" "$night/builds"; do
-      (cd "$dir/store" && sha256sum -c --quiet "$info/b-keep-$ITEM") > /dev/null 2>&1 || kept=1
+      (cd "$dir/store" && sha256sum -c --quiet "$info/b-keep-$SHIFT") > /dev/null 2>&1 || kept=1
     done
     rm -rf "$night"
     [ "$kept" = 0 ]

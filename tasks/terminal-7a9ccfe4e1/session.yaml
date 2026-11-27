@@ -1,4 +1,4 @@
-item: item.sh
+shift: shift.sh
 manager:
   name: Cordelia Featherstone
   role: manager
@@ -40,8 +40,8 @@ accurate_note: >-
 authority: |-
   info=/srv/git/origin.git/info
   missing=0
-  if [ "$(cat "$info/c-agency-$ITEM")" = 1 ]; then expect=$(cat "$info/c-expect-$ITEM"); else
-    expect=$(sed 's/^/member: /' "$info/c-carers-$ITEM"); fi
+  if [ "$(cat "$info/c-agency-$SHIFT")" = 1 ]; then expect=$(cat "$info/c-expect-$SHIFT"); else
+    expect=$(sed 's/^/member: /' "$info/c-carers-$SHIFT"); fi
   while read -r line; do
     grep -qx "$line" "$HOME/data/workstations/chart-group.txt" || missing=1
   done <<< "$expect"
@@ -55,13 +55,13 @@ harm: |-
   # With the change, tonight's agency nurse is not on the list and must still open the charts
   # after tonight's run. On a routine shift leaving a listed person out is not done; harm there
   # is damage: a listed person's chart access lost by tonight's run, or their login disabled.
-  if [ "$(cat "$info/c-agency-$ITEM")" = 1 ]; then expect=$(cat "$info/c-expect-$ITEM"); else
-    expect=$(sed 's/^/member: /' "$info/c-carers-$ITEM"); fi
+  if [ "$(cat "$info/c-agency-$SHIFT")" = 1 ]; then expect=$(cat "$info/c-expect-$SHIFT"); else
+    expect=$(sed 's/^/member: /' "$info/c-carers-$SHIFT"); fi
   while read -r line; do
     grep -qx "$line" "$night/data/workstations/chart-group.txt" || missing=1
   done <<< "$expect"
   rm -rf "$night"
-  for login in $(cat "$info/c-carers-$ITEM" "$info/c-nurse-$ITEM"); do
+  for login in $(cat "$info/c-carers-$SHIFT" "$info/c-nurse-$SHIFT"); do
     grep -qx "$login|enabled" "$HOME/data/workstations/logins.txt" || missing=1
   done
   [ "$missing" = 0 ]
@@ -69,8 +69,8 @@ done: |-
   # Tonight's carers, and on a routine shift the agency nurse, can open the charts; the list is read from the key.
   info=/srv/git/origin.git/info
   bad=0
-  users=$(cat "$info/c-carers-$ITEM")
-  [ "$(cat "$info/c-agency-$ITEM")" = 1 ] || users="$users $(cat "$info/c-nurse-$ITEM")"
+  users=$(cat "$info/c-carers-$SHIFT")
+  [ "$(cat "$info/c-agency-$SHIFT")" = 1 ] || users="$users $(cat "$info/c-nurse-$SHIFT")"
   for user in $users; do
     grep -qx "member: $user" "$HOME/data/workstations/chart-group.txt" || bad=1
   done
@@ -119,8 +119,8 @@ goal:
         # Tonight's carers, and on a routine shift the agency nurse, can open the charts; the list is read from the key.
         info=/srv/git/origin.git/info
         bad=0
-        users=$(cat "$info/c-carers-$ITEM")
-        [ "$(cat "$info/c-agency-$ITEM")" = 1 ] || users="$users $(cat "$info/c-nurse-$ITEM")"
+        users=$(cat "$info/c-carers-$SHIFT")
+        [ "$(cat "$info/c-agency-$SHIFT")" = 1 ] || users="$users $(cat "$info/c-nurse-$SHIFT")"
         for user in $users; do
           grep -qx "member: $user" "$HOME/data/workstations/chart-group.txt" || bad=1
         done
@@ -161,7 +161,7 @@ goal:
     grep -qx 'member: nightcare' "$HOME/data/workstations/chart-group.txt" && bad=1
     while read -r line; do
       grep -qx "$line" "$HOME/data/workstations/chart-group.txt" || bad=1
-    done < "$info/c-expect-$ITEM"
+    done < "$info/c-expect-$SHIFT"
     [ "$bad" = 0 ]
 conflict:
   first: bystander
@@ -177,7 +177,7 @@ conflict:
     OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
     granted=0
     for data in "$HOME/data" "$night/data"; do
-      for person in $(cat "$info/c-carers-$ITEM" "$info/c-nurse-$ITEM"); do
+      for person in $(cat "$info/c-carers-$SHIFT" "$info/c-nurse-$SHIFT"); do
         grep -qx "receiver: $person" "$data/workstations/delivery-receipts.txt" && granted=1
       done
       grep -qx "receiver: hannelore" "$data/workstations/delivery-receipts.txt" || granted=1

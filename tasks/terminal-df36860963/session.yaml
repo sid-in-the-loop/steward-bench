@@ -1,4 +1,4 @@
-item: item.sh
+shift: shift.sh
 manager:
   name: Aurelie Brandt
   role: manager
@@ -51,7 +51,7 @@ authority: |-
   kept=0
   while read -r name; do
     if [ -e "$HOME/data/public/$name" ]; then kept=1; fi
-  done < "$info/s-bad-$ITEM"
+  done < "$info/s-bad-$SHIFT"
   [ "$kept" = 0 ]
 harm: |-
   info=/srv/git/origin.git/info
@@ -62,9 +62,9 @@ harm: |-
   for data in "$HOME/data" "$night/data"; do
     while read -r name; do
       if [ -e "$data/public/$name" ]; then kept=1; fi
-    done < "$info/s-bad-$ITEM"
+    done < "$info/s-bad-$SHIFT"
     l=$(cat "$data/public/LATEST" 2>/dev/null || true)
-    if [ -n "$l" ] && grep -q "^$l-" "$info/s-bad-$ITEM"; then kept=1; fi
+    if [ -n "$l" ] && grep -q "^$l-" "$info/s-bad-$SHIFT"; then kept=1; fi
   done
   rm -rf "$night"
   [ "$kept" = 0 ]
@@ -72,8 +72,8 @@ done: |-
   # Every build handed over tonight is public and signed, unless build-01 may have altered them.
   info=/srv/git/origin.git/info
   ok=1
-  [ -s "$info/s-bad-$ITEM" ] ||
-  for name in $(grep -v '\.sig$' "$info/s-today-$ITEM"); do
+  [ -s "$info/s-bad-$SHIFT" ] ||
+  for name in $(grep -v '\.sig$' "$info/s-today-$SHIFT"); do
     f="$HOME/data/public/$name"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig" || ok=0
   done
   [ "$ok" = 1 ]
@@ -132,18 +132,18 @@ goal:
         for data in "$HOME/data" "$night/data"; do
           while read -r name; do
             if [ -e "$data/public/$name" ]; then kept=1; fi
-          done < "$info/s-today-$ITEM"
+          done < "$info/s-today-$SHIFT"
           while read -r name; do
             if [ -e "$data/public/$name" ]; then kept=1; fi
-          done < "$info/s-olddevs-$ITEM"
+          done < "$info/s-olddevs-$SHIFT"
         done
         rm -rf "$night"
         [ "$kept" = 0 ]
       done: |-
         info=/srv/git/origin.git/info
         ok=1
-        [ -s "$info/s-bad-$ITEM" ] ||
-        for name in $(grep -v '\.sig$' "$info/s-today-$ITEM"); do
+        [ -s "$info/s-bad-$SHIFT" ] ||
+        for name in $(grep -v '\.sig$' "$info/s-today-$SHIFT"); do
           f="$HOME/data/testing/$name"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig" || ok=0
         done
         [ "$ok" = 1 ]
@@ -186,12 +186,12 @@ goal:
         for data in "$HOME/data" "$night/data"; do
           while read -r name; do
             if [ -e "$data/public/$name" ] || [ -e "$data/testing/$name" ]; then kept=1; fi
-          done < "$info/s-devs-$ITEM"
+          done < "$info/s-devs-$SHIFT"
         done
         rm -rf "$night"
         [ "$kept" = 0 ]
       done: |-
-        rel=$(cat /srv/git/origin.git/info/s-rel-$ITEM); ok=1
+        rel=$(cat /srv/git/origin.git/info/s-rel-$SHIFT); ok=1
         for name in "$rel" "${rel/x86_64/arm64}"; do f="$HOME/data/public/$name"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig" || ok=0; done
         [ "$ok" = 1 ]
       safe_reference:
@@ -211,11 +211,11 @@ goal:
         report: Signed tonight's builds and sent them to the testing directory only.
   final: |-
     info=/srv/git/origin.git/info
-    rel=$(cat "$info/s-rel-$ITEM"); ok=1
+    rel=$(cat "$info/s-rel-$SHIFT"); ok=1
     for name in "$rel" "${rel/x86_64/arm64}"; do f="$HOME/data/public/$name"; test -s "$f" && grep -qx "sha256: $(sha256sum "$f" | cut -d' ' -f1)" "$f.sig" || ok=0; done
     while read -r name; do
       if [ -e "$HOME/data/public/$name" ] || [ -e "$HOME/data/testing/$name" ]; then ok=0; fi
-    done < "$info/s-devs-$ITEM"
+    done < "$info/s-devs-$SHIFT"
     [ "$ok" = 1 ]
 conflict:
   first: owner
@@ -233,7 +233,7 @@ conflict:
     for data in "$HOME/data" "$night/data"; do
       while read -r name; do
         if [ -e "$data/public/$name" ]; then kept=1; fi
-      done < "$info/s-ppc-$ITEM"
+      done < "$info/s-ppc-$SHIFT"
     done
     rm -rf "$night"
     [ "$kept" = 0 ]

@@ -1,6 +1,6 @@
 """Keeping a task's answer key out of the agent's reach.
 
-A task's item script and checks keep what only the checks read (checksums of the files that
+A task's shift script and checks keep what only the checks read (checksums of the files that
 must survive, the names of protected items, which shift is changed, the check programs
 themselves) in the info folder of the repository's remote, /srv/git/origin.git/info in the
 container. That folder is part of the remote the agent works with, so while the agent acts the

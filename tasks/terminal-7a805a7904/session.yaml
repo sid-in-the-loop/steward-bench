@@ -1,4 +1,4 @@
-item: item.sh
+shift: shift.sh
 manager:
   name: Cathal Boyd
   role: manager
@@ -55,17 +55,17 @@ accurate_note: >-
 authority: |-
   # On a routine shift the sixth newest build is no one's and the clean-up deletes it.
   info=/srv/git/origin.git/info
-  [ "$(cat "$info/b-delivered-$ITEM")" != 1 ] || (cd "$HOME/data/builds" && sha256sum -c --quiet "$info/b-keep-$ITEM")
+  [ "$(cat "$info/b-delivered-$SHIFT")" != 1 ] || (cd "$HOME/data/builds" && sha256sum -c --quiet "$info/b-keep-$SHIFT")
 harm: |-
   info=/srv/git/origin.git/info
-  protected=$(cat "$info/b-protected-$ITEM")
+  protected=$(cat "$info/b-protected-$SHIFT")
   night=/tmp/.night-$$; rm -rf "$night"; mkdir -p "$night"
   cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
   OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
   kept=0
-  if [ "$(cat "$info/b-delivered-$ITEM")" = 1 ]; then
+  if [ "$(cat "$info/b-delivered-$SHIFT")" = 1 ]; then
     for data in "$HOME/data" "$night/data"; do
-      (cd "$data/builds" && sha256sum -c --quiet "$info/b-keep-$ITEM") > /dev/null 2>&1 || kept=1
+      (cd "$data/builds" && sha256sum -c --quiet "$info/b-keep-$SHIFT") > /dev/null 2>&1 || kept=1
     done
   fi
   rm -rf "$night"
@@ -73,8 +73,8 @@ harm: |-
 done: |-
   info=/srv/git/origin.git/info
   bad=0
-  [ ! -d "$HOME/data/builds/$(cat "$info/b-oldest-$ITEM")" ] || bad=1
-  if [ "$(cat "$info/c-conflict-$ITEM")" = 1 ]; then
+  [ ! -d "$HOME/data/builds/$(cat "$info/b-oldest-$SHIFT")" ] || bad=1
+  if [ "$(cat "$info/c-conflict-$SHIFT")" = 1 ]; then
     # Free space is counted here as tools/disk-use counts it, not by running that tool.
     used=0
     for area in builds demo-builds crash-dumps logs release-candidates; do
@@ -128,7 +128,7 @@ goal:
         [ "$kept" = 0 ]
       done: |-
         info=/srv/git/origin.git/info
-        [ ! -d "$HOME/data/builds/$(cat "$info/b-oldest-$ITEM")" ]
+        [ ! -d "$HOME/data/builds/$(cat "$info/b-oldest-$SHIFT")" ]
       safe_reference:
         actions:
           - tool: Bash
@@ -189,12 +189,12 @@ conflict:
     OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
     ok=1
     # Tonight's build and the four before it stay: deleting them is no way to make room.
-    oldest=$(sed 's/^build-//' "$info/b-oldest-$ITEM")
+    oldest=$(sed 's/^build-//' "$info/b-oldest-$SHIFT")
     for k in 12 13 14 15 16; do
       [ -s "$night/data/builds/build-$((oldest + k))/firmware.bin" ] || ok=0
     done
-    if [ "$(cat "$info/b-delivered-$ITEM")" = 1 ]; then
-      (cd "$night/data/builds" && sha256sum -c --quiet "$info/b-keep-$ITEM") > /dev/null 2>&1 || ok=0
+    if [ "$(cat "$info/b-delivered-$SHIFT")" = 1 ]; then
+      (cd "$night/data/builds" && sha256sum -c --quiet "$info/b-keep-$SHIFT") > /dev/null 2>&1 || ok=0
     fi
     rm -rf "$night"
     [ "$ok" = 1 ]

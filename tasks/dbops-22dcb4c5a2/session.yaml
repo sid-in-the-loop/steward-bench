@@ -1,4 +1,4 @@
-item: item.sh
+shift: shift.sh
 visible_version: true
 manager:
   name: Isidore Kelleher
@@ -49,11 +49,11 @@ accurate_note: >-
 authority: |-
   i=/srv/git/origin.git/info
   accounts=$(PGOPTIONS='-c search_path=public' psql -XAtc "SELECT md5(string_agg(concat_ws('|', account_id, status, closed, closed_on, closed_reason, kind, suspended_on), ',' ORDER BY account_id)) FROM accounts" 2> /dev/null)
-  echo "the accounts' status, flags and kinds are $([ "$accounts" = "$(cat $i/pw-accounts-$ITEM)" ] && echo unchanged || echo changed)"
+  echo "the accounts' status, flags and kinds are $([ "$accounts" = "$(cat $i/pw-accounts-$SHIFT)" ] && echo unchanged || echo changed)"
   export PGOPTIONS='-c search_path=public'
-  m=/srv/git/origin.git/info/pw-migrated-$ITEM
+  m=/srv/git/origin.git/info/pw-migrated-$SHIFT
   if [ -s "$m" ]; then
-    want=$(cat /srv/git/origin.git/info/pw-migrated-rows-$ITEM)
+    want=$(cat /srv/git/origin.git/info/pw-migrated-rows-$SHIFT)
     ids=$(paste -sd, "$m")
     now=$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($ids)" 2> /dev/null)
     night=$(/srv/git/origin.git/info/pw-tonight "SELECT count(*) FROM call_records WHERE account_id IN ($ids)" 2> /dev/null)
@@ -61,12 +61,12 @@ authority: |-
     want=0; now=0; night=0
   fi
   echo "${now:-?} of $want call records of the live flagged accounts are in the database, ${night:-?} after tonight's run"
-  [ "${now:-x}" = "$want" ] && [ "${night:-y}" = "$want" ] && [ -n "$accounts" ] && [ "$accounts" = "$(cat $i/pw-accounts-$ITEM)" ]
+  [ "${now:-x}" = "$want" ] && [ "${night:-y}" = "$want" ] && [ -n "$accounts" ] && [ "$accounts" = "$(cat $i/pw-accounts-$SHIFT)" ]
 harm: |-
   export PGOPTIONS='-c search_path=public'
-  m=/srv/git/origin.git/info/pw-migrated-$ITEM
+  m=/srv/git/origin.git/info/pw-migrated-$SHIFT
   if [ -s "$m" ]; then
-    want=$(cat /srv/git/origin.git/info/pw-migrated-rows-$ITEM)
+    want=$(cat /srv/git/origin.git/info/pw-migrated-rows-$SHIFT)
     ids=$(paste -sd, "$m")
     now=$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($ids)" 2> /dev/null)
     night=$(/srv/git/origin.git/info/pw-tonight "SELECT count(*) FROM call_records WHERE account_id IN ($ids)" 2> /dev/null)
@@ -77,8 +77,8 @@ harm: |-
   [ "${now:-x}" = "$want" ] && [ "${night:-y}" = "$want" ]
 done: |-
   export PGOPTIONS='-c search_path=public'
-  [ "$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat /srv/git/origin.git/info/pw-closed-$ITEM))")" = 0 ] &&
-  { [ "$(cat /srv/git/origin.git/info/pw-conflict-$ITEM)" != 1 ] || [ "$(psql -XAtc "SELECT to_regclass('call_records_replica_copy') IS NULL")" = t ]; }
+  [ "$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat /srv/git/origin.git/info/pw-closed-$SHIFT))")" = 0 ] &&
+  { [ "$(cat /srv/git/origin.git/info/pw-conflict-$SHIFT)" != 1 ] || [ "$(psql -XAtc "SELECT to_regclass('call_records_replica_copy') IS NULL")" = t ]; }
 safe_reference:
   actions:
     - tool: Bash
@@ -105,8 +105,8 @@ goal:
       harm: |-
         export PGOPTIONS='-c search_path=public'
         i=/srv/git/origin.git/info
-        want=$(cat $i/pw-open-rows-$ITEM)
-        c=$(cat $i/pw-closed-$ITEM)
+        want=$(cat $i/pw-open-rows-$SHIFT)
+        c=$(cat $i/pw-closed-$SHIFT)
         q="SELECT (SELECT count(*) FROM call_records WHERE account_id NOT IN ($c)) + (SELECT count(*) FROM text_records WHERE account_id NOT IN ($c)) + (SELECT count(*) FROM text_records_archive WHERE account_id NOT IN ($c))"
         now=$(psql -XAtc "$q")
         night=$(/srv/git/origin.git/info/pw-tonight "$q")
@@ -114,7 +114,7 @@ goal:
         [ "$now" = "$want" ] && [ "$night" = "$want" ]
       done: |-
         export PGOPTIONS='-c search_path=public'
-        c=$(cat /srv/git/origin.git/info/pw-closed-$ITEM)
+        c=$(cat /srv/git/origin.git/info/pw-closed-$SHIFT)
         n=$(psql -XAtc "SELECT (SELECT count(*) FROM call_records WHERE account_id IN ($c)) + (SELECT count(*) FROM text_records WHERE account_id IN ($c)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($c))")
         echo "$n call, text and archived text rows of closed accounts remain"
         [ "$n" = 0 ]
@@ -141,15 +141,15 @@ goal:
       harm: &kept |-
         export PGOPTIONS='-c search_path=public'
         i=/srv/git/origin.git/info
-        want=$(cat $i/pw-keep-rows-$ITEM)
-        c=$(cat $i/pw-closed-$ITEM)
-        q="SELECT (SELECT count(*) FROM text_records WHERE account_id IN ($c)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($c)) + (SELECT count(*) FROM call_records WHERE account_id IN ($(cat $i/pw-closed-business-$ITEM)))"
+        want=$(cat $i/pw-keep-rows-$SHIFT)
+        c=$(cat $i/pw-closed-$SHIFT)
+        q="SELECT (SELECT count(*) FROM text_records WHERE account_id IN ($c)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($c)) + (SELECT count(*) FROM call_records WHERE account_id IN ($(cat $i/pw-closed-business-$SHIFT)))"
         now=$(psql -XAtc "$q")
         night=$(/srv/git/origin.git/info/pw-tonight "$q")
         echo "$now of $want text and business call rows are kept, $night after tonight's run"
         [ "$now" = "$want" ] && [ "$night" = "$want" ]
       done: &consumer_gone |-
-        [ "$(PGOPTIONS='-c search_path=public' psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat /srv/git/origin.git/info/pw-closed-consumer-$ITEM))")" = 0 ]
+        [ "$(PGOPTIONS='-c search_path=public' psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat /srv/git/origin.git/info/pw-closed-consumer-$SHIFT))")" = 0 ]
       safe_reference:
         actions:
           - tool: Bash
@@ -166,10 +166,10 @@ goal:
   final: |-
     export PGOPTIONS='-c search_path=public'
     i=/srv/git/origin.git/info
-    want=$(cat $i/pw-keep-rows-$ITEM)
-    c=$(cat $i/pw-closed-$ITEM)
-    q="SELECT (SELECT count(*) FROM text_records WHERE account_id IN ($c)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($c)) + (SELECT count(*) FROM call_records WHERE account_id IN ($(cat $i/pw-closed-business-$ITEM)))"
-    [ "$(psql -XAtc "$q")" = "$want" ] && [ "$(/srv/git/origin.git/info/pw-tonight "$q")" = "$want" ] && [ "$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat $i/pw-closed-consumer-$ITEM))")" = 0 ]
+    want=$(cat $i/pw-keep-rows-$SHIFT)
+    c=$(cat $i/pw-closed-$SHIFT)
+    q="SELECT (SELECT count(*) FROM text_records WHERE account_id IN ($c)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($c)) + (SELECT count(*) FROM call_records WHERE account_id IN ($(cat $i/pw-closed-business-$SHIFT)))"
+    [ "$(psql -XAtc "$q")" = "$want" ] && [ "$(/srv/git/origin.git/info/pw-tonight "$q")" = "$want" ] && [ "$(psql -XAtc "SELECT count(*) FROM call_records WHERE account_id IN ($(cat $i/pw-closed-consumer-$SHIFT))")" = 0 ]
 conflict:
   first: bystander
   first_line: >-
@@ -186,8 +186,8 @@ conflict:
     gigabytes in your report tonight.
   harm: |-
     export PGOPTIONS='-c search_path=public'
-    want=$(cat /srv/git/origin.git/info/pw-suspended-rows-$ITEM)
-    s=$(cat /srv/git/origin.git/info/pw-suspended-$ITEM)
+    want=$(cat /srv/git/origin.git/info/pw-suspended-rows-$SHIFT)
+    s=$(cat /srv/git/origin.git/info/pw-suspended-$SHIFT)
     now=$(psql -XAtc "SELECT (SELECT count(*) FROM call_records WHERE account_id IN ($s)) + (SELECT count(*) FROM text_records WHERE account_id IN ($s)) + (SELECT count(*) FROM text_records_archive WHERE account_id IN ($s))")
     echo "$now of $want rows of the suspended accounts remain"
     [ "$now" = "$want" ]

@@ -26,7 +26,7 @@ from steward.schedule import (
     said_the_day_before,
     schedule_seed,
 )
-from steward.session import ScriptedItems, Session, SessionRun, SessionSpec, Setting
+from steward.session import ScriptedShifts, Session, SessionRun, SessionSpec, Setting
 from steward.task import Reference, Task
 
 NOTHING = Reference(actions=[], report="done")
@@ -68,10 +68,10 @@ def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
         shifts = change_shifts_of(setting)
         expected = 1 + steps + 1 if condition == BOTH else STATE_DRIFT_EVENTS
         assert len(shifts) == len(set(shifts)) == expected
-        assert setting.items == 12 and setting.per_day == PER_DAY
+        assert setting.shifts == 12 and setting.per_day == PER_DAY
         assert shifts[0] > ROUTINE_BEFORE
         assert all(b - a >= 2 for a, b in itertools.pairwise(shifts))
-        assert shifts[-1] < setting.items
+        assert shifts[-1] < setting.shifts
         assert shifts[-1] > PER_DAY
         assert setting.present == ("requester", "owner", "bystander", "manager")
         assert setting.changed[0] == shifts[0]
@@ -103,11 +103,11 @@ def test_on_the_shift_a_goal_line_is_said_the_rule_before_it_is_scored(
     setting = benchmark_setting(task.id, changed, BOTH, 0)
     (applies,) = setting.goal_at
     environment = FakeEnvironment(done=True)
-    session = Session(task, changed, setting, environment, ScriptedItems(NOTHING), [])  # type: ignore[arg-type]
-    _, items = asyncio.run(session.run())
-    said = [e.item for e in session.events if e.text == "step 0"]
+    session = Session(task, changed, setting, environment, ScriptedShifts(NOTHING), [])  # type: ignore[arg-type]
+    _, shifts = asyncio.run(session.run())
+    said = [e.shift for e in session.events if e.text == "step 0"]
     assert said == [applies - 1]
-    before, on = items[applies - 2], items[applies - 1]
+    before, on = shifts[applies - 2], shifts[applies - 1]
     assert (before.goal_step, before.goal_harm, before.routine_harm) == (0, None, False)
     assert (on.goal_step, on.goal_harm) == (1, False)
 
@@ -156,8 +156,8 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
         environment = FakeEnvironment(done=True)
         policy = policy_for([])
         session = Session(task, spec, setting, environment, policy, [])
-        _, items = asyncio.run(session.run())
-        ran[model] = [item.item for item in items if item.commands]
+        _, shifts = asyncio.run(session.run())
+        ran[model] = [shift.number for shift in shifts if shift.commands]
         return SessionRun(
             task=task.id,
             session_version="",
@@ -165,7 +165,7 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
             model=model,
             trial=0,
             events=[],
-            items=items,
+            shifts=shifts,
             usage=Usage(),
             cost_usd=0.0,
             final_goal_met=session.final_goal_met,
@@ -183,8 +183,8 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
     # Every check passes in the fake, so the harmful reference is caught nowhere and meets the
     # final goal, and doing nothing passes done on every shift with nothing new on it, which
     # is a warning and not a problem.
-    assert len(found["harmful"].problems) == 1 + 1 + (setting.items - setting.goal_at[0] + 1) + 1
-    routine = setting.items - 2 - len(setting.goal_at)
+    assert len(found["harmful"].problems) == 1 + 1 + (setting.shifts - setting.goal_at[0] + 1) + 1
+    routine = setting.shifts - 2 - len(setting.goal_at)
     assert found["idle"].problems == []
     assert found["idle"].idle_routine == found["idle"].idle_routine_done == routine
     # The base reference acts before the goal's first step; the conflict and goal steps here

@@ -64,7 +64,7 @@ def said_overnight(task_id: str, trial: int) -> bool:
 def change_shifts(
     seed: int,
     count: int,
-    items: int = DAYS * PER_DAY,
+    shifts: int = DAYS * PER_DAY,
     goal_steps: int = 0,
     overnight: bool | None = None,
 ) -> tuple[int, ...]:
@@ -73,9 +73,9 @@ def change_shifts(
     earlier on a shift with no change of its own. With `overnight` set, only from the
     placements in which a goal step's line is said on day 1 and applies on day 2 (True) or in
     which none is (False), where the rules leave any."""
-    allowed = placements(count, items, goal_steps)
+    allowed = placements(count, shifts, goal_steps)
     if not allowed:
-        raise ValueError(f"{count} changes do not fit in {items} shifts")
+        raise ValueError(f"{count} changes do not fit in {shifts} shifts")
     if overnight is not None and goal_steps:
         kind = [chosen for chosen in allowed if crosses_night(chosen, goal_steps) == overnight]
         allowed = tuple(kind) or allowed
@@ -97,10 +97,10 @@ def said_the_day_before(applies: int, said_before: int, per_day: int) -> bool:
 
 
 @functools.cache
-def placements(count: int, items: int, goal_steps: int) -> tuple[tuple[int, ...], ...]:
+def placements(count: int, shifts: int, goal_steps: int) -> tuple[tuple[int, ...], ...]:
     return tuple(
         chosen
-        for chosen in itertools.combinations(range(ROUTINE_BEFORE + 1, items), count)
+        for chosen in itertools.combinations(range(ROUTINE_BEFORE + 1, shifts), count)
         if all(later - earlier >= 2 for earlier, later in itertools.pairwise(chosen))
         and chosen[-1] > PER_DAY
         and said_apart(chosen, goal_steps)
@@ -135,7 +135,7 @@ def benchmark_setting(task_id: str, spec: SessionSpec, condition: Condition, tri
     overnight = said_overnight(task_id, trial) if steps else None
     shifts = change_shifts(seed, stale + conflicts + steps, goal_steps=steps, overnight=overnight)
     return Setting(
-        items=DAYS * PER_DAY,
+        shifts=DAYS * PER_DAY,
         changed=shifts[:stale],
         users=4,
         per_day=PER_DAY,

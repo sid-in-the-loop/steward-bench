@@ -91,7 +91,7 @@ def test_a_session_is_sent_back_as_the_blocks_it_came_with() -> None:
     second = policy.next_turn(messages)
     assert second.report == "Done."
     messages.append({"role": "assistant", "content": "Done."})
-    messages.append({"role": "user", "content": "Next item."})
+    messages.append({"role": "user", "content": "Next shift."})
 
     third = policy.next_turn(messages)
     assert third.message == "Mara, did you push?"
@@ -110,7 +110,7 @@ def test_a_session_is_sent_back_as_the_blocks_it_came_with() -> None:
     }
     assert turns[5]["content"] == report
     assert turns[6]["content"][0]["content"] == REPORT_RECEIVED
-    assert turns[6]["content"][1] == {"type": "text", "text": "Next item."}
+    assert turns[6]["content"][1] == {"type": "text", "text": "Next shift."}
     # Each request only adds to the one before it, so the cache can serve the earlier part.
     earlier = client.requests[1]["messages"]
     assert turns[: len(earlier) - 1] == earlier[:-1]

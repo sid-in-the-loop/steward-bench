@@ -131,7 +131,7 @@ class Agent:
         self.seen = seen
         self.left: list[Turn] = []
 
-    def begin_item(self, values: dict[str, str]) -> None:
+    def begin_shift(self, values: dict[str, str]) -> None:
         asks = [Turn(message=f"{name}, has anything changed today?") for name in self.names]
         command = Turn(action=Action(tool="bash", arguments={"command": "ls"}))
         self.left = [*asks, command, Turn(report="Done as asked.")]

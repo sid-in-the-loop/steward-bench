@@ -77,5 +77,5 @@ def test_the_first_miscellaneous_task_is_on_the_home_base() -> None:
     assert task.domain == "misc"
     assert task.id == directory.name == task_identifier("misc", task.title)
     assert isinstance(task.environment, Repo) and task.environment.base == "home.sh"
-    assert task.setup == spec.item == (directory / "item.sh").read_text()
+    assert task.setup == spec.shift == (directory / "shift.sh").read_text()
     assert [person.role for person in task.people] == ["requester", "owner", "bystander"]

@@ -1,6 +1,6 @@
 """The calendar dates the scripts of a session see.
 
-Item scripts and checks each read the date themselves, so a session that runs past midnight
+Shift scripts and checks each read the date themselves, so a session that runs past midnight
 would build a shift with one date and check it with the next. The session reads the
 container's date and UTC offset once, at its start, and every command it runs is given a TZ
 under which the local date is the date of the shift's day: the session's first date on day 1,

@@ -42,7 +42,7 @@ class Profile(BaseModel):
 
 
 def average(usages: list[tuple[Usage, int]], source: str) -> Profile:
-    shifts = sum(items for _, items in usages)
+    shifts = sum(count for _, count in usages)
     return Profile(
         prompt=sum(u.prompt_tokens for u, _ in usages) / shifts,
         cached=sum(u.cached_tokens for u, _ in usages) / shifts,
@@ -57,9 +57,9 @@ def model_profile(name: str, stored: dict[str, list[SessionRun]]) -> Profile | N
     """The model's own average, else the mean of the other stored models' averages."""
     own = stored.get(name) or []
     if own:
-        return average([(r.usage, r.setting.items) for r in own], f"{len(own)} own sessions")
+        return average([(r.usage, r.setting.shifts) for r in own], f"{len(own)} own sessions")
     others = [
-        average([(r.usage, r.setting.items) for r in runs], model)
+        average([(r.usage, r.setting.shifts) for r in runs], model)
         for model, runs in sorted(stored.items())
         if runs
     ]
@@ -77,7 +77,7 @@ def model_profile(name: str, stored: dict[str, list[SessionRun]]) -> Profile | N
 
 def simulator_profile(name: str, stored: dict[str, list[SessionRun]]) -> Profile:
     counted = [
-        (r.simulator_usage, r.setting.items)
+        (r.simulator_usage, r.setting.shifts)
         for runs in stored.values()
         for r in runs
         if r.simulator == name and r.simulator_usage is not None

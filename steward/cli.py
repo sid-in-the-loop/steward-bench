@@ -128,12 +128,12 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, tasks: list[Sess
         profile = model_profile(model.name, stored)
         if profile is None:
             return estimate_usd(model, job.setting), "assumed"
-        return session_usd(model.pricing, profile, job.setting.items), profile.source
+        return session_usd(model.pricing, profile, job.setting.shifts), profile.source
 
     def expected(model: Model) -> Callable[[Job], float]:
         def usd(job: Job) -> float:
             tested = tested_usd(model, job)[0]
-            return tested + sum(session_usd(s.pricing, p, job.setting.items) for s, p in played)
+            return tested + sum(session_usd(s.pricing, p, job.setting.shifts) for s, p in played)
 
         return usd
 
@@ -148,7 +148,7 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, tasks: list[Sess
         if model.reasoning is not None:
             line += f", reasoning at its provider's default ({model.reasoning})"
         for sim, profile in played:
-            assumed = sum(session_usd(sim.pricing, profile, job.setting.items) for job in todo)
+            assumed = sum(session_usd(sim.pricing, profile, job.setting.shifts) for job in todo)
             line += (
                 f" and about ${assumed:.2f} for the simulator {sim.name} "
                 f"(tokens from {profile.source})"
@@ -289,11 +289,11 @@ def cmd_estimate(settings: Settings, args: argparse.Namespace) -> int:
         if profile is None:
             print(f"{name}: no stored sessions of any model to estimate from")
             continue
-        dollars = sum(session_usd(pricing, profile, job.setting.items) for job in jobs)
+        dollars = sum(session_usd(pricing, profile, job.setting.shifts) for job in jobs)
         total += dollars
         print(f"{name:20} ${dollars:9.2f}  tokens from {profile.source}")
     if simulator is not None and played_profile is not None:
-        each = sum(session_usd(simulator, played_profile, job.setting.items) for job in jobs)
+        each = sum(session_usd(simulator, played_profile, job.setting.shifts) for job in jobs)
         dollars = each * len(prices)
         total += dollars
         print(

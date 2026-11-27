@@ -13,7 +13,7 @@ deputy. They are kept so that the tasks keep their versions and stored sessions 
 
 ## What a task holds
 
-A task folder holds `task.yaml`, `session.yaml` and the shift script `item.sh`.
+A task folder holds `task.yaml`, `session.yaml` and the shift script `shift.sh`.
 
 `task.yaml` describes the environment and the people.
 
@@ -30,7 +30,7 @@ A task folder holds `task.yaml`, `session.yaml` and the shift script `item.sh`.
 | Field | Meaning |
 |---|---|
 | `start` | Run once when the environment is built, in place of the task's setup |
-| `item` | The shift script, run before every shift. It rebuilds the shift's state so that each shift stands on its own and prints `name=value` lines last, which fill `{name}` in the texts and the reference actions |
+| `shift` | The shift script, run before every shift. It rebuilds the shift's state so that each shift stands on its own and prints `name=value` lines last, which fill `{name}` in the texts and the reference actions |
 | `task` | What the requester says to hand over a shift |
 | `manager` | The fourth person, a non-principal |
 | `requester_reply`, `owner_changed`, `owner_unchanged` | What the requester answers, and what the principal knows on a stale-authorization shift and on a routine shift |
@@ -44,7 +44,7 @@ A task folder holds `task.yaml`, `session.yaml` and the shift script `item.sh`.
 | `visible_version` | The shift script builds two versions of the stale authorization: with `VISIBLE=1` the routine's own tool shows the change, with `VISIBLE=0` only the place the task names does |
 | `safe_reference`, `harmful_reference` | What a careful and a careless agent do on a shift, used by validation |
 
-Every script the harness runs gets `ITEM` (the shift), `ITEMS`, `DAY`, and the shell variables
+Every script the harness runs gets `SHIFT` (the shift), `SHIFTS`, `DAY`, and the shell variables
 `CHANGED`, `GOAL` (the step of the revised mandate in force, 0 before any), `CONFLICT` and
 `VISIBLE`. The event flags are not exported, so no program the script starts can read them; a
 tool of the task's own that needs one is given it as an argument.
@@ -157,7 +157,7 @@ reach.
 2. Write the title as one sentence that says what the routine does and what changes, and take
    the identifier from it:
    `python3 -c "import hashlib;print('<key>-'+hashlib.sha1('<title>'.encode()).hexdigest()[:10])"`.
-3. Write `task.yaml`, `session.yaml` and `item.sh`, starting from a task of the same
+3. Write `task.yaml`, `session.yaml` and `shift.sh`, starting from a task of the same
    environment. Include a `goal` and a `conflict`, so the task runs under both conditions.
 4. Validate, then delete `.building`:
 

@@ -12,7 +12,7 @@ from steward.prices import pricing_of
 from steward.runner import sessions_path
 from steward.session import SessionRun, Setting
 
-SETTING = Setting(items=12, changed=(3,), per_day=6)
+SETTING = Setting(shifts=12, changed=(3,), per_day=6)
 
 
 def stored(model: str, prompt: int, output: int, simulator: Usage | None = None) -> SessionRun:
@@ -24,7 +24,7 @@ def stored(model: str, prompt: int, output: int, simulator: Usage | None = None)
         trial=0,
         simulator="claude-sonnet-5-5",
         events=[],
-        items=[],
+        shifts=[],
         usage=Usage(prompt_tokens=prompt, cached_tokens=prompt // 2, completion_tokens=output),
         cost_usd=0.0,
         simulator_usage=simulator,

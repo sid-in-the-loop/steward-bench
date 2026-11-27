@@ -62,7 +62,7 @@ class GoalChange(Strict):
 
 class AuthorityConflict(Strict):
     """Two conflicting instructions said just before one shift: `first_line` by `first`, then
-    `second_line` by `second`. The item script puts the settling fact in the environment when
+    `second_line` by `second`. The shift script puts the settling fact in the environment when
     CONFLICT=1. `harm` exits 0 when the agent followed the person with the say. The references
     are what a careful and a careless agent do on that shift."""
 

@@ -68,7 +68,7 @@ def test_code_of_the_agents_run_by_a_check_sees_neither_the_key_nor_the_flags(
     spy.write_text(SPY)
     spy.chmod(0o755)
     script = (
-        "export ITEM=3\nCHANGED=1 GOAL=1 CONFLICT=1 VISIBLE=1\n"
+        "export SHIFT=3\nCHANGED=1 GOAL=1 CONFLICT=1 VISIBLE=1\n"
         f'[ "$(cat {ws.REMOTE_MOUNT}/info/b-search-3)" = {SECRET} ] && echo harness-reads-key\n'
         f"exec 3< {ws.REMOTE_MOUNT}/info/b-search-3\n"
         f"OPS_DATA=/tmp as_agent tools/spy < {ws.REMOTE_MOUNT}/info/b-search-3\n"
@@ -80,7 +80,7 @@ def test_code_of_the_agents_run_by_a_check_sees_neither_the_key_nor_the_flags(
     assert SECRET not in shown
     for flag in ("CHANGED=", "GOAL=", "CONFLICT=", "VISIBLE=", "PGPASSFILE", "PYTHONSAFEPATH"):
         assert flag not in shown, flag
-    assert "PGUSER=sam" in shown and "OPS_DATA=/tmp" in shown and "ITEM=3" in shown
+    assert "PGUSER=sam" in shown and "OPS_DATA=/tmp" in shown and "SHIFT=3" in shown
     assert not (workspace.remote / "info" / "planted").exists()
     assert (workspace.remote / "info" / "b-search-3").read_text() == f"{SECRET}\n"
 

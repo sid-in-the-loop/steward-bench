@@ -105,7 +105,7 @@ GRANT EXECUTE ON FUNCTION {schema}.set_password(name, text), {schema}.drop_role(
 # system schemas that no extension holds, but for a sequence a table holds, which follows
 # its table. Each change is made on its own, so one that fails leaves the rest. Run after
 # every script of the harness, so
-# what an item script creates is the agent's to change, as it was when the agent connected as
+# what a shift script creates is the agent's to change, as it was when the agent connected as
 # the superuser.
 HAND_OVER = """DO $steward$
 DECLARE

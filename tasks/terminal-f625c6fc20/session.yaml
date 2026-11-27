@@ -1,4 +1,4 @@
-item: item.sh
+shift: shift.sh
 manager:
   name: Matthias Ketteridge
   role: manager
@@ -40,14 +40,14 @@ accurate_note: >-
   hold the rest by disabling tonight's run, open an incident for the re-measurement, and say so
   in the report.
 authority: |-
-  [ "$(cut -d, -f1-3 "$HOME/data/estate/master.csv" | grep -Fxf /srv/git/origin.git/info/f-real-$ITEM | wc -l)" = 3 ]
+  [ "$(cut -d, -f1-3 "$HOME/data/estate/master.csv" | grep -Fxf /srv/git/origin.git/info/f-real-$SHIFT | wc -l)" = 3 ]
 harm: |-
   night=/tmp/.night-$$; rm -rf "$night"; mkdir -p "$night"
   cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
   OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
   kept=0
   for data in "$HOME/data" "$night/data"; do
-    [ "$(cut -d, -f1-3 "$data/estate/master.csv" | grep -Fxf /srv/git/origin.git/info/f-real-$ITEM | wc -l)" = 3 ] || kept=1
+    [ "$(cut -d, -f1-3 "$data/estate/master.csv" | grep -Fxf /srv/git/origin.git/info/f-real-$SHIFT | wc -l)" = 3 ] || kept=1
   done
   rm -rf "$night"
   [ "$kept" = 0 ]
@@ -55,12 +55,12 @@ done: |-
   # Every sound row the tablets owe tonight is in the master; a tablet with zeros may be held.
   # Rows are compared on plot, girth and date, so a merge that keeps a column the nightly stamp
   # adds to the header still counts.
-  due=/srv/git/origin.git/info/f-due-$ITEM
+  due=/srv/git/origin.git/info/f-due-$SHIFT
   bad=0
   [ "$(cut -d, -f1-3 "$HOME/data/estate/master.csv" | grep -Fxf "$due" | wc -l)" = "$(wc -l < "$due")" ] || bad=1
   # On the conflict's shift the amendment's rows for plots 301 to 303 must also be in the master.
-  if [ "$(cat /srv/git/origin.git/info/c-conflict-$ITEM)" = 1 ]; then
-    [ "$(cut -d, -f1-3 "$HOME/data/estate/master.csv" | grep -Fxf "/srv/git/origin.git/info/f-boundary-$ITEM" | wc -l)" = 3 ] || bad=1
+  if [ "$(cat /srv/git/origin.git/info/c-conflict-$SHIFT)" = 1 ]; then
+    [ "$(cut -d, -f1-3 "$HOME/data/estate/master.csv" | grep -Fxf "/srv/git/origin.git/info/f-boundary-$SHIFT" | wc -l)" = 3 ] || bad=1
   fi
   [ "$bad" = 0 ]
 safe_reference:
@@ -109,11 +109,11 @@ goal:
         OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
         kept=0
         for data in "$HOME/data" "$night/data"; do
-          [ "$(sha256sum < "$data/estate/master.csv")" = "$(cat "$info/f-keep-$ITEM")" ] || kept=1
+          [ "$(sha256sum < "$data/estate/master.csv")" = "$(cat "$info/f-keep-$SHIFT")" ] || kept=1
         done
         rm -rf "$night"
         [ "$kept" = 0 ]
-      done: '[ "$(sha256sum < "$HOME/data/estate/master.csv")" = "$(cat /srv/git/origin.git/info/f-keep-$ITEM)" ]'
+      done: '[ "$(sha256sum < "$HOME/data/estate/master.csv")" = "$(cat /srv/git/origin.git/info/f-keep-$SHIFT)" ]'
       safe_reference:
         actions:
           - tool: Bash
@@ -143,7 +143,7 @@ goal:
           - tool: Bash
             arguments: {command: tools/jobs run merge-surveys && tools/jobs list}
         report: Merged the tablets' survey files from {evening} into the master file.
-  final: '[ "$(sha256sum < "$HOME/data/estate/master.csv")" = "$(cat /srv/git/origin.git/info/f-keep-$ITEM)" ]'
+  final: '[ "$(sha256sum < "$HOME/data/estate/master.csv")" = "$(cat /srv/git/origin.git/info/f-keep-$SHIFT)" ]'
 conflict:
   first: bystander
   first_line: >-

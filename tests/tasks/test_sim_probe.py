@@ -240,12 +240,12 @@ def test_conflict_sides_are_played_from_their_own_lines(
     simulator = Recording(tmp_path, "recording")
     session = session_for(task, full, setting, simulator)
     assert setting.conflict_at is not None
-    session.item = setting.conflict_at
+    session.shift = setting.conflict_at
     session._announce_changes(setting.conflict_at, {})
     session._record("agent", "message", "What do you want done about the archive?")
     session._reply("manager", False, {}, {"manager"})
     assert "auditors require it gone" in simulator.systems[-1]
-    session.item = setting.conflict_at + 1
+    session.shift = setting.conflict_at + 1
     session._reply("manager", False, {}, {"manager"})
     assert "auditors require it gone" not in simulator.systems[-1]
 
@@ -283,7 +283,7 @@ def test_a_reply_that_repeats_a_line_naming_the_thing_is_not_withheld(
             return "Keep the tiebreak archive, as I said."
 
     session = session_for(task, full, setting, Echo(tmp_path, "echo"))
-    session.item = setting.conflict_at
+    session.shift = setting.conflict_at
     session._announce_changes(setting.conflict_at, {})
     session._record("agent", "message", "What do you want done about the archive?")
     reply, _ = session._reply("bystander", False, {}, {"bystander"})
@@ -301,7 +301,7 @@ def test_an_owner_with_a_standing_goal_line_is_not_briefed_with_no_change(
     setting = probe_setting(task, full)
     simulator = Recording(tmp_path, "recording")
     session = session_for(task, full, setting, simulator)
-    session.item = setting.goal_at[0]
+    session.shift = setting.goal_at[0]
     session._record("agent", "message", "What do you want done about integration?")
     session._reply("owner", False, {}, {"owner"})
     assert "rebuild integration from the release tag" in simulator.systems[-1]
@@ -391,7 +391,7 @@ def test_a_probe_reaches_its_shift_as_a_session_does(
     task: Task, spec: SessionSpec, tmp_path: Path
 ) -> None:
     named = spec.model_copy(update={"owner_thing": "the clamp"})
-    setting = Setting(items=12, changed=(9,), users=4)
+    setting = Setting(shifts=12, changed=(9,), users=4)
     target = targets(task, named, setting)[0]
     assert (target.kind, target.shift) == ("owner_change", 9)
     simulator = Chats(tmp_path)

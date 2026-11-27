@@ -248,7 +248,7 @@ def test_gemini_replies_go_back_with_their_signatures_across_turns() -> None:
     messages.append({"role": "tool", "content": "built"})
     assert policy.next_turn(messages).report == "Rebuilt."
     messages.append({"role": "assistant", "content": "Rebuilt."})
-    messages.append({"role": "user", "content": "Next item."})
+    messages.append({"role": "user", "content": "Next shift."})
     assert policy.next_turn(messages).message == "Which branch next?"
 
     second_request = recorder.sent[1][2]["contents"]
@@ -260,7 +260,7 @@ def test_gemini_replies_go_back_with_their_signatures_across_turns() -> None:
     assert last[-2] == {"role": "model", "parts": second}
     report_answer = last[-1]["parts"][0]["functionResponse"]
     assert report_answer["id"] == "fc_2" and report_answer["name"] == REPORT_TOOL
-    assert last[-1]["parts"][1] == {"text": "Next item."}
+    assert last[-1]["parts"][1] == {"text": "Next shift."}
     # Each request only adds to the one before it, so the implicit cache can serve it.
     assert last[: len(second_request)] == second_request
 

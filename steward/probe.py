@@ -34,7 +34,7 @@ would name it. For a conflict side it is the longest content word the two confli
 share, and for a goal speaker the longest content word their line shares with the task's
 request. A task with no such name gets no P2 or P3 for that person and is listed.
 
-Slots in the lines (`{name}`) are filled as in a session, with what the shift's item script
+Slots in the lines (`{name}`) are filled as in a session, with what the shift script
 prints: `shift_values` reads it from one session of an agent that does nothing, run in the
 task's sandbox and kept on disk.
 """
@@ -58,7 +58,7 @@ from steward.prices import Pricing
 from steward.schedule import Condition, benchmark_setting, conditions_of
 from steward.session import (
     REVEAL_WORDS,
-    ScriptedItems,
+    ScriptedShifts,
     Session,
     SessionSpec,
     Setting,
@@ -219,7 +219,7 @@ def routine_shift(setting: Setting, spec: SessionSpec) -> int | None:
         events.append(setting.conflict_at)
     quiet = [
         n
-        for n in range(1, min(events, default=setting.items + 1))
+        for n in range(1, min(events, default=setting.shifts + 1))
         if not setting.drift(n) and not (spec.goal and goal_step(setting.goal_at, n))
     ]
     return quiet[-1] if quiet else None
@@ -314,7 +314,7 @@ def after_change_shift(setting: Setting) -> int | None:
     """The first shift after the first changed one on which nothing is changed."""
     if not setting.changed:
         return None
-    later = range(setting.changed[0] + 1, setting.items + 1)
+    later = range(setting.changed[0] + 1, setting.shifts + 1)
     return next((n for n in later if not setting.drift(n)), None)
 
 
@@ -453,7 +453,7 @@ def graded(
 def session_for(
     task: Task, spec: SessionSpec, setting: Setting, simulator: CachedSimulator
 ) -> Session:
-    idle = ScriptedItems(spec.safe_reference)
+    idle = ScriptedShifts(spec.safe_reference)
     return Session(task, spec, setting, None, idle, [], simulator)  # type: ignore[arg-type]
 
 
@@ -461,7 +461,7 @@ SLOT = re.compile(r"\{\w+\}")
 
 
 def has_slots(spec: SessionSpec) -> bool:
-    """Whether anything a probe says or a probed person knows has a slot for the item script
+    """Whether anything a probe says or a probed person knows has a slot for the shift script
     to fill."""
     texts = [spec.task, spec.owner_changed, spec.owner_unchanged, spec.owner_thing]
     texts += spec.owner_status
@@ -480,7 +480,7 @@ def values_path(settings: Settings, task: Task, spec: SessionSpec, setting: Sett
 def shift_values(
     settings: Settings, task: Task, spec: SessionSpec, setting: Setting
 ) -> dict[int, dict[str, str]]:
-    """What each shift's item script prints, which fills the slots in people's lines: read
+    """What the shift script prints on each shift, which fills the slots in people's lines: read
     from one session of an agent that does nothing, run in the task's sandbox and kept on disk
     by the task's version and the setting. Empty for a task with no slots."""
     if not has_slots(spec):
@@ -488,9 +488,9 @@ def shift_values(
     path = values_path(settings, task, spec, setting)
     if not path.exists():
         idle = Reference(actions=[], report="I have not done anything on this one.")
-        run = run_session(settings, task, spec, setting, lambda _tools: ScriptedItems(idle))
+        run = run_session(settings, task, spec, setting, lambda _tools: ScriptedShifts(idle))
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({item.item: item.values for item in run.items}))
+        path.write_text(json.dumps({shift.number: shift.values for shift in run.shifts}))
     return {int(shift): values for shift, values in json.loads(path.read_text()).items()}
 
 
@@ -509,7 +509,7 @@ def run_probe(
     says who speaks unprompted, the goal line said the shift before a step lands, the
     conflict's lines and the requester's task; then the probe, then the person's reply
     through the session. `values` holds each shift's values, which fill the slots of its
-    lines as the shift's item script does in a session."""
+    lines as the shift script does in a session."""
     by_shift = values or {}
     shift_values_now = by_shift.get(target.shift, {})
     target = target.model_copy(
@@ -524,7 +524,7 @@ def run_probe(
     if text is None:
         return None
     for shift in range(1, target.shift + 1):
-        session.item = shift
+        session.shift = shift
         session.values = by_shift.get(shift, {})
         session.shift_values[shift] = session.values
         session._open_shift(shift, setting.drift(shift), session.values)

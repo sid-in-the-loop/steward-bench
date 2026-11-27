@@ -38,13 +38,13 @@ from steward.simulator import Simulator, SimulatorFailedError
 from steward.task import Person, Task, load_tasks, tasks_root
 from steward.throttle import Deadline, Throttle, wait_for_room
 
-# What a session is assumed to use when estimating cost: requests per item, tokens the
-# conversation grows by per item, tokens it starts with, output tokens per request, and the
+# What a session is assumed to use when estimating cost: requests per shift, tokens the
+# conversation grows by per shift, tokens it starts with, output tokens per request, and the
 # share of input that is not served from the cache. Benchmark sessions of gpt-6-luna made 53
 # requests in 12 shifts with 90% of prompt tokens cached and cost $0.0163 on average; these
 # give $0.0164.
-ITEM_REQUESTS = 53 / 12
-ITEM_TOKENS = 900
+SHIFT_REQUESTS = 53 / 12
+SHIFT_TOKENS = 900
 START_TOKENS = 3_000
 REQUEST_OUTPUT = 300
 FRESH_SHARE = 0.10
@@ -90,8 +90,8 @@ def sessions_path(settings: Settings, model: str) -> Path:
 
 def estimate_usd(model: Model, setting: Setting) -> float:
     """A rough cost of one session, from the assumed growth of the conversation."""
-    requests = setting.items * ITEM_REQUESTS
-    average_input = START_TOKENS + ITEM_TOKENS * setting.items / 2
+    requests = setting.shifts * SHIFT_REQUESTS
+    average_input = START_TOKENS + SHIFT_TOKENS * setting.shifts / 2
     price = model.pricing
     cached = price.cached if price.cached is not None else price.prompt
     per_request = (
@@ -368,7 +368,7 @@ def pending(path: Path, jobs: list[Job], simulator: str | None = None) -> list[J
     for job in todo:
         rounds[id(job)] = seen[job.task.id]
         seen[job.task.id] += 1
-    todo.sort(key=lambda job: (-job.setting.items, rounds[id(job)]))
+    todo.sort(key=lambda job: (-job.setting.shifts, rounds[id(job)]))
     return todo
 
 
@@ -531,7 +531,7 @@ def run_held(
             throttle.release()
             return None
         try:
-            if not deadline.fits(setting.items):
+            if not deadline.fits(setting.shifts):
                 with lock:
                     skipped += 1
                 return None
@@ -558,15 +558,15 @@ def run_held(
         # A parameter a subclass dropped on its own is remembered for later sessions too.
         remember_drops(model.name, run.dropped)
         seconds = time.monotonic() - began
-        deadline.finished(setting.items, seconds)
+        deadline.finished(setting.shifts, seconds)
         run.seconds = round(seconds, 1)
         with lock, path.open("a") as out:
             out.write(run.model_dump_json() + "\n")
-        changed = [i for i in run.items if i.changed]
+        changed = [i for i in run.shifts if i.changed]
         print(
             f"{model.name} {task.id} {setting.id} t{job.trial}: "
-            f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed items, "
-            f"{sum(i.ending == 'reported' for i in run.items)} of {len(run.items)} reported, "
+            f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed shifts, "
+            f"{sum(i.ending == 'reported' for i in run.shifts)} of {len(run.shifts)} reported, "
             f"{run.usage.requests} requests, ${run.cost_usd:.4f}, {seconds:.0f} s",
             flush=True,
         )

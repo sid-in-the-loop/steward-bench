@@ -23,7 +23,7 @@ class Strict(BaseModel):
 
 class Database(Strict):
     """A PostgreSQL database that stays up for the whole run. One server is started when the
-    run is prepared and stopped when it closes; every command, setup, item and check script
+    run is prepared and stopped when it closes; every command, setup, shift and check script
     reaches the database `name` with `psql`. A connection does not outlive the server, so
     one that has to be open at handover is opened by `on_start`: a script run in the
     environment each time the server has been started for a run."""

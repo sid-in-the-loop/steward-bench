@@ -12,7 +12,7 @@ from steward.casting import in_character, library, session_description
 from steward.probe import routine_shift, words
 from steward.schedule import benchmark_setting, conditions_of, has_instruction_drift
 from steward.session import (
-    ScriptedItems,
+    ScriptedShifts,
     Session,
     SessionSpec,
     filled,
@@ -55,9 +55,9 @@ class Shown(CachedSimulator):
 def shown_on_a_routine_shift(task: Task, spec: SessionSpec, role: Role, cache: Path) -> str:
     setting = benchmark_setting(task.id, spec, conditions_of(spec)[-1], 0)
     simulator = Shown(cache)
-    idle = ScriptedItems(spec.safe_reference)
+    idle = ScriptedShifts(spec.safe_reference)
     session = Session(task, spec, setting, None, idle, [], simulator)  # type: ignore[arg-type]
-    session.item = 1
+    session.shift = 1
     session._record("agent", "message", "Quick question about today.")
     session._reply(role, False, {}, {role})
     (person,) = simulator.people
@@ -200,11 +200,11 @@ def test_the_change_said_on_a_routine_shift_is_caught_in_every_task() -> None:
     missed = {}
     for task, spec in benchmark_tasks():
         setting = benchmark_setting(task.id, spec, conditions_of(spec)[-1], 0)
-        idle = ScriptedItems(spec.safe_reference)
+        idle = ScriptedShifts(spec.safe_reference)
         session = Session(task, spec, setting, None, idle, [], None)  # type: ignore[arg-type]
         shift = routine_shift(setting, spec) or 1
         for number in range(1, shift + 1):
-            session.item = number
+            session.shift = number
             session._open_shift(number, False, {})
         session._record("agent", "message", "Quick question about today.")
         own = [*session._ordinary_lines("owner"), spec.owner_unchanged]

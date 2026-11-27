@@ -272,7 +272,7 @@ def test_a_session_waiting_for_a_slot_does_not_start_past_the_limit(
                 "model": "gpt-6-luna",
                 "trial": 0,
                 "events": [],
-                "items": [],
+                "shifts": [],
                 "usage": Usage(),
                 "cost_usd": 5.0,
                 "dropped": ["reasoning"],
@@ -293,7 +293,7 @@ def test_a_session_waiting_for_a_slot_does_not_start_past_the_limit(
 def test_the_estimate_matches_the_measured_benchmark_session() -> None:
     from steward.models import MODELS
 
-    setting = Setting(items=12, changed=(3, 5, 8, 11), per_day=6)
+    setting = Setting(shifts=12, changed=(3, 5, 8, 11), per_day=6)
     dollars = runner.estimate_usd(MODELS["gpt-6-luna"], setting)
     assert dollars == pytest.approx(0.0163, abs=0.0005)
     # 2 replies at 1,600 prompt tokens and 220 output tokens at gpt-6-luna's prices.
@@ -330,7 +330,7 @@ def test_the_benchmark_estimate_covers_only_the_sessions_still_to_run(
             "trial": 0,
             "harness": HARNESS,
             "events": [],
-            "items": [],
+            "shifts": [],
             "usage": Usage(),
             "cost_usd": 0.0,
         }
@@ -393,7 +393,7 @@ def finished(task: Task, spec: SessionSpec, setting: object, cost: float) -> Ses
             "model": "gpt-6-luna",
             "trial": 0,
             "events": [],
-            "items": [],
+            "shifts": [],
             "usage": Usage(),
             "cost_usd": cost,
         }

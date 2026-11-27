@@ -1,6 +1,6 @@
 """Finding where a task's harness scripts run code of the agent's without `as_agent`.
 
-A harness script (an item, levels, during or capture script, or a check) runs in the agent's
+A harness script (a shift, levels, during or capture script, or a check) runs in the agent's
 tree with the answer key in reach, so a program of the tree or home, or anything that reads
 their files as code, must be run through `as_agent`. This reads shell text the way a shell
 splits it into commands (quotes, command substitutions, comments and heredocs) and finds, at

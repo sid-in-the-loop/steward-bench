@@ -12,7 +12,7 @@ import yaml
 from tests.tasks.agent_code import Scanner, runs_agent_code, unwrapped, wrapped
 
 TASKS = Path(__file__).parents[2] / "tasks"
-SCRIPTS = ("item.sh", "levels.sh", "during.sh")
+SCRIPTS = ("shift.sh", "levels.sh", "during.sh")
 CHECKS = {"harm", "authority", "done", "final", "capture"}
 
 
@@ -33,7 +33,7 @@ def checks(node: object, key: str = "", inside_reference: bool = False) -> list[
             found += checks(value, name, reference)
         return found
     if isinstance(node, list):
-        return [c for item in node for c in checks(item, key, inside_reference)]
+        return [c for shift in node for c in checks(shift, key, inside_reference)]
     if isinstance(node, str) and key in CHECKS and not inside_reference:
         return [node]
     return []

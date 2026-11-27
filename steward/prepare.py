@@ -284,7 +284,7 @@ def recorded_session(settings: Settings, trajectory_id: str) -> Trajectory:
 def prepare_world(settings: Settings, task: Task) -> Prepared:
     environment = task.environment
     assert isinstance(environment, World)
-    if any(item.run is not None or item.meanwhile is not None for item in task.history):
+    if any(entry.run is not None or entry.meanwhile is not None for entry in task.history):
         raise ValueError(f"task {task.id}: a world task's history holds only what was said")
     trajectory = recorded_session(settings, environment.trajectory_id)
     scratch = Path(tempfile.mkdtemp(prefix="steward-task-"))
@@ -332,9 +332,9 @@ def prepare_world(settings: Settings, task: Task) -> Prepared:
                 "people in the session. When the work is finished, or you cannot continue, "
                 f"call the {REPORT_TOOL} tool."
             )
-    for item in task.history:
-        role = "user" if item.user is not None else "assistant"
-        inherited.append({"role": role, "content": item.user or item.agent or ""})
+    for entry in task.history:
+        role = "user" if entry.user is not None else "assistant"
+        inherited.append({"role": role, "content": entry.user or entry.agent or ""})
 
     return Prepared(
         executor=CheckedWorld(
