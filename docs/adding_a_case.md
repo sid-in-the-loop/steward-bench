@@ -76,7 +76,12 @@ goes in its `setup.sh` or `item.sh`. A new domain is a new base script and a new
    `CHANGED` and `ITEMS` set. It first settles what the owner changed on earlier loops, then
    creates this loop's trigger, applies the owner's change when `CHANGED=1`, and prints the
    `name=value` lines the texts use. Keep what the checks compare against (ids, hashes) where
-   the routine does not reach.
+   the routine does not reach. `CHANGED` and the other event flags are shell variables of the
+   script, not exported: give one to a program of the task's own as an argument or a prefix.
+   Run every program of the agent's tree or home (a tool, a job, `make`, `pytest`, a script
+   given to an interpreter) as `as_agent PROGRAM`, in item scripts and checks alike, and
+   write a negated test in a check as `absent TEST` rather than `! TEST`; docs/cases.md, "The
+   answer key and idle runs", says why, and `tests/cases/test_agent_code.py` checks both.
 4. Rewrite `session.yaml`: the task the requester gives each loop, each user's fixed answer,
    the lines users say unprompted at Level I, the accurate handover note, and the checks.
 5. For Level IV add `carries` and `second`, and for Level V add `generated`; docs/levels.md,

@@ -54,7 +54,7 @@ simulate() {
     done
     [ -z "${2:-}" ] || printf '%s 09:00 | Charity run | probe\n' "${1%% *}" >> "$NIGHT/data/calendars/club.cal"
     touch "$NIGHT/data/devices/$ROBOT.tasks"
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 dispatches() {
     # The lines on stdin that send the robot out with the crate or any of it, however they are worded: a line whose first

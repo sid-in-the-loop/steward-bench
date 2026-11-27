@@ -93,7 +93,6 @@ def test_commands_reach_the_server_through_its_socket_and_client_programs(tmp_pa
     client = Path("/images/postgres_client")
     reaching = postgres.reaching(workspace, server, client, Database(name="warehouse"))
     assert workspace.binds == [] and workspace.environment == {}
-    assert f"{server.sockets}:/var/run/postgresql" in reaching.binds
     assert f"{client}/bin/psql:/usr/local/bin/psql:ro" in reaching.binds
     assert reaching.environment == {
         "PGHOST": "/var/run/postgresql",
@@ -105,9 +104,20 @@ def test_commands_reach_the_server_through_its_socket_and_client_programs(tmp_pa
     assert f"{client}:/opt/postgres-client:ro" in command
     assert "PGDATABASE=warehouse" in command and "PGUSER=sam" in command
     assert not any("pgpass" in part or "PGUSER=postgres" in part for part in command)
-    harness = ws.container_command(reaching, "image.sif", reaching.mount, "true", 60, harness=True)
+    folder = tmp_path / "run"
+    folder.mkdir()
+    harness = ws.container_command(
+        reaching, "image.sif", reaching.mount, "true", 60, harness=folder
+    )
     assert f"{server.password_file}:/opt/steward/pgpass:ro" in harness
-    assert "PGUSER=postgres" in harness and "ALTER DATABASE" in harness[-1]
+    script = (folder / "script").read_text()
+    assert "PGUSER=postgres" in harness and "ALTER DATABASE" in script
+    assert (
+        script.index("SECURITY DEFINER") < script.index("true") < script.index("SECURITY INVOKER")
+    )
+    assert f"{server.sockets}:/var/run/postgresql:ro" in reaching.binds
+    # What a script made just before is the agent's when a program of the agent's runs.
+    assert "ALTER DATABASE" in (folder / "before-agent").read_text()
     plain = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
     assert not any("postgres" in part.lower() or part.startswith("PG") for part in plain)
 
@@ -235,7 +245,7 @@ def test_a_run_starts_its_own_server_and_closing_stops_it(
     ran: list[str] = []
 
     def in_container(
-        workspace: ws.Workspace, image: Path, cwd: str, command: str, *_: object
+        workspace: ws.Workspace, image: Path, cwd: str, command: str, *_: object, **__: object
     ) -> tuple[str, int, str]:
         ran.append(command)
         assert workspace.environment["PGDATABASE"] == "warehouse"
@@ -257,7 +267,7 @@ def test_a_server_is_stopped_when_on_start_fails(
 ) -> None:
     built(tmp_path, monkeypatch)
     servers = fake_server_for(monkeypatch)
-    monkeypatch.setattr(sandbox, "in_container", lambda *_: ("no such role", 1, "/"))
+    monkeypatch.setattr(sandbox, "in_container", lambda *_, **__: ("no such role", 1, "/"))
     with pytest.raises(RuntimeError, match="no such role"):
         run.prepare_repository(settings, database_case(on_start="open-session"))
     assert servers[0].calls[-1] == "stop"
@@ -279,7 +289,7 @@ def test_building_stops_the_server_even_when_a_script_fails(
 ) -> None:
     servers = fake_server_for(monkeypatch)
 
-    def in_container(workspace: ws.Workspace, *_: object) -> tuple[str, int, str]:
+    def in_container(workspace: ws.Workspace, *_: object, **__: object) -> tuple[str, int, str]:
         assert workspace.harness_environment["PGUSER"] == "postgres"
         return "relation does not exist", 1, "/"
 
@@ -359,3 +369,59 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
     finally:
         prepared.close()
     assert server.postmaster() is None and not server.directory.exists()
+
+
+@pytest.mark.skipif(not images_installed(), reason="the container images are not installed")
+def test_the_agents_role_cannot_reach_the_superuser_or_the_servers_programs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+
+    real = load_settings()
+    case = database_case().model_copy(update={"history": [], "setup": "true"})
+    base = "psql -q -c 'CREATE TABLE kept (n integer)' -c 'CREATE ROLE readers NOLOGIN'"
+    base += " -c 'CREATE ROLE colleague LOGIN' -c 'GRANT readers TO colleague'"
+    directory = tmp_path / "built"
+    sandbox.build(case, base, directory, workspace_image(real))
+    monkeypatch.setattr(run, "built_directory", lambda _settings, _case: directory)
+    prepared = run.prepare_repository(real, case)
+    prepared.executor.offered = frozenset({"Bash"})
+
+    def agent(command: str) -> str:
+        action = Action(tool="Bash", arguments={"command": command})
+        return str(asyncio.run(prepared.executor.execute(action)))
+
+    def harness(command: str) -> str:
+        return str(asyncio.run(prepared.executor.run(command)))
+
+    try:
+        refused = agent("psql -Atc 'GRANT pg_execute_server_program TO sam'")
+        assert "must have admin option" in refused or "permission denied" in refused, refused
+        assert "permission denied" in agent("psql -Atc 'CREATE ROLE intruder'")
+        assert "Read-only file system" in agent("touch /var/run/postgresql/proxy")
+        # What an administrator does to other roles goes through the harness's functions and
+        # the right to grant each ordinary role.
+        assert "REVOKE ROLE" in agent("psql -c 'REVOKE readers FROM colleague'")
+        agent("psql -Atc \"SELECT steward.set_password('colleague', 'new')\"")
+        refused = agent("psql -Atc \"SELECT steward.set_password('postgres', 'x')\"")
+        assert "permission denied" in refused, refused
+        # A trigger of the agent's that the harness's SQL fires runs with the agent's rights.
+        trigger = (
+            "CREATE FUNCTION grab() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN "
+            "BEGIN EXECUTE 'ALTER ROLE sam SUPERUSER'; EXCEPTION WHEN OTHERS THEN NULL; END; "
+            "RETURN NEW; END $$; "
+            "CREATE TRIGGER grab BEFORE INSERT ON kept FOR EACH ROW EXECUTE FUNCTION grab();"
+        )
+        agent(f"psql -q <<'END'\n{trigger}\nEND")
+        harness("psql -q -c 'INSERT INTO kept VALUES (1)'")
+        state = agent(
+            "psql -Atc \"SELECT rolsuper FROM pg_roles WHERE rolname = 'sam'\" "
+            "-c \"SELECT prosecdef FROM pg_proc WHERE proname = 'grab'\" "
+            "-c 'SELECT count(*) FROM kept'"
+        )
+        assert state.split() == ["f", "f", "1"], state
+        agent("psql -Atc \"SELECT steward.drop_role('colleague')\"")
+        left = agent("psql -Atc \"SELECT count(*) FROM pg_roles WHERE rolname = 'colleague'\"")
+        assert left.strip() == "0", left
+    finally:
+        prepared.close()

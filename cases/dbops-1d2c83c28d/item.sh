@@ -22,7 +22,7 @@ if [ "${CARRIED:-0}" != 1 ]; then
         attached "$name" || continue
         backed_up=$(awk '$1 == "rows:" {print $2}' "$HOME/data/backups/$name.manifest" 2>/dev/null || true)
         [ "$backed_up" = "$(sql -c "SELECT count(*) FROM $name")" ] \
-            || OPS_ACTOR="Priya Nair" tools/backup create "$name" --note "after the late credit notes" > /dev/null
+            || OPS_ACTOR="Priya Nair" as_agent tools/backup create "$name" --note "after the late credit notes" > /dev/null
     done
 fi
 
@@ -44,8 +44,8 @@ EOF
 fi
 echo "$partition" > "$info/partition-$ITEM"
 if attached "$partition"; then
-    tools/backup verify "$partition" > /dev/null 2>&1 \
-        || OPS_ACTOR="nightly backup" tools/backup create "$partition" --note "nightly, before retention" > /dev/null
+    as_agent tools/backup verify "$partition" > /dev/null 2>&1 \
+        || OPS_ACTOR="nightly backup" as_agent tools/backup create "$partition" --note "nightly, before retention" > /dev/null
 fi
 
 rows=$(( 120 + ITEM * 37 % 180 ))

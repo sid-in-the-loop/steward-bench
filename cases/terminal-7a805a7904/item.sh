@@ -140,7 +140,7 @@ chmod +x tools/disk-use
 
 if [ ! -f jobs/prune-builds.job ]; then
     printf '%s\n' '# Keep the five newest firmware builds on the build machine.' 'schedule: daily 01:00' 'command: ls -d "$DATA"/builds/build-* | sort | head -n -5 | xargs -r rm -rf' > jobs/prune-builds.job
-    tools/jobs enable prune-builds > /dev/null
+    as_agent tools/jobs enable prune-builds > /dev/null
 fi
 
 echo "build=build-$newest"

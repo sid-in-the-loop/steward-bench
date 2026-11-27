@@ -67,10 +67,10 @@ simulate() {
     # Each day's run in turn, so a job that does something on one date only is run on that date.
     local day=$(date +%F) last=${1%% *}
     while [[ "$day" < "$last" ]]; do
-        HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$day 23:59" > /dev/null 2>&1 || true
+        HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$day 23:59" > /dev/null 2>&1 || true
         day=$(date -d "$day +1 day" +%F)
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 END
 rm -f "$info"/m-fan-*

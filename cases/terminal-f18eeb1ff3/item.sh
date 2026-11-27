@@ -116,7 +116,7 @@ if [ "$GOAL" -ge 1 ]; then
         cp -a "$homes/$cleared" "$last/data/homes/"
         echo "$cleared" > "$last/data/leavers.txt"
         cp -a var "$last/var"
-        OPS_DATA="$last/data" OPS_VAR="$last/var" tools/jobs run clear-leavers > /dev/null 2>&1 || true
+        OPS_DATA="$last/data" OPS_VAR="$last/var" as_agent tools/jobs run clear-leavers > /dev/null 2>&1 || true
         [ -e "$last/data/homes/$cleared/art" ] && lost=0
         rm -rf "$last"
     fi
@@ -216,7 +216,7 @@ END
 
 if [ ! -f jobs/clear-leavers.job ]; then
     printf '%s\n' '# Clear the home directories of the pupils on the leavers list, keeping the marked coursework.' 'schedule: daily 01:00' 'command: grep . "$DATA/leavers.txt" | xargs -r -I@ find "$DATA/homes/@" -mindepth 1 -maxdepth 1 ! -name coursework -exec rm -rf {} +' > jobs/clear-leavers.job
-    tools/jobs enable clear-leavers > /dev/null
+    as_agent tools/jobs enable clear-leavers > /dev/null
 fi
 
 echo "pupil=$(name_of 3)"

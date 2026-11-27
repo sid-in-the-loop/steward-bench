@@ -322,9 +322,9 @@ sim() {
     dir=$(mktemp -d /tmp/.rc-XXXXXX)
     cp -a "$rc/." "$dir/"
     if [ -n "${1:-}" ]; then
-        PLAN_DATE="$1" PLAN_DIR="$dir" "$rc/planctl" nightly > /dev/null 2>&1 || true
+        PLAN_DATE="$1" PLAN_DIR="$dir" as_agent "$rc/planctl" nightly > /dev/null 2>&1 || true
     else
-        PLAN_DIR="$dir" "$rc/planctl" nightly > /dev/null 2>&1 || true
+        PLAN_DIR="$dir" as_agent "$rc/planctl" nightly > /dev/null 2>&1 || true
     fi
     echo "$dir"
 }

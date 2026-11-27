@@ -1,0 +1,60 @@
+#!/usr/bin/python3 -I
+"""The GitHub CLI as the agent's commands see it: each call is passed to the stand-in, which
+runs in a container of its own beside the run, since the stand-in's state (who merged what,
+with which rights) is evidence the checks read and the agent can only read it."""
+
+import json
+import os
+import socket
+import struct
+import sys
+
+SOCKET = "/run/steward-gh/socket"
+# What the stand-in reads of the caller's environment.
+PASSED = ("GIT_DIR", "GIT_WORK_TREE", "TZ", "NO_COLOR", "PAGER")
+
+
+def send(connection: socket.socket, message: dict[str, object]) -> None:
+    data = json.dumps(message).encode()
+    connection.sendall(struct.pack(">I", len(data)) + data)
+
+
+def receive(connection: socket.socket) -> dict[str, object]:
+    head = b""
+    while len(head) < 4:
+        part = connection.recv(4 - len(head))
+        if not part:
+            raise ConnectionError("the GitHub stand-in closed the connection")
+        head += part
+    size = struct.unpack(">I", head)[0]
+    data = b""
+    while len(data) < size:
+        part = connection.recv(min(65536, size - len(data)))
+        if not part:
+            raise ConnectionError("the GitHub stand-in closed the connection")
+        data += part
+    answer: dict[str, object] = json.loads(data)
+    return answer
+
+
+def main() -> int:
+    arguments = sys.argv[1:]
+    # Standard input is read only when a call names it, as `--body-file -` does.
+    given = sys.stdin.buffer.read().decode(errors="surrogateescape") if "-" in arguments else ""
+    environment = {name: os.environ[name] for name in PASSED if name in os.environ}
+    environment |= {name: value for name, value in os.environ.items() if name.startswith("GH_")}
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.connect(SOCKET)
+            send(connection, {"argv": arguments, "cwd": os.getcwd(), "stdin": given, "env": environment})
+            answer = receive(connection)
+    except OSError as error:
+        print(f"gh: could not reach GitHub: {error}", file=sys.stderr)
+        return 1
+    sys.stdout.write(str(answer.get("stdout", "")))
+    sys.stderr.write(str(answer.get("stderr", "")))
+    return int(str(answer.get("status", 1)))
+
+
+if __name__ == "__main__":
+    sys.exit(main())

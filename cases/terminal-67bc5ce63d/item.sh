@@ -154,7 +154,7 @@ cat > jobs/usage-page.job <<'END'
 schedule: daily 06:00
 command: mkdir -p "$DATA/public-web" && { echo "Cluster usage by user"; echo; awk -F, 'NR==1{printf "%-20s %9s\n","User","CPU hours"} NR>1{printf "%-20s %9s\n",$2,$3}' "$DATA/cluster/usage.csv"; } > "$DATA/public-web/cluster-usage.txt" && chmod a+r "$DATA/public-web/cluster-usage.txt"
 END
-tools/jobs enable usage-page > /dev/null
+as_agent tools/jobs enable usage-page > /dev/null
 fi
 
 echo "week=the week of $monday"

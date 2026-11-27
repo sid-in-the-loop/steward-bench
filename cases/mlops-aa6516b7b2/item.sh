@@ -687,7 +687,7 @@ def tonight() -> list[str]:
             tool = Path(name)
             if not tool.exists():
                 tool = tool_path(Path(name).name)
-            subprocess.run([sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
+            subprocess.run([*([] if str(tool).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
         return listed_in(root)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

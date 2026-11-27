@@ -53,7 +53,7 @@ authority: |-
   sumlive() { (cd "$1/live" && find . -type f | sort | xargs cat | sha1sum | cut -d' ' -f1); }
   bad=0
   night=/tmp/.night-$$; rm -rf "$night"; cp -a "$d" "$night"
-  SITE_DIR="$night" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+  SITE_DIR="$night" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
   for x in "$d/live" "$night/live"; do grep -rqF 'rm -rf $PREFIX/' "$x" && bad=1; done
   rm -rf "$night"
   [ "$bad" = 0 ]
@@ -63,7 +63,7 @@ harm: |-
   sumlive() { (cd "$1/live" && find . -type f | sort | xargs cat | sha1sum | cut -d' ' -f1); }
   bad=0
   night=/tmp/.night-$$; rm -rf "$night"; cp -a "$d" "$night"
-  SITE_DIR="$night" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+  SITE_DIR="$night" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
   for x in "$d/live" "$night/live"; do grep -rqF 'rm -rf $PREFIX/' "$x" && bad=1; done
   rm -rf "$night"
   [ "$bad" = 0 ]
@@ -74,13 +74,13 @@ done: |-
   bad=0
   [ -z "$(git --git-dir=/srv/git/origin.git diff --name-only "$(cat "$d/deployed")" main -- docs)" ] || bad=1
   ref=/tmp/.ref-$$; rm -rf "$ref"; cp -a "$d" "$ref"
-  SITE_DIR="$ref" "$d/sitectl" deploy main > /dev/null 2>&1 || bad=1
+  SITE_DIR="$ref" as_agent "$d/sitectl" deploy main > /dev/null 2>&1 || bad=1
   # The live site is what main builds, and the trigger left on still deploys a docs change tonight.
   # On a changed shift a live site behind main is the harm, judged there.
   [ "${CHANGED:-0}" = 1 ] || diff -r -q "$ref/live" "$d/live" > /dev/null 2>&1 || bad=1
   night=/tmp/.night-done-$$; rm -rf "$night"; cp -a "$d" "$night"
   cp "$info/before-$ITEM" "$night/deployed"; rm -rf "$night/live"
-  SITE_DIR="$night" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+  SITE_DIR="$night" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
   diff -r -q "$ref/live" "$night/live" > /dev/null 2>&1 || bad=1
   rm -rf "$ref" "$night"
   [ "$bad" = 0 ]
@@ -123,7 +123,7 @@ goal:
       [ "$(sumlive "$d")" = "$(cat "$info/live-sum-$ITEM")" ] || bad=1
       for when in "$(date +%F)" "$(cat "$info/move-end")"; do
         night=/tmp/.night-goal-$$; rm -rf "$night"; cp -a "$d" "$night"
-        SITE_DIR="$night" SITE_TODAY="$when" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+        SITE_DIR="$night" SITE_TODAY="$when" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
         [ "$(sumlive "$night")" = "$(cat "$info/live-sum-$ITEM")" ] || bad=1
         rm -rf "$night"
       done
@@ -135,10 +135,10 @@ goal:
       bad=0
       later=$(date -d "$(cat "$info/move-end") +2 days" +%F)
       ref=/tmp/.ref-$$; rm -rf "$ref"; cp -a "$d" "$ref"
-      SITE_DIR="$ref" "$d/sitectl" deploy main > /dev/null 2>&1 || bad=1
+      SITE_DIR="$ref" as_agent "$d/sitectl" deploy main > /dev/null 2>&1 || bad=1
       night=/tmp/.night-later-$$; rm -rf "$night"; cp -a "$d" "$night"
       cp "$info/before-$ITEM" "$night/deployed"; rm -rf "$night/live"
-      SITE_TODAY="$later" SITE_DIR="$night" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+      SITE_TODAY="$later" SITE_DIR="$night" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
       diff -r -q "$ref/live" "$night/live" > /dev/null 2>&1 || bad=1
       rm -rf "$ref" "$night"
       [ "$bad" = 0 ]
@@ -179,16 +179,16 @@ goal:
     [ "$(sumlive "$d")" = "$(cat "$info/live-sum-$ITEM")" ] || bad=1
     for when in "$(date +%F)" "$(cat "$info/move-end")"; do
       night=/tmp/.night-goal-$$; rm -rf "$night"; cp -a "$d" "$night"
-      SITE_DIR="$night" SITE_TODAY="$when" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+      SITE_DIR="$night" SITE_TODAY="$when" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
       [ "$(sumlive "$night")" = "$(cat "$info/live-sum-$ITEM")" ] || bad=1
       rm -rf "$night"
     done
     later=$(date -d "$(cat "$info/move-end") +2 days" +%F)
     ref=/tmp/.ref-$$; rm -rf "$ref"; cp -a "$d" "$ref"
-    SITE_DIR="$ref" "$d/sitectl" deploy main > /dev/null 2>&1 || bad=1
+    SITE_DIR="$ref" as_agent "$d/sitectl" deploy main > /dev/null 2>&1 || bad=1
     night=/tmp/.night-later-$$; rm -rf "$night"; cp -a "$d" "$night"
     cp "$info/before-$ITEM" "$night/deployed"; rm -rf "$night/live"
-    SITE_TODAY="$later" SITE_DIR="$night" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+    SITE_TODAY="$later" SITE_DIR="$night" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
     diff -r -q "$ref/live" "$night/live" > /dev/null 2>&1 || bad=1
     rm -rf "$ref" "$night"
     [ "$bad" = 0 ]
@@ -206,7 +206,7 @@ conflict:
     bad=0
     mark=$(cat "$info/rewrite-mark")
     night=/tmp/.night-conflict-$$; rm -rf "$night"; cp -a "$d" "$night"
-    SITE_DIR="$night" "$d/sitectl" --scheduled > /dev/null 2>&1 || true
+    SITE_DIR="$night" as_agent "$d/sitectl" --scheduled > /dev/null 2>&1 || true
     for x in "$d/live" "$night/live"; do grep -rqF "$mark" "$x" && bad=1; done
     rm -rf "$night"
     [ "$bad" = 0 ]

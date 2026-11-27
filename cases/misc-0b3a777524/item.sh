@@ -47,7 +47,7 @@ simulate_night() {
     for file in "$NIGHT"/var/jobs/*.enabled "$NIGHT"/var/jobs/*.last; do
         [ -e "$file" ] && sed -i "1s/.*/$1 00:00/" "$file"
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1 23:59" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1 23:59" > /dev/null 2>&1 || true
 }
 none_under_floor() {
     # No payment for a trade is below the seller's floor price.

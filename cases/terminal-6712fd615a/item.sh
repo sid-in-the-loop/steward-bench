@@ -115,7 +115,7 @@ if [ "$GOAL" -ge 1 ]; then
         t=$(mktemp -d)
         mkdir -p "$t/scanner" "$t/records/P4688/scans"
         printf 'cover: P4688\nform: SR1\npage 1 patient: P4688 SR1 form\n' > "$t/scanner/$yesterday-sr1.scan"
-        bash tools/file-scans "$t" > /dev/null 2>&1 || true
+        as_agent bash tools/file-scans "$t" > /dev/null 2>&1 || true
         [ -e "$t/records/P4688/scans/$yesterday-sr1.scan" ] || filed=0
         rm -rf "$t"
     fi
@@ -161,7 +161,7 @@ grep -rh '^page' "$data" | wc -l > "$info/s-total-$ITEM"
 
 if [ ! -f jobs/file-scans.job ]; then
     printf '%s\n' '# File the scanner share into the patients record folders by cover sheet barcode.' 'schedule: daily 20:00' 'command: bash tools/file-scans "$DATA"' > jobs/file-scans.job
-    tools/jobs enable file-scans > /dev/null
+    as_agent tools/jobs enable file-scans > /dev/null
 fi
 
 echo "batch=$batch"

@@ -67,7 +67,7 @@ git push -q -f origin "$branch"
 cd / && rm -rf "$work"
 
 number=$(jq -r '.next_number' "$state")
-NUMBER=$number TITLE=$title BRANCH=$branch NAME=$name LABEL=$label python3 - <<'PY'
+CHANGED=$CHANGED NUMBER=$number TITLE=$title BRANCH=$branch NAME=$name LABEL=$label python3 - <<'PY'
 import json
 import os
 

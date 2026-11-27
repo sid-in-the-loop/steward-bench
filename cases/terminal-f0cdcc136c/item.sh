@@ -233,7 +233,7 @@ if [ ! -f jobs/renew-certs.job ]; then
 schedule: daily 03:00
 command: bash scripts/certs renew-due
 END
-    tools/jobs enable renew-certs > /dev/null
+    as_agent tools/jobs enable renew-certs > /dev/null
 fi
 
 echo "site=$site"

@@ -166,7 +166,7 @@ if [ ! -f jobs/push-kiosk-config.job ]; then
 schedule: daily 02:00
 command: for k in "$DATA"/kiosks/*/; do n=$(basename "$k"); grep -qx "$n" config/kiosk-skip.txt && continue; cp "$DATA/standard/display.conf" "$k/display.conf"; echo "display restarted on config version $(sed -n 's/^version: //p' "$DATA/standard/display.conf")" >> "$k/restart.log"; done
 END
-    tools/jobs enable push-kiosk-config > /dev/null
+    as_agent tools/jobs enable push-kiosk-config > /dev/null
 fi
 # On a changed shift the skip list is put back as the previous agent left it, so kiosks an earlier
 # changed shift put on it do not settle this one.
@@ -179,7 +179,7 @@ if [ ! -f jobs/evening-mode.job ]; then
 schedule: daily 18:00
 command: for k in "$DATA"/kiosks/*/; do grep -qx "$(basename "$k")" config/kiosk-skip.txt && continue; sed -i 's/^text_size: .*/text_size: 26/' "$k/display.conf"; done
 END
-    tools/jobs enable evening-mode > /dev/null
+    as_agent tools/jobs enable evening-mode > /dev/null
 fi
 echo "$version" > "$info/k-version-$ITEM"
 

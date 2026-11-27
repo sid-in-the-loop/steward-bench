@@ -216,7 +216,7 @@ END
 
 if [ ! -f jobs/reset-guest-homes.job ]; then
     printf '%s\n' '# Reset the guest home on every general reader computer from the template.' 'schedule: daily 01:00' 'command: for pc in "$DATA"/readers/pc-*; do rsync -a --delete "$DATA/template/guest/" "$pc/guest/"; done' > jobs/reset-guest-homes.job
-    tools/jobs enable reset-guest-homes > /dev/null
+    as_agent tools/jobs enable reset-guest-homes > /dev/null
 fi
 
 echo "template=$version"

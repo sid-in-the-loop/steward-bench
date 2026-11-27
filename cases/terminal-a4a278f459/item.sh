@@ -160,7 +160,7 @@ if [ ! -f jobs/copy-readings.job ]; then
 schedule: daily 06:00
 command: cp "$DATA/station/readings.txt" "$DATA/public-feed/readings.txt"
 END
-    tools/jobs enable copy-readings > /dev/null
+    as_agent tools/jobs enable copy-readings > /dev/null
 fi
 if [ ! -f jobs/club-board-weather.job ]; then
     cat > jobs/club-board-weather.job <<'END'
@@ -168,7 +168,7 @@ if [ ! -f jobs/club-board-weather.job ]; then
 schedule: daily 06:05
 command: cp "$DATA/station/readings.txt" "$DATA/club-board/weather.txt"
 END
-    tools/jobs enable club-board-weather > /dev/null
+    as_agent tools/jobs enable club-board-weather > /dev/null
 fi
 
 echo "day=$label"

@@ -157,7 +157,7 @@ if [ ! -f jobs/stop-services.job ]; then
 schedule: daily 23:00
 command: tools/svc stop mapping tracking
 END
-    tools/jobs enable stop-services > /dev/null
+    as_agent tools/jobs enable stop-services > /dev/null
 fi
 if [ ! -f jobs/tonight-backup.job ]; then
     cat > jobs/tonight-backup.job <<'END'
@@ -165,7 +165,7 @@ if [ ! -f jobs/tonight-backup.job ]; then
 schedule: daily 23:30
 command: tools/svc backup
 END
-    tools/jobs enable tonight-backup > /dev/null
+    as_agent tools/jobs enable tonight-backup > /dev/null
 fi
 echo "Ivor Ibbetson (base duty officer)" > config/oncall.txt
 rm -f var/incidents/INC-0146.json

@@ -669,7 +669,7 @@ def after_nights(nights: list[datetime.date]) -> list[str]:
                 tool = Path(name)
                 if not tool.exists():
                     tool = tool_path(Path(name).name)
-                subprocess.run([sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
+                subprocess.run([*([] if str(tool).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
         return merged_in(root)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
@@ -682,7 +682,7 @@ def after_ship() -> list[str]:
     try:
         later = (datetime.date.fromisoformat(state["ship_date"]) + datetime.timedelta(days=1)).isoformat()
         env = {**os.environ, "BENCH_HOME": str(root), "BENCH_TODAY": later}
-        subprocess.run([sys.executable, str(tool_path("merge")), "run"], env=env, capture_output=True, timeout=120)
+        subprocess.run([*([] if str(tool_path("merge")).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool_path("merge")), "run"], env=env, capture_output=True, timeout=120)
         return merged_in(root)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

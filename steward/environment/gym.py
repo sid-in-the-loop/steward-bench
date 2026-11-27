@@ -14,6 +14,7 @@ import json
 import secrets
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from pydantic import BaseModel
 from steward.execution.record import Action
 
 BRIDGE = Path(__file__).parent / "shims" / "gym_bridge"
+SCRIPT_MOUNT = "/opt/steward/script"
 DATABASE = "toolathlon_gym"
 USER = "eigent"
 # What the owner's password was before each world had its own. GYM's configs, which the agent can
@@ -181,13 +183,14 @@ class World:
             arguments += ["--bind", bind]
         return [*arguments, str(self.images.postgres), *command]
 
-    def tools(self, *command: str, user: str = USER) -> list[str]:
+    def tools(self, *command: str, user: str = USER, binds: tuple[str, ...] = ()) -> list[str]:
         """A command next to the tools. The agent's tool servers run as `AGENT_USER`; a case's
         setup and checks keep the owner's rights.
 
         Every command is contained: it sees no host directory but the ones bound here, no
-        other process and none of the host's environment, so nothing the agent runs can read
-        this world's directory, its saves, the cases or the owner's password. Setup and checks
+        other process (each runs in a process namespace of its own) and none of the host's
+        environment, so nothing the agent runs can read this world's directory, its saves,
+        the cases, the owner's password or the script of a setup or check that runs beside it. Setup and checks
         start outside /workspace, which the agent can write, so a module planted there is not
         imported by a Python script they pipe in."""
         password = self.password if user == USER else AGENT_PASSWORD
@@ -208,15 +211,30 @@ class World:
         # Read only for the agent, so that it cannot put a server of its own in place of the
         # socket that setup and checks connect to.
         sockets = f"{self.sockets}:{SOCKET_DIRECTORY}" + (":ro" if user == AGENT_USER else "")
-        arguments = ["apptainer", "exec", "--containall", "--writable-tmpfs", "--pwd", start]
-        arguments += ["--bind", sockets]
+        arguments = ["apptainer", "exec", "--containall", "--pid", "--writable-tmpfs"]
+        arguments += ["--pwd", start, "--bind", sockets]
         arguments += ["--bind", f"{self.repository}:/workspace"]
         arguments += ["--bind", f"{BRIDGE}:/opt/gym_bridge:ro"]
         if self.images.canvas_server is not None:
             arguments += ["--bind", f"{self.images.canvas_server}:{CANVAS_SERVER}:ro"]
+        for bind in binds:
+            arguments += ["--bind", bind]
         for name, value in environment.items():
             arguments += ["--env", f"{name}={value}"]
         return [*arguments, str(self.images.tools), *command]
+
+    def run_script(self, script: str) -> subprocess.CompletedProcess[str]:
+        """A setup or check script next to the tools, with the owner's rights. It is read from
+        a file shown to its container alone, never given as an argument, so its text (the
+        shift's flags, a check's mark) is in no process's command line."""
+        folder = Path(tempfile.mkdtemp(prefix="script-", dir=self.directory))
+        try:
+            (folder / "script").write_text(script)
+            bind = f"{folder / 'script'}:{SCRIPT_MOUNT}:ro"
+            command = self.tools("bash", SCRIPT_MOUNT, binds=(bind,))
+            return subprocess.run(command, capture_output=True, text=True)
+        finally:
+            shutil.rmtree(folder, ignore_errors=True)
 
     def create(self) -> None:
         """A new world: the task's files and a database loaded with GYM's data."""
@@ -405,8 +423,7 @@ class World:
     def succeeds(self, command: str) -> bool:
         """Whether a check on the state passes: a shell command run next to the tools, with
         the database reachable through the usual variables."""
-        done = subprocess.run(self.tools("bash", "-c", command), capture_output=True)
-        return done.returncode == 0
+        return self.run_script(command).returncode == 0
 
 
 class GymExecutor:
@@ -422,10 +439,12 @@ class GymExecutor:
         return output
 
     async def run(self, command: str) -> str:
-        done = await asyncio.to_thread(
-            subprocess.run, self.world.tools("bash", "-c", command), capture_output=True, text=True
-        )
-        return done.stdout + done.stderr
+        return (await self.run_status(command))[0]
+
+    async def run_status(self, command: str) -> tuple[str, int | None]:
+        """A setup or check script's output and exit status."""
+        done = await asyncio.to_thread(self.world.run_script, command)
+        return done.stdout + done.stderr, done.returncode
 
     async def succeeds(self, command: str) -> bool:
         return await asyncio.to_thread(self.world.succeeds, command)

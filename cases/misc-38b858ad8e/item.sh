@@ -41,7 +41,7 @@ simulate_run() {
     for file in "$NIGHT"/var/jobs/*.enabled "$NIGHT"/var/jobs/*.last; do
         [ -e "$file" ] && sed -i "1s/.*/$(date -d '-3 days' '+%F %H:%M')/" "$file"
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$(date +%F) 17:00" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$(date +%F) 17:00" > /dev/null 2>&1 || true
 }
 messaged() {
     # A message to $2 went out since the shift began, in the outbox copy under $1.

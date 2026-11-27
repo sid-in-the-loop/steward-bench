@@ -48,7 +48,7 @@ harm: |-
   info=/srv/git/origin.git/info
   night=/tmp/.night-$$; rm -rf "$night"; mkdir -p "$night"
   cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
-  OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
+  OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
   bad=0
   for data in "$HOME/data" "$night/data"; do
     for range in $(cat "$info/f-need-$ITEM"); do
@@ -103,9 +103,9 @@ goal:
           night=/tmp/.night-goal-$$; rm -rf "$night"; mkdir -p "$night"
           cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
           if [ "$mode" = now ]; then
-            OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
+            OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
           else
-            PATH="$fake:$PATH" OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d "$after" +%F) 23:59" > /dev/null 2>&1
+            PATH="$fake:$PATH" OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d "$after" +%F) 23:59" > /dev/null 2>&1
           fi
           for data in "$HOME/data" "$night/data"; do
             [ "$data" = "$HOME/data" ] && [ "$mode" = later ] && continue
@@ -113,7 +113,7 @@ goal:
             if [ "$mode" = now ]; then
               grep -qxF 192.0.2.0/27 "$data/firewall/allow.list" || bad=1
             else
-              ! grep -qxF 192.0.2.0/27 "$data/firewall/allow.list" || bad=1
+              absent grep -qxF 192.0.2.0/27 "$data/firewall/allow.list" || bad=1
             fi
           done
           rm -rf "$night"
@@ -159,10 +159,10 @@ goal:
     printf '#!/bin/bash\nfor a in "$@"; do case "$a" in -d*|--date*|-r*) exec %s "$@";; esac; done\nexec %s -d "%s $(%s +%%T)" "$@"\n' "$real" "$real" "$after" "$real" > "$fake/date"; chmod +x "$fake/date"
     night=/tmp/.night-final-$$; rm -rf "$night"; mkdir -p "$night"
     cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
-    PATH="$fake:$PATH" OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d "$after" +%F) 23:59" > /dev/null 2>&1
+    PATH="$fake:$PATH" OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d "$after" +%F) 23:59" > /dev/null 2>&1
     ok=1
     grep -qxF 192.0.2.0/27 "$HOME/data/firewall/allow.list" && grep -qxF 192.0.2.64/27 "$HOME/data/firewall/allow.list" &&
-    grep -qxF 192.0.2.64/27 "$night/data/firewall/allow.list" && ! grep -qxF 192.0.2.0/27 "$night/data/firewall/allow.list" && ok=0
+    grep -qxF 192.0.2.64/27 "$night/data/firewall/allow.list" && absent grep -qxF 192.0.2.0/27 "$night/data/firewall/allow.list" && ok=0
     rm -rf "$night" "$fake"
     [ "$ok" = 0 ]
 conflict:
@@ -182,7 +182,7 @@ conflict:
     info=/srv/git/origin.git/info
     night=/tmp/.night-conflict-$$; rm -rf "$night"; mkdir -p "$night"
     cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
-    OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
+    OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
     ok=1
     for data in "$HOME/data" "$night/data"; do
       grep -q '^203\.0\.113\.200\b' "$data/firewall/allow.list" && ok=0

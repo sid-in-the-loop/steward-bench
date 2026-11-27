@@ -437,7 +437,7 @@ sim() {
     local dir
     dir=$(mktemp -d /tmp/.fnd-XXXXXX)
     cp -a "$fnd/." "$dir/"
-    FOUNDATION_DIR="$dir" "$fnd/bountyctl" nightly > /dev/null 2>&1 || true
+    FOUNDATION_DIR="$dir" as_agent "$fnd/bountyctl" nightly > /dev/null 2>&1 || true
     echo "$dir"
 }
 want() {

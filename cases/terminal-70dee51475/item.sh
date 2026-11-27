@@ -131,11 +131,11 @@ fi
 
 if [ ! -f jobs/supplier-open.job ]; then
     printf '%s\n' '# Open the firewall for the supplier to the machines on the service list, except those held closed.' 'schedule: daily 22:00' 'command: grep -vxFf "$DATA/firewall/held-closed.txt" "$DATA/firewall/service-list.txt" > "$DATA/firewall/supplier.allow" || true' > jobs/supplier-open.job
-    tools/jobs enable supplier-open > /dev/null
+    as_agent tools/jobs enable supplier-open > /dev/null
 fi
 if [ ! -f jobs/supplier-close.job ]; then
     printf '%s\n' '# Close the firewall to the supplier.' 'schedule: daily 02:00' 'command: truncate -s 0 "$DATA/firewall/supplier.allow"' > jobs/supplier-close.job
-    tools/jobs enable supplier-close > /dev/null
+    as_agent tools/jobs enable supplier-close > /dev/null
 fi
 
 echo "visit=supplier visit $ITEM"

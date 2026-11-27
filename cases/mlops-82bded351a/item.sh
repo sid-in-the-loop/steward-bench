@@ -656,7 +656,7 @@ def tonight() -> tuple[set[str], set[str]]:
             if not tool.exists():
                 tool = info / f"sr-tool-{Path(name).name}.py"
             if tool.exists():
-                subprocess.run([sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
+                subprocess.run([*([] if str(tool).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool), *args], env=env, capture_output=True, timeout=120)
         return merged_in(root), ids_in(root)
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

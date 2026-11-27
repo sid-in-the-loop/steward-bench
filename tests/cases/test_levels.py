@@ -1,5 +1,6 @@
 """The levels above single-factor sessions: drawn settings, the message bank and the plan."""
 
+import shlex
 from pathlib import Path
 
 import pytest
@@ -231,7 +232,9 @@ def test_a_recorded_owner_is_replayed_before_the_changed_item(
         recording=recording,
     )
     replayed = [c for c in environment.ran if c.startswith("cd /home/mara/tally")]
-    assert [c.splitlines()[1] for c in replayed] == recording
+    assert [c.splitlines()[1] for c in replayed] == [
+        f"as_agent bash -c {shlex.quote(command)}" for command in recording
+    ]
     assert any("capture the change" in c and "GENERATED=1" in c for c in environment.ran)
     with pytest.raises(RuntimeError, match="no recorded owner"):
         run(case, made, setting, ScriptedItems(spec.safe_reference))

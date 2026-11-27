@@ -39,7 +39,7 @@ simulate_run() {
         [ -e "$file" ] && sed -i "1s/.*/$1 00:00/" "$file"
     done
     sed -i -e 's/^map: .*/map: none/' -e '/^restarted:/d' "$NIGHT"/data/devices/server-*.rec
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1 16:45" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1 16:45" > /dev/null 2>&1 || true
 }
 restarted_now() {
     local stamp

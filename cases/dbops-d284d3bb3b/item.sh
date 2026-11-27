@@ -696,7 +696,7 @@ night() { # days_ago rows tables bytes file
     stamp=$(date -d "@$when" '+%F %H:%M')
     echo "$stamp cron: schemas $schemas: $3 tables, $2 rows, $4 bytes" >> var/log/backup.log
 }
-OPS_ACTOR=cron tools/backup take --schemas "$schemas" --note "before the nightly run" > /dev/null
+OPS_ACTOR=cron as_agent tools/backup take --schemas "$schemas" --note "before the nightly run" > /dev/null
 tonight=$(ls "$HOME"/data/backups/*.txt.gz | head -1)
 rows=$(sed -n 's/^rows: //p' "$tonight.manifest")
 tables=$(sed -n 's/^tables: //p' "$tonight.manifest")

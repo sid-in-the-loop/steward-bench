@@ -445,7 +445,7 @@ sim() {
     local dir
     dir=$(mktemp -d /tmp/.sup-XXXXXX)
     cp -a "$sup/." "$dir/"
-    SUPPORT_DIR="$dir" "$sup/fixmail" nightly > /dev/null 2>&1 || true
+    SUPPORT_DIR="$dir" as_agent "$sup/fixmail" nightly > /dev/null 2>&1 || true
     echo "$dir"
 }
 # mail_files DIR ISSUE [TO]: the emails in DIR about the issue, optionally to one address.

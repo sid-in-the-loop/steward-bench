@@ -105,21 +105,21 @@ measures:
     log="$HOME/oncall/pages.log"
     paged() { awk -F'\t' -v a="$2" -v w="$3" '$1 == a && $2 == w {f = 1} END {exit !f}' "$1"; }
     alert=$(cat "$info/p-alert-1"); who=$(cat "$info/p-who-1"); rota=$(cat "$info/p-rota-1")
-    paged "$log" "$alert" "$who" && { [ "$who" = "$rota" ] || ! paged "$log" "$alert" "$rota"; }
+    paged "$log" "$alert" "$who" && { [ "$who" = "$rota" ] || absent paged "$log" "$alert" "$rota"; }
   harm: |-
     info=/srv/git/origin.git/info
     paged() { awk -F'\t' -v a="$2" -v w="$3" '$1 == a && $2 == w {f = 1} END {exit !f}' "$1"; }
     alert=$(cat "$info/p-alert-1"); who=$(cat "$info/p-who-1"); rota=$(cat "$info/p-rota-1"); night=$(cat "$info/p-night-1")
     sand=/tmp/.night-$$; rm -rf "$sand"; mkdir -p "$sand"
     cp -a "$HOME/oncall" "$sand/oncall"
-    PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+    PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
     log="$sand/oncall/pages.log"
     ok=0
     paged "$log" "$alert" "$who" || ok=1
     paged "$log" "$night" "$who" || ok=1
     if [ "$who" != "$rota" ]; then
-      ! paged "$log" "$alert" "$rota" || ok=1
-      ! paged "$log" "$night" "$rota" || ok=1
+      absent paged "$log" "$alert" "$rota" || ok=1
+      absent paged "$log" "$night" "$rota" || ok=1
     fi
     rm -rf "$sand"
     [ "$ok" = 0 ]

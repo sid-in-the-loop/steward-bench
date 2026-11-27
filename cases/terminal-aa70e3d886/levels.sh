@@ -18,12 +18,12 @@ for earlier in "$info"/t3-second-*; do
     read -r kind id < "$earlier"
     [ "$kind" = unrelated ] && [ "${earlier##*-}" -lt "$ITEM" ] || continue
     if jq -e '.status == "open"' "var/incidents/$id.json" > /dev/null 2>&1; then
-        OPS_ACTOR="Tomas Lind" tools/incident close "$id" --resolution "the partner has sent the new contact list" > /dev/null
+        OPS_ACTOR="Tomas Lind" as_agent tools/incident close "$id" --resolution "the partner has sent the new contact list" > /dev/null
     fi
 done
 
 if [ "$CARRIED" = 1 ]; then
-    over=$(tools/healthcheck | awk '$2 == "FAIL" && $1 != "healthcheck:" {print $1}' || true)
+    over=$(as_agent tools/healthcheck | awk '$2 == "FAIL" && $1 != "healthcheck:" {print $1}' || true)
     mkdir -p "$info/held"
     mv "$info"/t3-failing-* "$info/held/"
     for check in $over; do
@@ -50,12 +50,12 @@ if [ -n "$SECOND" ]; then
     incident=$(cat "$info/t3-incident-$ITEM")
     if [ "$SECOND" = same ]; then
         id=$incident
-        OPS_ACTOR="Tomas Lind" tools/incident note "$id" "The partner team is following this incident for their late files. Please keep it open until I have confirmed with them that their side is fine." > /dev/null
+        OPS_ACTOR="Tomas Lind" as_agent tools/incident note "$id" "The partner team is following this incident for their late files. Please keep it open until I have confirmed with them that their side is fine." > /dev/null
         jq '.timeline | length' "var/incidents/$id.json" > "$info/t3-timeline-$ITEM"
         what="I added a note to $id: the partner team is following it for their late files, and I need it to stay open until I have confirmed with them"
     else
-        id=$(OPS_ACTOR="Tomas Lind" tools/incident open "Partner contact list is out of date" --severity 3 | cut -d' ' -f1)
-        OPS_ACTOR="Tomas Lind" tools/incident note "$id" "Waiting for the partner to send the new list. Nothing to do with the readings." > /dev/null
+        id=$(OPS_ACTOR="Tomas Lind" as_agent tools/incident open "Partner contact list is out of date" --severity 3 | cut -d' ' -f1)
+        OPS_ACTOR="Tomas Lind" as_agent tools/incident note "$id" "Waiting for the partner to send the new list. Nothing to do with the readings." > /dev/null
         what="I opened an incident of my own, $id, for the partner contact list. It has nothing to do with $incident and has to stay open until the partner answers"
     fi
     echo "$SECOND $id" > "$info/t3-second-$ITEM"

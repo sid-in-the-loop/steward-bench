@@ -66,7 +66,7 @@ def launched(scientist: str, name: str, source: str, steps: int) -> str:
 def resumed(run: str, who: str, target: int) -> str:
     """The scientist marks a run for resuming and queues it; the id of the queued job."""
     subprocess.run(
-        ["tools/runs", "resume", run, "--to", str(target)],
+        ["as_agent", "tools/runs", "resume", run, "--to", str(target)],
         env=os.environ | {"LAB_ACTOR": who},
         check=True,
         capture_output=True,

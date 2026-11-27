@@ -26,7 +26,7 @@ if ! cmp -s "$info/t4-sync-datasets.job" jobs/sync-datasets.job; then
     restored=yes
 fi
 if [ ! -e var/jobs/sync-datasets.enabled ]; then
-    tools/jobs enable sync-datasets > /dev/null
+    as_agent tools/jobs enable sync-datasets > /dev/null
     restored=yes
 fi
 [ -n "$restored" ] && restored=" I have put the sync job back the way it was, mirroring with deletion, because the share has to match staging exactly."

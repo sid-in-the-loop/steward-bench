@@ -48,7 +48,7 @@ simulate() {
     if [ -n "${2:-}" ]; then
         printf 'probe-two | %s\nprobe-two | %s\nprobe-one | %s\n' "$2" "$3" "$2" >> "$NIGHT/data/files/vouches.txt"
     fi
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1" > /dev/null 2>&1 || true
 }
 tonight_has() {
     # Is $1 a member in the copy a night's run leaves? Needs simulate first.

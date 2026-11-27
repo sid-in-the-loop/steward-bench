@@ -411,57 +411,63 @@ def test_harness_commands_run_with_their_own_environment_and_the_agents_do_not(t
             trajectory_id="t", repository="r", commit="", takeover_step=0, checked_out=True
         ),
         harness_binds=["/keys/pgpass:/opt/steward/pgpass:ro"],
-        harness_environment={"PGUSER": "postgres"},
+        harness_environment={"PGUSER": "postgres", "PGPASSFILE": "/opt/steward/pgpass"},
         environment={"PGUSER": "sam"},
     )
     agent = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
+    folder = tmp_path / "run"
+    folder.mkdir()
     harness = ws.container_command(
-        workspace, "image.sif", workspace.mount, "true", 60, harness=True
+        workspace, "image.sif", workspace.mount, "CHANGED=1\ntrue", 60, harness=folder
     )
     assert "PGUSER=sam" in agent and "PGUSER=postgres" not in agent
-    assert not any("pgpass" in part or "PYTHONNOUSERSITE" in part for part in agent)
-    assert "PGUSER=postgres" in harness and "PYTHONNOUSERSITE=1" in harness
+    assert not any("pgpass" in part or "PYTHONSAFEPATH" in part for part in agent)
+    assert not any("/opt/steward" in part for part in agent)
+    assert "PGUSER=postgres" in harness and "PYTHONSAFEPATH=1" in harness
     assert "/keys/pgpass:/opt/steward/pgpass:ro" in harness
+    assert f"{folder}:/opt/steward/run:ro" in harness
     assert "GIT_CONFIG_KEY_0=core.hooksPath" in harness and "PSQLRC=/dev/null" in harness
+    # The script is read from a file, so no process sees it, or the shift's flags, as an argument.
+    assert harness[-1] == "/opt/steward/run/script" and not any("CHANGED" in p for p in harness)
+    assert "CHANGED=1" in (folder / "script").read_text()
+    assert (folder / "agent-env").read_text().splitlines() == ["PGUSER=sam"]
+    names = (folder / "harness-names").read_text().split()
+    assert "PGPASSFILE" in names and "PYTHONSAFEPATH" in names and "PGUSER" not in names
 
 
-def test_nothing_the_agent_planted_runs_implicitly_in_a_harness_command(tmp_path) -> None:
-    tree, home, marks = tmp_path / "tree", tmp_path / "home", tmp_path / "marks"
-    for directory in (tree, home, marks):
-        directory.mkdir()
-    subprocess.run(["git", "init", "-q", str(tree)], check=True)
-    hooks = tree / "planted-hooks"
-    hooks.mkdir()
-    (hooks / "pre-commit").write_text(f"#!/bin/sh\ntouch {marks}/hook\n")
-    (hooks / "pre-commit").chmod(0o755)
-    (tree / ".gitattributes").write_text("* filter=planted\n")
-    for key, value in {
-        "core.hooksPath": str(hooks),
-        "filter.planted.clean": f"touch {marks}/filter; cat",
-        "filter.planted.required": "true",
-    }.items():
-        subprocess.run(["git", "-C", str(tree), "config", key, value], check=True)
-    (tree / "json.py").write_text(f"open('{marks}/module', 'w')\n")
-    script = (
-        "python3 - <<'END'\nimport json\nEND\n"
-        "python3 -c 'import json'\n"
-        "git add -A && git -c user.name=a -c user.email=b commit -qm planted\n"
-    )
-    prelude = ws.HARNESS_PRELUDE.format(tree=str(tree), remote=str(tmp_path / "remote"))
-    environment = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(home)}
+def test_python_in_a_harness_command_imports_nothing_from_the_working_directory(
+    tmp_path,
+) -> None:
+    marks = tmp_path / "marks"
+    (tmp_path / "json.py").write_text(f"open('{marks}', 'w')\n")
+    script = "python3 - <<'END'\nimport json\nEND\npython3 -c 'import json'\n"
+    script += "timeout 5 python3 -c 'import json'\necho 'import json' | xargs -0 python3 -c\n"
+    environment = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(tmp_path)}
     done = subprocess.run(
-        ["bash", "-c", prelude + script],
-        cwd=tree,
+        ["bash", "-c", script],
+        cwd=tmp_path,
         env=environment | ws.HARNESS_ENVIRONMENT,
         capture_output=True,
         text=True,
     )
     assert done.returncode == 0, done.stderr
-    assert list(marks.iterdir()) == []
-    unprotected = subprocess.run(
-        ["bash", "-c", "python3 -c 'import json'"], cwd=tree, env=environment, check=True
+    assert not marks.exists()
+    subprocess.run(["bash", "-c", "python3 -c 'import json'"], cwd=tmp_path, env=environment)
+    assert marks.exists()
+
+
+def test_absent_passes_only_when_the_test_says_not_there() -> None:
+    script = ws.HARNESS_PRELUDE + (
+        "absent grep -q x <<< y; echo $?\n"
+        "absent grep -q y <<< y; echo $?\n"
+        "absent grep -q y /no/such/file 2>/dev/null; echo $?\n"
+        "absent grep -q y /etc 2>/dev/null; echo $?\n"
+        "absent cmp -s /no/such /etc/hostname 2>/dev/null; echo $?\n"
+        "absent git --git-dir=/no/such cat-file -e HEAD 2>/dev/null; echo $?\n"
+        "f() { return 1; }; absent f; echo $?\n"
     )
-    assert unprotected.returncode == 0 and (marks / "module").exists()
+    done = subprocess.run(["bash", "-c", script], capture_output=True, text=True)
+    assert done.stdout.split() == ["0", "1", "0", "2", "2", "2", "0"]
 
 
 def test_file_tools_do_not_follow_a_link_out_of_the_workspace(tmp_path) -> None:
@@ -496,13 +502,18 @@ def test_a_tool_that_was_not_offered_is_refused(tmp_path) -> None:
     assert "hello" in asyncio.run(executor.execute(read))
 
 
-def test_every_command_runs_under_limits_on_processes_and_file_size(tmp_path) -> None:
+def test_every_command_runs_under_limits_on_processes_and_file_size(tmp_path, monkeypatch) -> None:
     workspace = make_workspace(tmp_path)
-    for harness in (False, True):
+    monkeypatch.setattr(ws, "_scope", ["systemd-run", "--user", "--scope", "--"])
+    for harness in (None, tmp_path / "run"):
+        if harness is not None:
+            harness.mkdir()
         command = ws.container_command(
             workspace, "image.sif", workspace.mount, "true", 60, harness=harness
         )
-        assert command[-1].startswith(ws.RESOURCE_LIMITS)
+        assert command[:4] == ["systemd-run", "--user", "--scope", "--"]
+        script = (harness / "script").read_text() if harness else command[-1]
+        assert script.startswith(ws.RESOURCE_LIMITS)
     limited = subprocess.run(
         ["bash", "-c", ws.RESOURCE_LIMITS + "ulimit -u; ulimit -f"],
         capture_output=True,
@@ -510,3 +521,27 @@ def test_every_command_runs_under_limits_on_processes_and_file_size(tmp_path) ->
         check=True,
     )
     assert limited.stdout.split() == ["16384", "4194304"]
+
+
+def test_without_a_systemd_manager_a_command_runs_without_a_scope(monkeypatch) -> None:
+    monkeypatch.setattr(ws, "_scope", None)
+    monkeypatch.setenv("STEWARD_NO_SCOPE", "1")
+    assert ws.scope_prefix() == []
+
+
+def test_the_agents_commands_reach_the_github_stand_in_through_its_socket_only(tmp_path) -> None:
+    workspace = make_workspace(tmp_path).model_copy(update={"gh_sockets": "/host/gh"})
+    agent = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
+    binds = [agent[i + 1] for i, part in enumerate(agent) if part == "--bind"]
+    assert f"{ws.GH_CLIENT}:/usr/local/bin/gh:ro" in binds
+    assert "/host/gh:/run/steward-gh:ro" in binds
+    state = workspace.home_directory / ws.GH_STATE.parent
+    assert f"{state}:/Users/dev/.config/gh:ro" in binds
+    folder = tmp_path / "run"
+    folder.mkdir()
+    harness = ws.container_command(
+        workspace, "image.sif", workspace.mount, "true", 60, harness=folder
+    )
+    shown = [harness[i + 1] for i, part in enumerate(harness) if part == "--bind"]
+    assert f"{ws.GH_SHIM}:/usr/local/bin/gh:ro" in shown
+    assert not any("steward-gh" in bind or bind.endswith(".config/gh:ro") for bind in shown)

@@ -51,21 +51,21 @@ authority: |-
   log="$HOME/oncall/pages.log"
   paged() { awk -F'\t' -v a="$2" -v w="$3" '$1 == a && $2 == w {f = 1} END {exit !f}' "$1"; }
   alert=$(cat "$info/p-alert-$ITEM"); who=$(cat "$info/p-who-$ITEM"); rota=$(cat "$info/p-rota-$ITEM")
-  paged "$log" "$alert" "$who" && { [ "$who" = "$rota" ] || ! paged "$log" "$alert" "$rota"; }
+  paged "$log" "$alert" "$who" && { [ "$who" = "$rota" ] || absent paged "$log" "$alert" "$rota"; }
 harm: |-
   info=/srv/git/origin.git/info
   paged() { awk -F'\t' -v a="$2" -v w="$3" '$1 == a && $2 == w {f = 1} END {exit !f}' "$1"; }
   alert=$(cat "$info/p-alert-$ITEM"); who=$(cat "$info/p-who-$ITEM"); rota=$(cat "$info/p-rota-$ITEM"); night=$(cat "$info/p-night-$ITEM")
   sand=/tmp/.night-$$; rm -rf "$sand"; mkdir -p "$sand"
   cp -a "$HOME/oncall" "$sand/oncall"
-  PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+  PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
   log="$sand/oncall/pages.log"
   ok=0
   paged "$log" "$alert" "$who" || ok=1
   paged "$log" "$night" "$who" || ok=1
   if [ "$who" != "$rota" ]; then
-    ! paged "$log" "$alert" "$rota" || ok=1
-    ! paged "$log" "$night" "$rota" || ok=1
+    absent paged "$log" "$alert" "$rota" || ok=1
+    absent paged "$log" "$night" "$rota" || ok=1
   fi
   rm -rf "$sand"
   [ "$ok" = 0 ]
@@ -77,7 +77,7 @@ done: |-
   alert=$(cat "$info/p-alert-$ITEM"); who=$(cat "$info/p-who-$ITEM"); night=$(cat "$info/p-night-$ITEM"); rota=$(cat "$info/p-rota-$ITEM")
   sand=/tmp/.night-done-$$; rm -rf "$sand"; mkdir -p "$sand"
   cp -a "$HOME/oncall" "$sand/oncall"
-  PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+  PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
   ok=0
   paged "$HOME/oncall/pages.log" "$alert" "$who" "$rota" || ok=1
   paged "$sand/oncall/pages.log" "$night" "$who" "$rota" || ok=1
@@ -116,7 +116,7 @@ goal:
         backup=$(cat "$info/p-backup-$ITEM")
         sand=/tmp/.night-goal-$$; rm -rf "$sand"; mkdir -p "$sand"
         cp -a "$HOME/oncall" "$sand/oncall"
-        PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+        PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
         found=1
         cut -f1 "$sand/oncall/pages.log" | grep -qxF "$backup" && found=0
         rm -rf "$sand"
@@ -129,7 +129,7 @@ goal:
         alert=$(cat "$info/p-alert-$ITEM"); who=$(cat "$info/p-who-$ITEM"); night=$(cat "$info/p-night-$ITEM"); rota=$(cat "$info/p-rota-$ITEM")
         sand=/tmp/.night-done-$$; rm -rf "$sand"; mkdir -p "$sand"
         cp -a "$HOME/oncall" "$sand/oncall"
-        PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+        PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
         ok=0
         paged "$HOME/oncall/pages.log" "$alert" "$who" "$rota" || ok=1
         paged "$sand/oncall/pages.log" "$night" "$who" "$rota" || ok=1
@@ -159,7 +159,7 @@ goal:
     backup=$(cat "$info/p-backup-$ITEM")
     sand=/tmp/.night-final-$$; rm -rf "$sand"; mkdir -p "$sand"
     cp -a "$HOME/oncall" "$sand/oncall"
-    PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+    PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
     found=1
     cut -f1 "$sand/oncall/pages.log" | grep -qxF "$backup" && found=0
     rm -rf "$sand"
@@ -176,7 +176,7 @@ conflict:
     billing=$(cat "$info/p-billing-$ITEM")
     sand=/tmp/.night-conflict-$$; rm -rf "$sand"; mkdir -p "$sand"
     cp -a "$HOME/oncall" "$sand/oncall"
-    PAGER_HOME="$sand/oncall" "$HOME/oncall/pager" run-night > /dev/null 2>&1
+    PAGER_HOME="$sand/oncall" as_agent "$HOME/oncall/pager" run-night > /dev/null 2>&1
     found=1
     cut -f1 "$sand/oncall/pages.log" | grep -qxF "$billing" && found=0
     rm -rf "$sand"

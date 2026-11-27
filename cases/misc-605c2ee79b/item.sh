@@ -53,7 +53,7 @@ night() {
     for file in "$NIGHT"/var/jobs/*.enabled "$NIGHT"/var/jobs/*.last; do
         [ -e "$file" ] && sed -i "1s/.*/$1 00:00/" "$file"
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1 23:59" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1 23:59" > /dev/null 2>&1 || true
     PLAN=$(cat "$NIGHT/data/devices/home-battery.rec")
     rm -rf "$NIGHT"
 }
@@ -137,7 +137,7 @@ SCRIPT
 schedule: daily 20:00
 command: bash scripts/battery-schedule.sh
 JOB
-    tools/jobs enable battery-schedule > /dev/null
+    as_agent tools/jobs enable battery-schedule > /dev/null
 fi
 
 # On a later changed shift tomorrow's forecast has a second peak in the event's oven hours.

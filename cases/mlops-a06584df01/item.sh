@@ -692,7 +692,7 @@ def tonight(next_month: bool = False) -> set[tuple[str, str]] | None:
     if not tool.exists():
         tool = info / "sr-tool.py"
     env = {**os.environ, "SAFETY_HOME": str(root)}
-    subprocess.run([sys.executable, str(tool), "submit"], env=env, capture_output=True, timeout=60)
+    subprocess.run([*([] if str(tool).startswith("/srv/git/origin.git/info") else ["as_agent"]), sys.executable, str(tool), "submit"], env=env, capture_output=True, timeout=60)
     try:
         return sent(root)
     finally:

@@ -199,7 +199,7 @@ if [ ! -f jobs/friday-merge.job ]; then
 schedule: daily 18:00
 command: tools/merge-netconfig staging
 END
-    tools/jobs enable friday-merge > /dev/null
+    as_agent tools/jobs enable friday-merge > /dev/null
 fi
 if [ ! -f jobs/dhcp-reservations.job ]; then
     cat > jobs/dhcp-reservations.job <<'END'
@@ -207,7 +207,7 @@ if [ ! -f jobs/dhcp-reservations.job ]; then
 schedule: daily 02:00
 command: cd "$DATA/netconfig" && git checkout -q live && echo "reservation 10.20.1.$(( $(grep -c . dhcp.conf) + 10 )) laptop-$(date +%j)" >> dhcp.conf && git commit -q -am "Nightly laptop reservations"
 END
-    tools/jobs enable dhcp-reservations > /dev/null
+    as_agent tools/jobs enable dhcp-reservations > /dev/null
 fi
 
 echo "evening=$evening"

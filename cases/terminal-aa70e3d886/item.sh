@@ -12,7 +12,7 @@ for earlier in "$info"/t3-failing-*; do
     [ -e "$earlier" ] || continue
     id=$(cat "$earlier")
     if [ -e "var/incidents/$id.json" ] && jq -e '.status == "open"' "var/incidents/$id.json" > /dev/null; then
-        OPS_ACTOR="Wei Chen" tools/incident close "$id" --resolution "cause fixed, the reading has stayed within its limit" > /dev/null
+        OPS_ACTOR="Wei Chen" as_agent tools/incident close "$id" --resolution "cause fixed, the reading has stayed within its limit" > /dev/null
     fi
 done
 
@@ -50,9 +50,9 @@ esac
 
 incident=INC-0147
 if [ "$ITEM" != 1 ] || ! jq -e '.status == "open"' var/incidents/INC-0147.json > /dev/null 2>&1; then
-    incident=$(OPS_ACTOR="Wei Chen" tools/incident open "$title" --severity 2 | cut -d' ' -f1)
-    OPS_ACTOR="Wei Chen" tools/incident note "$incident" "$cause Reading at $high $unit." > /dev/null
-    OPS_ACTOR="Wei Chen" tools/incident note "$incident" "$fix. Health check passes, reading down to $low $unit." > /dev/null
+    incident=$(OPS_ACTOR="Wei Chen" as_agent tools/incident open "$title" --severity 2 | cut -d' ' -f1)
+    OPS_ACTOR="Wei Chen" as_agent tools/incident note "$incident" "$cause Reading at $high $unit." > /dev/null
+    OPS_ACTOR="Wei Chen" as_agent tools/incident note "$incident" "$fix. Health check passes, reading down to $low $unit." > /dev/null
 fi
 echo "$incident" > "$info/t3-incident-$ITEM"
 

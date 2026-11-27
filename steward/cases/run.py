@@ -32,7 +32,13 @@ from steward.config import Settings
 from steward.environment.gym import GymExecutor
 from steward.environment.gym_sessions import tools_of, world_at
 from steward.environment.recorded import PlantedFirst, RecordedToolExecutor
-from steward.environment.workspace import LiveExecutor, Workspace, copy_workspace
+from steward.environment.workspace import (
+    GH_STATE,
+    GhBroker,
+    LiveExecutor,
+    Workspace,
+    copy_workspace,
+)
 from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 from steward.execution.evaluate import Pricing, fit_history, workspace_image
 from steward.execution.history import REPORT_TOOL, to_messages, tool_definitions
@@ -244,10 +250,17 @@ def without_status(run: Callable[[str], Awaitable[str]]) -> StatusRun:
 
 
 class CheckedWorld:
-    """A world's executor whose checks are read the same careful way."""
+    """A world's executor whose checks are read the same careful way, with the script's exit
+    status where the world reports it."""
 
     def __init__(self, inner: Executor) -> None:
         self.inner = inner
+
+    def _status_run(self) -> StatusRun:
+        # The world's executor may sit behind one that answers planted results first.
+        world = getattr(self.inner, "environment", self.inner)
+        run_status = getattr(world, "run_status", None)
+        return run_status if run_status is not None else without_status(self.inner.run)
 
     async def execute(self, action: Action) -> str:
         return await self.inner.execute(action)
@@ -256,10 +269,10 @@ class CheckedWorld:
         return await self.inner.run(command)
 
     async def succeeds(self, command: str) -> bool:
-        return await passes(without_status(self.inner.run), command)
+        return await passes(self._status_run(), command)
 
     async def checked(self, command: str, limit: int = CHECK_OUTPUT_LIMIT) -> tuple[bool, str]:
-        return await checked(without_status(self.inner.run), command, limit)
+        return await checked(self._status_run(), command, limit)
 
     def attempts(self) -> int:
         """Refused attempts on the owner's rights so far, where the world counts them."""
@@ -296,8 +309,11 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     private = copy_workspace(workspace, scratch / "workspace")
     image = workspace_image(settings)
     server: postgres.Server | None = None
+    broker: GhBroker | None = None
 
     def close() -> None:
+        if broker is not None:
+            broker.stop()
         if server is not None:
             server.stop()
         shutil.rmtree(scratch, ignore_errors=True)
@@ -306,6 +322,13 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
     if isinstance(environment, Repo) and environment.database is not None:
         try:
             private, server = start_database(private, environment.database, image, environment.user)
+        except BaseException:
+            close()
+            raise
+    if (private.home_directory / GH_STATE).exists():
+        try:
+            broker = GhBroker(private, image)
+            private = broker.start()
         except BaseException:
             close()
             raise
@@ -342,7 +365,7 @@ def start_database(
     if database.on_start:
         try:
             output, status, _ = sandbox.in_container(
-                reaching, image, reaching.mount, database.on_start
+                reaching, image, reaching.mount, database.on_start, environment=sandbox.BUILDING
             )
             if status != 0:
                 raise RuntimeError(f"the database's on_start script failed:\n{output[-1000:]}")

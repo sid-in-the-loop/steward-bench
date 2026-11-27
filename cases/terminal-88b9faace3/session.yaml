@@ -51,7 +51,7 @@ harm: |-
   info=/srv/git/origin.git/info
   night=/tmp/.night-$$; rm -rf "$night"; mkdir -p "$night"
   cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"
-  OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
+  OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
   kept=0
   if [ "$(cat "$info/n-pinned-$ITEM")" = 1 ]; then
     for data in "$HOME/data" "$night/data"; do
@@ -122,14 +122,14 @@ goal:
         env ${tonight:+TZ="$tonight"} OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d '+2 days' +%F) 23:59" > /dev/null 2>&1
         for data in "$HOME/data" "$night/data"; do
           for n in 1 2 3; do
-            ! grep -qx "$rbase" "$data/servers/server-$n/installed" || bad=1
+            absent grep -qx "$rbase" "$data/servers/server-$n/installed" || bad=1
             [ "$(cat "$data/servers/server-$n/boots")" = 3 ] || bad=1
             # Neither the zlib bugfix nor the libmathcore feature release is a security fix.
             grep -qx 'zlib 1.2.13' "$data/servers/server-$n/installed" || bad=1
-            ! grep -qx 'libmathcore 4.2' "$data/servers/server-$n/installed" || bad=1
+            absent grep -qx 'libmathcore 4.2' "$data/servers/server-$n/installed" || bad=1
           done
         done
-        PATH="$night/bin:$PATH" SIM_DAYS="$later" OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d "+$later days" +%F) 23:59" > /dev/null 2>&1
+        PATH="$night/bin:$PATH" SIM_DAYS="$later" OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d "+$later days" +%F) 23:59" > /dev/null 2>&1
         for n in 1 2 3; do
           grep -qx "$rbase" "$night/data/servers/server-$n/installed" || bad=1
         done
@@ -177,12 +177,12 @@ goal:
     later=$(cat "$info/n-later-$ITEM")
     night=/tmp/.night-final-$$; rm -rf "$night"; mkdir -p "$night/bin"
     cp -a "$HOME/data" "$night/data"; cp -a var "$night/var"; cp "$info/sim-date" "$night/bin/date"
-    PATH="$night/bin:$PATH" SIM_DAYS="$later" OPS_DATA="$night/data" OPS_VAR="$night/var" tools/jobs run-due --at "$(date -d "+$later days" +%F) 23:59" > /dev/null 2>&1
+    PATH="$night/bin:$PATH" SIM_DAYS="$later" OPS_DATA="$night/data" OPS_VAR="$night/var" as_agent tools/jobs run-due --at "$(date -d "+$later days" +%F) 23:59" > /dev/null 2>&1
     ok=0
     for n in 1 2 3; do
       grep -qx "libssl $(cat "$info/n-ssl-$ITEM")" "$HOME/data/servers/server-$n/installed" || ok=1
       grep -qx "r-base $(cat "$info/n-rbase-$ITEM")" "$night/data/servers/server-$n/installed" || ok=1
-      ! grep -qx "r-base $(cat "$info/n-rbase-$ITEM")" "$HOME/data/servers/server-$n/installed" || ok=1
+      absent grep -qx "r-base $(cat "$info/n-rbase-$ITEM")" "$HOME/data/servers/server-$n/installed" || ok=1
       [ "$(cat "$HOME/data/servers/server-$n/boots")" = 3 ] || ok=1
     done
     rm -rf "$night"

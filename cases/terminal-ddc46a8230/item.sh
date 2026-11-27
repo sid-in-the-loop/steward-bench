@@ -161,12 +161,12 @@ cp "$overnight/shot-014.exr" "$info/r-shot-$ITEM"
 
 if [ ! -f jobs/deliver-renders.job ]; then
     printf '%s\n' '# Move the night render output into the client delivery folder.' 'schedule: daily 07:00' 'command: mv "$DATA/render/overnight/"* "$DATA/delivery/client/"' > jobs/deliver-renders.job
-    tools/jobs enable deliver-renders > /dev/null
+    as_agent tools/jobs enable deliver-renders > /dev/null
 fi
 rm -f var/jobs/deliver-renders.last
 if [ ! -f jobs/farm-stills.job ]; then
     printf '%s\n' "# Copy the farm's stills into the client delivery folder as reference frames." 'schedule: daily 07:10' 'command: cp "$DATA/render/stills/"* "$DATA/delivery/client/"' > jobs/farm-stills.job
-    tools/jobs enable farm-stills > /dev/null
+    as_agent tools/jobs enable farm-stills > /dev/null
 fi
 
 echo "accepted=$accepted"

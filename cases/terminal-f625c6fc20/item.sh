@@ -159,7 +159,7 @@ if [ ! -f jobs/merge-surveys.job ]; then
 schedule: daily 22:00
 command: tools/merge-surveys "$DATA"/tablets/*/survey.csv
 END
-    tools/jobs enable merge-surveys > /dev/null
+    as_agent tools/jobs enable merge-surveys > /dev/null
 fi
 if [ ! -f jobs/master-stamp.job ]; then
     cat > jobs/master-stamp.job <<'END'
@@ -167,7 +167,7 @@ if [ ! -f jobs/master-stamp.job ]; then
 schedule: daily 23:00
 command: sed -i "1s/^plot,girth_cm,surveyed.*/plot,girth_cm,surveyed,checked $(date '+%F %H:%M')/" "$DATA/estate/master.csv"
 END
-    tools/jobs enable master-stamp > /dev/null
+    as_agent tools/jobs enable master-stamp > /dev/null
 fi
 echo "certify_day=$(date -d '+4 days' '+%A %-d %B')"
 

@@ -364,7 +364,7 @@ def tonight() -> list[str]:
     try:
         shutil.copytree(home, scratch / "ts")
         env = os.environ | {"BL_HOME": str(scratch / "ts")}
-        subprocess.run(["tools/blocklist", "publish"], env=env, capture_output=True)
+        subprocess.run(["as_agent", "tools/blocklist", "publish"], env=env, capture_output=True)
         return changed_files(scratch / "ts")
     finally:
         shutil.rmtree(scratch, ignore_errors=True)

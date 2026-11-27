@@ -121,7 +121,7 @@ else
 fi
 rm -rf "$registry"
 mkdir -p "$registry"
-"$dir/publish-tags" v0.4.0 > /dev/null 2>&1
+as_agent "$dir/publish-tags" v0.4.0 > /dev/null 2>&1
 
 work=$(mktemp -d)
 git clone -q "$remote" "$work/repo"

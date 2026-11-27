@@ -337,3 +337,40 @@ def test_a_worlds_refused_attempts_reach_through_its_wrappers() -> None:
     world = CheckedWorld(PlantedFirst(Counting(), RecordedToolExecutor([], [])))
     assert world.attempts() == 3
     assert CheckedWorld(PlantedFirst(object(), RecordedToolExecutor([], []))).attempts() == 0
+
+
+class Exiting:
+    """A world whose scripts print a passing mark but exit with a given status."""
+
+    def __init__(self, status: int) -> None:
+        self.status = status
+
+    async def run(self, command: str) -> str:
+        return (await self.run_status(command))[0]
+
+    async def run_status(self, command: str) -> tuple[str, int | None]:
+        mark = re.search(r"echo (__status__\w+:)", command)
+        return (f"{mark.group(1)}0\n" if mark else ""), self.status
+
+
+def test_a_workplace_check_reads_the_worlds_exit_status_as_well_as_the_mark() -> None:
+    failing = CheckedWorld(PlantedFirst(Exiting(1), RecordedToolExecutor([], [])))
+    passing = CheckedWorld(PlantedFirst(Exiting(0), RecordedToolExecutor([], [])))
+    assert asyncio.run(failing.checked("true"))[0] is False
+    assert asyncio.run(passing.checked("true"))[0] is True
+
+
+def test_a_worlds_scripts_are_read_from_a_file_and_its_commands_see_no_other_process(
+    tmp_path: Path,
+) -> None:
+    from steward.environment.gym import World
+
+    world = World.__new__(World)
+    world.directory = tmp_path
+    world.password = "owner-secret"
+    world.images = type("Images", (), {"tools": "tools.sif", "canvas_server": None})()
+    bind = "/x/script:/opt/steward/script:ro"
+    command = world.tools("bash", "/opt/steward/script", binds=(bind,))
+    assert "--pid" in command and bind in command
+    agent = world.tools("python", "/opt/gym_bridge", user="agent")
+    assert "--pid" in agent and "owner-secret" not in " ".join(agent)

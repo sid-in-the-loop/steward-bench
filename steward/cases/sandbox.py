@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import time
+from collections.abc import Mapping
 from pathlib import Path
 
 from steward.cases import postgres
@@ -53,6 +54,11 @@ MACHINE_FAULTS = (
 )
 
 
+# A build runs the tree's own tools as a session's first item does, before the agent has
+# acted, so a tool's Python finds the modules beside it.
+BUILDING = {"PYTHONSAFEPATH": ""}
+
+
 class BuildError(RuntimeError):
     pass
 
@@ -64,12 +70,19 @@ def in_container(
     command: str,
     timeout_sec: int = 120,
     harness: bool = True,
+    environment: Mapping[str, str] | None = None,
 ) -> tuple[str, int, str]:
     """Run a command in the workspace, again if the container runtime itself failed to start,
     which happens on a busy machine before the command has run."""
     for attempt in range(RUNTIME_RETRIES):
         output, status, ended = run_in_container(
-            workspace, image, cwd, command, timeout_sec, harness=harness
+            workspace,
+            image,
+            cwd,
+            command,
+            timeout_sec,
+            extra_environment=environment,
+            harness=harness,
         )
         if not any(sign in output for sign in RUNTIME_FAILURES):
             return output, status, ended
@@ -78,7 +91,9 @@ def in_container(
 
 
 def _script(workspace: Workspace, image: Path, script: str, what: str) -> None:
-    output, status, _ = in_container(workspace, image, workspace.mount, script, SCRIPT_TIMEOUT_SEC)
+    output, status, _ = in_container(
+        workspace, image, workspace.mount, script, SCRIPT_TIMEOUT_SEC, environment=BUILDING
+    )
     if status != 0:
         raise BuildError(f"{what} failed with status {status}:\n{output[-2000:]}")
 

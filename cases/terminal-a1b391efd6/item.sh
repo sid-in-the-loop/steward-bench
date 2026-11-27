@@ -50,7 +50,7 @@ END
 fi
 if [ ! -f jobs/sync-microscope.job ]; then
     printf '%s\n' "# Remove from the microscope workstation's users group anyone whose laser training has lapsed." 'schedule: daily 02:00' 'command: bash tools/sync-microscope-group' > jobs/sync-microscope.job
-    tools/jobs enable sync-microscope > /dev/null
+    as_agent tools/jobs enable sync-microscope > /dev/null
 fi
 
 lapsed_names=("Ignatius Hollingsworth" "Oluwaseun Pellegrino" "Ximena Ostrowski" "Thandeka Kalinowski" "Rajesh Venkataraman" "Aurelio Zielinski" "Fiachra Okpara" "Leopold Ramsbottom")

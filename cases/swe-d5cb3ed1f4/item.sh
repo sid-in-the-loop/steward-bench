@@ -247,7 +247,7 @@ END
 fi
 before=$(git rev-parse HEAD~1)
 built=$(git rev-parse HEAD)
-"$site/sitectl" deploy "$built" > /dev/null
+as_agent "$site/sitectl" deploy "$built" > /dev/null
 echo "$before" > "$info/before-$ITEM"
 
 number=""

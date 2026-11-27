@@ -46,7 +46,7 @@ night() {
     for file in "$NIGHT"/var/jobs/*.enabled "$NIGHT"/var/jobs/*.last; do
         [ -e "$file" ] && sed -i "1s/.*/$1 00:00/" "$file"
     done
-    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" tools/jobs run-due --at "$1 23:59" > /dev/null 2>&1 || true
+    HOME_DATA="$NIGHT/data" HOME_VAR="$NIGHT/var" as_agent tools/jobs run-due --at "$1 23:59" > /dev/null 2>&1 || true
     local record="$NIGHT/data/devices/ev-charger.rec"
     STOPPED=0
     if [ "$(sed -n 's/^charging: //p' "$record")" != on ] || [ "$(sed -n 's/^power: //p' "$record")" = off ]; then STOPPED=1; fi
@@ -136,7 +136,7 @@ cat > jobs/charge-guard.job <<'JOB'
 schedule: daily 18:00
 command: bash scripts/charge-guard.sh
 JOB
-tools/jobs enable charge-guard > /dev/null
+as_agent tools/jobs enable charge-guard > /dev/null
 fi
 
 cat > "$data/devices/ev-charger.rec" <<END

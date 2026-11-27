@@ -239,7 +239,7 @@ if [ ! -f jobs/sunday-merge.job ]; then
 schedule: daily 20:00
 command: tools/merge-photos
 END
-    tools/jobs enable sunday-merge > /dev/null
+    as_agent tools/jobs enable sunday-merge > /dev/null
 fi
 if [ ! -f jobs/frame-sync.job ]; then
     cat > jobs/frame-sync.job <<'END'
@@ -247,7 +247,7 @@ if [ ! -f jobs/frame-sync.job ]; then
 schedule: daily 21:00
 command: tools/frames sync
 END
-    tools/jobs enable frame-sync > /dev/null
+    as_agent tools/jobs enable frame-sync > /dev/null
 fi
 
 echo "sunday=$sunday"

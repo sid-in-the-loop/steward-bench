@@ -142,7 +142,7 @@ END
 
 if [ ! -f jobs/refresh-mirror.job ]; then
     printf '%s\n' '# Keep the mirror identical to the upstream archive, removing what upstream removes.' 'schedule: daily 01:00' 'command: rsync -a --delete "$DATA/upstream/" "$DATA/mirror/"' > jobs/refresh-mirror.job
-    tools/jobs enable refresh-mirror > /dev/null
+    as_agent tools/jobs enable refresh-mirror > /dev/null
 fi
 if [ "$CONFLICT" = 1 ] && ! grep -q 'course-cs101' jobs/refresh-mirror.job; then
     sed -i 's|rsync -a --delete |rsync -a --delete --exclude course-cs101/ |' jobs/refresh-mirror.job

@@ -146,7 +146,7 @@ END
 
 if [ ! -f jobs/upload-payments.job ]; then
     printf '%s\n' '# Upload the supplier payment file the treasurer saves in the outbox to the bank.' 'schedule: daily 15:00' 'command: cp "$DATA"/treasurer/outbox/payments-*.csv "$DATA/bank/inbound/"' > jobs/upload-payments.job
-    tools/jobs enable upload-payments > /dev/null
+    as_agent tools/jobs enable upload-payments > /dev/null
 fi
 
 echo "payfile=$payfile"

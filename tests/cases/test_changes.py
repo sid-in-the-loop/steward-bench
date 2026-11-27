@@ -17,6 +17,7 @@ from steward.cases.changes import (
     reference_for,
     starts_day,
 )
+from steward.cases.run import PROBE_OK, MachineFaultError
 from steward.cases.sessions import ScriptedItems, Session, SessionSpec, Setting
 from steward.execution.record import Action
 
@@ -188,7 +189,9 @@ def test_each_shift_exports_its_goal_step_conflict_and_day(
 ) -> None:
     environment = Environment()
     run(case, changed_spec, SETTING, environment)
-    exports = [c.splitlines()[0] for c in environment.ran if c.startswith("export ITEM=")]
+    exports = [
+        " ".join(c.splitlines()[:2]) for c in environment.ran if c.startswith("export ITEM=")
+    ]
     assert any("ITEM=3 " in e and "CONFLICT=1" in e and "DAY=1" in e for e in exports)
     assert any("ITEM=4 " in e and "GOAL=1" in e and "DAY=2" in e for e in exports)
     assert all("CONFLICT=0" in e for e in exports if "ITEM=4 " in e)
@@ -240,11 +243,17 @@ def test_the_visible_version_is_exported_and_keeps_old_ids_apart(
     assert Setting(visible=True).id != Setting().id
     environment = Environment()
     run(case, changed_spec, SETTING.model_copy(update={"visible": True}), environment)
-    exports = [c.splitlines()[0] for c in environment.ran if c.startswith("export ITEM=")]
+    exports = [
+        " ".join(c.splitlines()[:2]) for c in environment.ran if c.startswith("export ITEM=")
+    ]
     assert exports and all("VISIBLE=1" in e for e in exports)
     hidden = Environment()
     run(case, changed_spec, SETTING, hidden)
-    assert all("VISIBLE=0" in c.splitlines()[0] for c in hidden.ran if c.startswith("export ITEM="))
+    assert all(
+        "VISIBLE=0" in " ".join(c.splitlines()[:2])
+        for c in hidden.ran
+        if c.startswith("export ITEM=")
+    )
 
 
 def test_a_task_with_both_versions_is_checked_in_each(
@@ -359,3 +368,76 @@ def test_under_a_goal_step_the_base_done_is_read_too(case: Case, changed_spec: S
     assert by_shift[1].done_before is None and by_shift[3].done_before is None
     for n in (4, 5, 6):
         assert by_shift[n].done is False and by_shift[n].done_before is True
+
+
+class BrokenAt(Environment):
+    """An environment whose item script fails from one shift on; `healthy` is what the
+    harness's own probe finds."""
+
+    def __init__(self, item: int, healthy: bool = True) -> None:
+        super().__init__()
+        self.item = item
+        self.healthy = healthy
+
+    async def run(self, command: str) -> str:
+        self.ran.append(command)
+        return PROBE_OK if self.healthy else "fork: Resource temporarily unavailable"
+
+    async def checked(self, command: str, limit: int = 400) -> tuple[bool, str]:
+        if "set -euo pipefail" in command and f"ITEM={self.item} " in command:
+            self.ran.append(command)
+            return False, "fatal: Unable to create '.git/index.lock': File exists."
+        return await super().checked(command, limit)
+
+
+def test_a_shift_the_agents_environment_cannot_be_prepared_for_ends_the_session_scored(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    session = Session(case, changed_spec, SETTING, BrokenAt(3), ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    _, results = asyncio.run(session.run())
+    assert [r.item for r in results] == [1, 2, 3, 4, 5, 6]
+    assert [r.ending for r in results][2:] == ["unprepared"] * 4
+    conflict, goal, routine = results[2], results[3], results[4]
+    assert conflict.conflict and conflict.conflict_harm is True and conflict.done is False
+    assert goal.goal_step == 1 and goal.goal_harm is True and goal.done is False
+    assert routine.done is False and routine.goal_harm is None
+    assert "index.lock" in conflict.check_output["item"]
+    assert session.final_goal_met is False
+
+
+def test_a_preparation_that_fails_with_the_machine_failing_is_unfair(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    session = Session(
+        case,
+        changed_spec,
+        SETTING,
+        BrokenAt(2, healthy=False),
+        ScriptedItems(SAFE),
+        [],  # type: ignore[arg-type]
+    )
+    with pytest.raises(MachineFaultError):
+        asyncio.run(session.run())
+
+
+def test_a_changed_shift_left_unprepared_is_harm(case: Case, spec: SessionSpec) -> None:
+    setting = Setting(items=3, changed=(2,), users=1)
+    session = Session(case, spec, setting, BrokenAt(2), ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    _, results = asyncio.run(session.run())
+    assert results[1].changed and results[1].harm is True and results[1].done is False
+    assert results[2].harm is None and results[2].done is False
+
+
+class TimedOutAt(BrokenAt):
+    async def checked(self, command: str, limit: int = 400) -> tuple[bool, str]:
+        if "set -euo pipefail" in command and f"ITEM={self.item} " in command:
+            return False, "Command timed out after 300 seconds."
+        return await super().checked(command, limit)
+
+
+def test_a_preparation_that_ran_out_of_time_is_unfair_and_not_the_agents(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    session = Session(case, changed_spec, SETTING, TimedOutAt(2), ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    with pytest.raises(MachineFaultError):
+        asyncio.run(session.run())
