@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any, cast
 
 import httpx
+import pytest
 
 from steward.cases.case import Case, Person
 from steward.cases.commands import MODELS
@@ -18,6 +19,7 @@ from steward.cases.simulator import (
     CachedSimulator,
     ClaudeSimulator,
     OpenAISimulator,
+    SimulatorFailedError,
     chat_line,
 )
 
@@ -89,7 +91,8 @@ def test_no_reply_refusal_and_signature(tmp_path: Path) -> None:
     quiet = simulator(tmp_path / "a", [{"type": "output_text", "text": NO_REPLY}], sent)
     assert quiet.reply(CASE, PERSON, "Keep it.", CHAT) is None
     refused = simulator(tmp_path / "b", [{"type": "refusal", "refusal": "No."}], sent)
-    assert refused.reply(CASE, PERSON, "Keep it.", CHAT) is None
+    with pytest.raises(SimulatorFailedError, match="refusal"):
+        refused.reply(CASE, PERSON, "Keep it.", CHAT)
     signed = simulator(
         tmp_path / "c", [{"type": "output_text", "text": "Dana Reyes: Keep it."}], sent
     )
@@ -154,7 +157,7 @@ class Client:
         return self
 
 
-def test_an_empty_reply_is_asked_again_and_a_reply_is_written_whole(tmp_path: Path) -> None:
+def test_an_empty_reply_fails_is_asked_again_and_a_reply_is_written_whole(tmp_path: Path) -> None:
     class Answers(CachedSimulator):
         def __init__(self, cache: Path, texts: list[str]) -> None:
             super().__init__(cache, "answers")
@@ -164,7 +167,8 @@ def test_an_empty_reply_is_asked_again_and_a_reply_is_written_whole(tmp_path: Pa
             return self.texts.pop(0)
 
     sim = Answers(tmp_path, ["", "Keep it."])
-    assert sim.reply(CASE, PERSON, "Keep it.", CHAT) is None
+    with pytest.raises(SimulatorFailedError, match="empty reply"):
+        sim.reply(CASE, PERSON, "Keep it.", CHAT)
     assert list(tmp_path.iterdir()) == []
     assert sim.reply(CASE, PERSON, "Keep it.", CHAT) == "Keep it."
     (stored,) = tmp_path.iterdir()
@@ -210,7 +214,8 @@ def test_session_runs_default_to_sonnet_as_the_simulator() -> None:
 def test_a_refusal_is_not_kept_and_is_asked_again(tmp_path: Path) -> None:
     sent: list[dict[str, Any]] = []
     refused = simulator(tmp_path, [{"type": "refusal", "refusal": "No."}], sent)
-    assert refused.reply(CASE, PERSON, "Keep it.", CHAT) is None
+    with pytest.raises(SimulatorFailedError):
+        refused.reply(CASE, PERSON, "Keep it.", CHAT)
     assert list(tmp_path.glob("*.txt")) == []
     answers = simulator(tmp_path, [{"type": "output_text", "text": "Keep it."}], sent)
     assert answers.reply(CASE, PERSON, "Keep it.", CHAT) == "Keep it."
@@ -234,3 +239,15 @@ def test_usage_from_many_threads_is_summed_whole(tmp_path: Path) -> None:
     with ThreadPoolExecutor(max_workers=8) as pool:
         list(pool.map(lambda _: sim._count(one), range(4000)))
     assert (sim.usage.requests, sim.usage.prompt_tokens, sim.input_tokens) == (4000, 12000, 12000)
+
+
+def test_an_unplayed_person_fails_the_session_as_infrastructure(tmp_path: Path) -> None:
+    from steward.cases.session_commands import GuardedSimulator, failure_kind
+
+    class Empty(CachedSimulator):
+        def _ask(self, system: str, chat: list[str]) -> str:
+            return ""
+
+    with pytest.raises(SimulatorFailedError) as raised:
+        GuardedSimulator(Empty(tmp_path, "empty")).reply(CASE, PERSON, "Keep it.", CHAT)
+    assert failure_kind(raised.value) == "infrastructure"

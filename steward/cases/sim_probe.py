@@ -64,7 +64,7 @@ from steward.cases.sessions import (
     run_session,
     words,
 )
-from steward.cases.simulator import CachedSimulator
+from steward.cases.simulator import CachedSimulator, SimulatorFailedError
 from steward.config import Settings
 from steward.execution.evaluate import Pricing
 from steward.execution.policy import Usage
@@ -527,7 +527,11 @@ def run_probe(
             session._hear("owner", filled(spec.owner_changed, session.values))
     session._record("agent", "message", text)
     before = len(session.events)
-    reply, _ = session._reply(target.role, target.changed, shift_values_now, {target.role})
+    try:
+        reply, _ = session._reply(target.role, target.changed, shift_values_now, {target.role})
+    except SimulatorFailedError:
+        # Graded as no reply, a failed probe.
+        reply = None
     withheld = [e.text for e in session.events[before:] if e.kind == "withheld"]
     used = simulator.last
     revealed, corrected, passed = graded(

@@ -93,7 +93,7 @@ CLOSING = "No, that is all for this one. Thank you."
 # How much of what an item script prints is read for its values.
 VALUES_LIMIT = 20_000
 # Raised when the loop changes in a way that makes earlier session runs out of date.
-PROTOCOL = 6
+PROTOCOL = 7
 # The protocol number every task's version was hashed with before the harness version took
 # its place; kept so that the tasks keep their versions.
 TASK_PROTOCOL = 4

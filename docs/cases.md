@@ -68,8 +68,11 @@ who is away is never simulated. A simulated reply that tells the change
 (`Session.tells_change`, under "Probing the simulator"), from a person who could not know it,
 is withheld and counted in `withheld_replies`. Replies are stored under
 `data/cases/simulator_cache`, keyed by the conversation, so a rerun gets the same reply. An
-empty reply and a provider's refusal are not stored, so they are asked again (until 2026-11-26
-a refusal was kept as no reply); a reply is written to a temporary file and moved into place,
+empty reply and a provider's refusal are not stored, so they are asked again, and they end the
+session as an infrastructure failure (`SimulatorFailedError`), to be run again; until
+2026-11-27 they left the person silent, and until 2026-11-26 a refusal was kept as no reply.
+Only the simulator's own `NO_REPLY` leaves the person silent; `sim-probe` grades an empty
+reply or a refusal as a failed probe. A reply is written to a temporary file and moved into place,
 so workers running in parallel never read part of one; and a Claude request is retried up to
 eight times (`MAX_RETRIES`) where the SDK would stop after two. The simulator needs
 `ANTHROPIC_API_KEY`. It can state a position more firmly than the fixed line does, so simulator
@@ -672,7 +675,9 @@ alike, without anyone having to remember to raise the number. A change to a modu
 that does not touch the loop (a comment, an unrelated function of a shared module) does so too;
 that is the price of not missing one. A test fails when `run_session` comes to import a steward
 module that is not on the list. Protocol 5 began with the harness version, so every session
-stored before it is out of date; the tasks' own versions did not change (`TASK_PROTOCOL`). The longest sessions are run first, so
+stored before it is out of date; the tasks' own versions did not change (`TASK_PROTOCOL`).
+Protocol 7 (2026-11-27) leaves out of date the sessions in which a person the simulator could
+not play stayed silent. The longest sessions are run first, so
 that none is left running alone at the end. A rate-limited request waits at least as long as
 the provider asks, up to a minute at a time and fifteen times, before the session is given up;
 a session given up is run again on the next pass. A reply that is not JSON is retried like a

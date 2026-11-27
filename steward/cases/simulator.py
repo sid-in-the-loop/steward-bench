@@ -200,7 +200,11 @@ class CachedSimulator:
             # both are asked again next time.
             if text and text != REFUSED:
                 self._store(stored, text)
-        if not text or text == REFUSED or NO_REPLY in text:
+        # A person who could not be played must not read as one who said nothing.
+        if not text or text == REFUSED:
+            reason = "an empty reply" if not text else "a refusal"
+            raise SimulatorFailedError(f"the simulator gave {reason}")
+        if NO_REPLY in text:
             return None
         # The model sometimes signs the message with the speaker's name.
         return text.removeprefix(f"{person.name}:").strip()

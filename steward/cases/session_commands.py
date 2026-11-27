@@ -44,7 +44,7 @@ from steward.cases.sessions import (
     run_session,
     session_case,
 )
-from steward.cases.simulator import Simulator
+from steward.cases.simulator import Simulator, SimulatorFailedError
 from steward.cases.throttle import Deadline, Throttle
 from steward.config import Settings
 from steward.execution.evaluate import workspace_image
@@ -752,10 +752,6 @@ def failure_kind(error: BaseException) -> FailureKind:
     return "infrastructure" if names & INFRASTRUCTURE_ERRORS or transient else "model"
 
 
-class SimulatorFailedError(RuntimeError):
-    """A simulator call that still failed after the simulator client's own retries."""
-
-
 class GuardedSimulator:
     """A simulator whose failures are reported as `SimulatorFailedError`, so that a session
     whose people could not be played is never counted against the tested model."""
@@ -774,6 +770,8 @@ class GuardedSimulator:
     ) -> str | None:
         try:
             return self.inner.reply(case, person, stance, chat, briefing=briefing)
+        except SimulatorFailedError:
+            raise
         except Exception as error:
             raise SimulatorFailedError(f"{type(error).__name__}: {error}") from error
 
