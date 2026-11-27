@@ -1005,10 +1005,14 @@ class Session:
             raise RuntimeError(f"{self.case.id}: no recorded owner to replay")
         # The owner's commands are a person's at the agent's machine, so they run as the
         # agent's do, with neither the key nor the shift's flags in reach.
+        as_agent = getattr(self.executor, "run_as_agent", None)
         for command in self.recording:
-            await self.executor.run(
-                f"cd {generated.workdir}\nas_agent bash -c {shlex.quote(command)}"
-            )
+            if as_agent is not None:
+                await as_agent(f"cd {generated.workdir}\n{command}")
+            else:
+                await self.executor.run(
+                    f"cd {generated.workdir}\nas_agent bash -c {shlex.quote(command)}"
+                )
         ok, printed = await self.executor.checked(self._environment(changed) + generated.capture)
         if not ok:
             await self._unprepared(f"the recorded change was not captured: {printed}")

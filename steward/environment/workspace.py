@@ -1110,6 +1110,19 @@ class LiveExecutor:
             return await self.shell(f"ls -la -- {path}")
         return await self.recorded.execute(action)
 
+    async def run_as_agent(self, command: str) -> str:
+        """Run a command as the agent's own commands run, without recording it as one of the
+        agent's: a recorded owner's, a person's at the agent's machine."""
+        output, _, _ = await asyncio.to_thread(
+            run_in_container,
+            self.workspace,
+            self.image,
+            self.workspace.mount,
+            command,
+            extra_environment=self.clock_environment(),
+        )
+        return output
+
     async def run(self, command: str) -> str:
         """Run a scenario's own command (an intervention on the environment) in the tree."""
         return (await self.run_status(command))[0]
