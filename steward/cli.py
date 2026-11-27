@@ -33,57 +33,6 @@ def setup_logging(settings: Settings) -> None:
     )
 
 
-def cmd_case_build(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.commands import build_case, check_case, load_cases
-
-    failed = 0
-    for case in load_cases(settings, args.case):
-        if not args.check_only:
-            build_case(settings, case)
-        problems = check_case(settings, case)
-        failed += bool(problems)
-        print(f"{case.id}: {'ok' if not problems else 'FAILED'}")
-        for problem in problems:
-            print(f"  {problem}")
-    return 1 if failed else 0
-
-
-def cmd_case_run(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.commands import MODELS, estimate_usd, load_cases, run_model
-    from steward.cases.conditions import CONDITIONS
-
-    cases = load_cases(settings, args.case)
-    conditions = args.condition or list(CONDITIONS)
-    models = [MODELS[name] for name in args.model]
-    count = len(cases) * len(conditions) * args.trials
-    for model in models:
-        print(f"{model.name}: up to {count} runs, about ${estimate_usd(model, count):.2f}")
-    if not args.confirm:
-        print("Add --confirm to run.")
-        return 0
-    simulator = None
-    if args.simulator:
-        import anthropic
-
-        from steward.cases.commands import simulator_cache
-        from steward.cases.simulator import ClaudeSimulator
-
-        simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings))
-    for model in models:
-        run_model(
-            settings,
-            model,
-            cases,
-            conditions,
-            args.trials,
-            args.workers,
-            args.timing,
-            simulator,
-            args.variant,
-        )
-    return 0
-
-
 def cmd_lint_tasks(settings: Settings, args: argparse.Namespace) -> int:
     from steward.cases.commands import cases_root
     from steward.cases.task_lint import lint
@@ -400,42 +349,6 @@ def cmd_exchanges_build(settings: Settings, args: argparse.Namespace) -> int:
     build_pools(root, pools, writer, args.workers)
     print(f"spent ${writer.cost_usd:.2f}")
     return 0
-
-
-def cmd_case_new(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.authoring import first_of, new_case
-    from steward.cases.commands import cases_root, load_cases
-
-    cases = load_cases(settings, None)
-    start = next((c for c in cases if c.id == args.like), None) if args.like else None
-    start = start or first_of(cases, args.domain)
-    if start is None or start.domain != args.domain:
-        print(f"no case of the domain {args.domain} to start from")
-        return 1
-    target = new_case(cases_root(settings), start, args.title)
-    print(f"{target} was started from {start.id}. Rewrite its files, then run:")
-    print(f"  steward case-check --case {target.name} --build")
-    return 0
-
-
-def cmd_case_check(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.authoring import provided
-    from steward.cases.commands import cases_root, load_cases
-    from steward.cases.sessions import load_session_spec
-
-    root = cases_root(settings)
-    failed = 0
-    for case in load_cases(settings, args.case):
-        spec = load_session_spec(root / case.id, case)
-        print(f"{case.id}  {case.title}")
-        for line in provided(root / case.id, case, spec):
-            print(f"  {'yes' if line.ok else 'no ':3}  {line.what}: {line.detail}")
-        if args.build:
-            build = argparse.Namespace(case=[case.id], check_only=False)
-            failed += cmd_case_build(settings, build)
-            if spec is not None:
-                failed += cmd_session_build(settings, build)
-    return 1 if failed else 0
 
 
 def cmd_owner_record(settings: Settings, args: argparse.Namespace) -> int:
@@ -869,49 +782,6 @@ def cmd_session_report(settings: Settings, args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_case_first(settings: Settings, args: argparse.Namespace) -> int:
-    import os
-
-    import httpx
-
-    from steward.cases import first, sandbox
-    from steward.cases.commands import MODELS, load_cases
-    from steward.cases.run import built_directory, model_policy
-
-    calls = 0
-    for case in load_cases(settings, args.case):
-        steps = sandbox.load(built_directory(settings, case))[1]
-        calls += len(first.variants(steps)) * args.samples * len(args.model)
-    print(f"{calls} model calls, one turn each")
-    if not args.confirm:
-        print("Add --confirm to run.")
-        return 0
-    for name in args.model:
-        model = MODELS[name]
-        client = httpx.Client(
-            base_url=model.base_url,
-            headers={"Authorization": f"Bearer {os.environ.get(model.api_key_env, '')}"},
-            timeout=httpx.Timeout(300.0, connect=30.0),
-        )
-        for case in load_cases(settings, args.case):
-            steps = sandbox.load(built_directory(settings, case))[1]
-            result = first.sample(
-                case, steps, model_policy(client, model, case), args.samples, args.workers
-            )
-            out = settings.paths.data / "cases" / "first" / f"{name}__{case.id}.json"
-            first.write(out, result)
-            print(out)
-    return 0
-
-
-def cmd_case_view(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.viewer import write_page
-
-    path = write_page(settings, args.out, args.model, args.case, args.plain)
-    print(path)
-    return 0
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="steward", description="Steward Bench Phase 1 pipeline")
     commands = parser.add_subparsers(dest="command", required=True)
@@ -923,41 +793,6 @@ def build_parser() -> argparse.ArgumentParser:
         sub.set_defaults(handler=handler)
         return sub
 
-    sub = add("case-build", cmd_case_build, "build the cases and check their reference runs")
-    sub.add_argument("--case", action="append", help="a case id; repeat for several")
-    sub.add_argument("--check-only", action="store_true", help="do not rebuild, only check")
-    sub = add("case-run", cmd_case_run, "run models on the cases under each condition")
-    sub.add_argument("--model", action="append", required=True)
-    sub.add_argument("--case", action="append")
-    sub.add_argument("--condition", action="append")
-    sub.add_argument("--trials", type=int, default=3)
-    sub.add_argument("--workers", type=int, default=6)
-    sub.add_argument(
-        "--timing",
-        choices=["asked", "once", "midway", "repeated"],
-        default="asked",
-        help="when a person says the condition's informing line; only A0, A3 and B1 have one",
-    )
-    sub.add_argument(
-        "--variant",
-        choices=["", "single", "probe"],
-        default="",
-        help="single: one shell command per call; probe: ask about the state before a change",
-    )
-    sub.add_argument(
-        "--simulator",
-        action="store_true",
-        help="let Claude Haiku 5.5 play each person once their fixed line has been said",
-    )
-    sub.add_argument("--confirm", action="store_true", help="make the model calls")
-    sub = add(
-        "case-first", cmd_case_first, "sample the agent's first turn with session steps removed"
-    )
-    sub.add_argument("--model", action="append", required=True)
-    sub.add_argument("--case", action="append", required=True)
-    sub.add_argument("--samples", type=int, default=20)
-    sub.add_argument("--workers", type=int, default=6)
-    sub.add_argument("--confirm", action="store_true", help="make the model calls")
     sub = add("bank-build", cmd_bank_build, "write the message bank of each benchmark case")
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=5, help="wordings to ask for per kind")
@@ -969,17 +804,6 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--workers", type=int, default=8, help="parts written at once")
     sub.add_argument("--again", action="store_true", help="rewrite exchanges that exist")
     sub.add_argument("--confirm", action="store_true", help="make the model calls")
-    sub = add("case-new", cmd_case_new, "start a case from a working one of its domain")
-    sub.add_argument(
-        "--domain",
-        required=True,
-        choices=["swe", "terminal", "workplace", "mlops", "dbops", "misc"],
-    )
-    sub.add_argument("--title", required=True, help="a plain description; it names the case")
-    sub.add_argument("--like", help="the case to start from; default: the domain's first")
-    sub = add("case-check", cmd_case_check, "say what a case provides at each level")
-    sub.add_argument("--case", action="append", help="a case id; repeat for several")
-    sub.add_argument("--build", action="store_true", help="also build it and run its references")
     sub = add("owner-record", cmd_owner_record, "record a simulated owner making the change")
     sub.add_argument("--case", action="append", help="a case id; repeat for several")
     sub.add_argument("--count", type=int, default=3, help="recordings each case should have")
@@ -1198,11 +1022,6 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = add("session-report", cmd_session_report, "write the page of session figures")
     sub.add_argument("--out", type=Path, required=True)
-    sub = add("case-view", cmd_case_view, "write the run viewer page")
-    sub.add_argument("--out", type=Path, required=True)
-    sub.add_argument("--model", action="append")
-    sub.add_argument("--case", action="append")
-    sub.add_argument("--plain", action="store_true", help="leave out runs made under a run setting")
     return parser
 
 

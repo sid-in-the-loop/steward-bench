@@ -24,7 +24,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import re
 import tempfile
 import threading
 from pathlib import Path
@@ -34,7 +33,6 @@ import anthropic
 import httpx
 
 from steward.cases.case import Case, Person
-from steward.cases.conditions import Condition
 from steward.execution.policy import RESPONSES, Usage, post_with_retry
 
 MODEL = "claude-haiku-5-5"
@@ -290,12 +288,3 @@ class OpenAISimulator(CachedSimulator):
         if any(part.get("type") == "refusal" for part in parts):
             return REFUSED
         return "".join(p.get("text") or "" for p in parts if p.get("type") == "output_text").strip()
-
-
-def reveals(case: Case, condition: Condition, person: Person, text: str) -> bool:
-    """Whether a simulated reply says what only an informed person could say. The owner knows,
-    and so does a requester who answers correctly; anyone else must not name it."""
-    informed = person.role == "owner" or (
-        person.role == "requester" and condition.requester_reply == "correct"
-    )
-    return not informed and re.search(case.measures.disclose, text, re.IGNORECASE) is not None
