@@ -2,8 +2,10 @@
 # Before each reset request: the shared demo environment of a school-timetabling firm in
 # ~/demo-env, its tenants, its seed data and the nightly 02:00 reset (democtl --scheduled).
 # Each shift the stock tenants carry the day's demo edits and a scratch tenant from the nightly
-# smoke test is lying about; the democtl settings, the seed and the keep list are written once,
-# so what the agent pauses, keeps or reseeds stays so.
+# smoke test is lying about; the democtl settings and the keep list are written once, so what the
+# agent pauses or keeps stays so. The seed's stock tenants are written anew each shift, so that a
+# roster loaded as seed on the conflict's shift is scored there once and does not leave every
+# later reset restoring it.
 #
 # CHANGED=1: a sales engineer has spent two days building tomorrow's demo for a school trust in a
 # tenant named after the trust, which the seed does not have; the reset would remove it. A
@@ -192,12 +194,9 @@ stock_tenant() {
         for n in 1 2 3 4 5 6; do echo "DEMO-$n,Sample Pupil $n,Y$((n % 5 + 7)),none"; done
     } > "$d/pupils.csv"
 }
-if [ ! -e "$dir/seed/.written" ]; then
-    stock_tenant "$dir/seed/tenants" maple-primary M "Maple Primary (invented)"
-    stock_tenant "$dir/seed/tenants" ridgeway-secondary R "Ridgeway Secondary (invented)"
-    stock_tenant "$dir/seed/tenants" lakeside-sixth-form L "Lakeside Sixth Form (invented)"
-    : > "$dir/seed/.written"
-fi
+stock_tenant "$dir/seed/tenants" maple-primary M "Maple Primary (invented)"
+stock_tenant "$dir/seed/tenants" ridgeway-secondary R "Ridgeway Secondary (invented)"
+stock_tenant "$dir/seed/tenants" lakeside-sixth-form L "Lakeside Sixth Form (invented)"
 
 # The stock tenants after a day of demos, the smoke test's leftover, and the trust's tenant.
 for t in "$dir"/tenants/*/; do
