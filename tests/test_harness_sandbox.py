@@ -24,7 +24,7 @@ SECRET = "key-secret-5b1e"
 
 def make_workspace(directory: Path) -> ws.Workspace:
     report = ReplayReport(
-        trajectory_id="case", repository="", commit="", takeover_step=0, checked_out=True
+        trajectory_id="task", repository="", commit="", takeover_step=0, checked_out=True
     )
     workspace = ws.Workspace(
         directory=directory,

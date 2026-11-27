@@ -26,7 +26,7 @@ from steward.models import (
 )
 from steward.rate_log import usage_of
 from steward.session import SessionRun
-from steward.task import Case
+from steward.task import Task
 
 GEMINI_MODELS = ["gemini-4-carbon", "gemini-4-argon", "gemini-4-neon", "gemini-4-hydrogen"]
 MUSE_MODELS = ["muse-wonder-1.0", "muse-spark-1.3", "muse-ember-1.0"]
@@ -69,8 +69,8 @@ class Recorder:
         return httpx.Response(200, json=self.replies.pop(0))
 
 
-def case() -> Case:
-    return Case.model_construct(id="terminal-0000000000")
+def task() -> Task:
+    return Task.model_construct(id="terminal-0000000000")
 
 
 def gemini_reply(parts: list[dict[str, Any]], finish: str = "STOP") -> dict[str, Any]:
@@ -171,7 +171,7 @@ def test_the_claude_client_is_not_refused_a_large_output_budget(
 ) -> None:
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     model = endpoint("claude-opus-5-5")
-    policy = model_policy(httpx.Client(), model, case())(TOOLS)
+    policy = model_policy(httpx.Client(), model, task())(TOOLS)
     assert isinstance(policy, AnthropicPolicy)
     assert policy.client.timeout == LONG_REQUEST_SECONDS  # type: ignore[attr-defined]
 
@@ -179,7 +179,7 @@ def test_the_claude_client_is_not_refused_a_large_output_budget(
 def test_gemini_request_has_the_generate_content_shape() -> None:
     model = endpoint("gemini-4-hydrogen")
     recorder = Recorder(model, [gemini_reply([{"text": "Which branch?"}])])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     assert isinstance(policy, GeminiPolicy)
     policy.next_turn(INHERITED)
     path, headers, body = recorder.sent[0]
@@ -219,7 +219,7 @@ def test_gemini_tool_call_reply_is_an_action_and_its_usage_is_priced() -> None:
         gemini_call("bash", {"command": "git status"}, "fc_1", "sig-A"),
     ]
     recorder = Recorder(model, [gemini_reply(parts)])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     turn = policy.next_turn(INHERITED)
     assert turn.action is not None
     assert (turn.action.tool, turn.action.arguments) == ("bash", {"command": "git status"})
@@ -239,7 +239,7 @@ def test_gemini_replies_go_back_with_their_signatures_across_turns() -> None:
     second = [gemini_call(REPORT_TOOL, {"report": "Rebuilt."}, "fc_2", "sig-B")]
     third = [{"text": "Which branch next?", "thoughtSignature": "sig-C"}]
     recorder = Recorder(model, [gemini_reply(first), gemini_reply(second), gemini_reply(third)])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     messages = list(INHERITED)
 
     action = policy.next_turn(messages).action
@@ -268,7 +268,7 @@ def test_gemini_replies_go_back_with_their_signatures_across_turns() -> None:
 def test_a_call_in_the_current_turn_that_the_model_did_not_write_gets_the_placeholder() -> None:
     model = endpoint("gemini-4-argon")
     recorder = Recorder(model, [gemini_reply([{"text": "Done."}])])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     policy.next_turn(INHERITED[:5])
     contents = recorder.sent[0][2]["contents"]
     calls = [p for p in contents[1]["parts"] if "functionCall" in p]
@@ -283,7 +283,7 @@ def test_only_the_first_of_parallel_gemini_calls_is_kept() -> None:
         {"functionCall": {"id": "fc_2", "name": "bash", "args": {"command": "pwd"}}},
     ]
     recorder = Recorder(model, [gemini_reply(parallel), gemini_reply([{"text": "ok"}])])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     messages = list(INHERITED)
     action = policy.next_turn(messages).action
     assert action is not None and action.arguments == {"command": "ls"}
@@ -297,7 +297,7 @@ def test_a_gemini_reply_cut_off_is_asked_again_then_ends_the_shift() -> None:
     model = endpoint("gemini-4-carbon")
     cut = gemini_reply([{"text": "Let me"}], finish="MAX_TOKENS")
     recorder = Recorder(model, [cut, cut])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     assert policy.next_turn(INHERITED).error == "stopped: MAX_TOKENS"
     assert len(recorder.sent) == 2
 
@@ -305,7 +305,7 @@ def test_a_gemini_reply_cut_off_is_asked_again_then_ends_the_shift() -> None:
 def test_muse_request_is_chat_completions_at_the_default_reasoning() -> None:
     model = endpoint("muse-spark-1.3")
     recorder = Recorder(model, [muse_reply({"role": "assistant", "content": "Which branch?"})])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     assert isinstance(policy, ReasoningPolicy)
     assert policy.next_turn(INHERITED).message == "Which branch?"
     path, headers, body = recorder.sent[0]
@@ -333,7 +333,7 @@ def test_an_openai_request_sets_no_effort_and_keeps_the_one_the_reply_reports() 
         "usage": {"input_tokens": 10, "output_tokens": 5},
     }
     recorder = Recorder(model, [reply])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     assert isinstance(policy, ReasoningPolicy)
     assert policy.next_turn(INHERITED).message == "Which branch?"
     body = recorder.sent[0][2]
@@ -345,7 +345,7 @@ def test_an_openai_request_sets_no_effort_and_keeps_the_one_the_reply_reports() 
 def test_muse_tool_call_reply_is_an_action_and_its_usage_is_priced() -> None:
     model = endpoint("muse-wonder-1.0")
     recorder = Recorder(model, [muse_reply(muse_call("bash", {"command": "ls"}), "tool_calls")])
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     turn = policy.next_turn(INHERITED)
     assert turn.action is not None and turn.action.arguments == {"command": "ls"}
     usage = policy.usage  # type: ignore[attr-defined]
@@ -363,7 +363,7 @@ def test_muse_tool_calls_go_back_with_their_results_across_turns() -> None:
         muse_reply(muse_call(REPORT_TOOL, {"report": "Rebuilt."}), "tool_calls"),
     ]
     recorder = Recorder(model, replies)
-    policy = model_policy(recorder.client, model, case())(TOOLS)
+    policy = model_policy(recorder.client, model, task())(TOOLS)
     messages = list(INHERITED)
     action = policy.next_turn(messages).action
     assert action is not None

@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 from steward.session import load_session_spec
-from steward.task import case_directories, load_case
+from steward.task import load_task, task_directories
 
 # A sentence shared by this many tasks or more reads as a template.
 TEMPLATE_TASKS = 3
@@ -22,13 +22,13 @@ def scaled_directories(root: Path) -> list[Path]:
     """The tasks of the scaled benchmark: those whose session form has an authority conflict."""
     return [
         d
-        for d in case_directories(root)
+        for d in task_directories(root)
         if (d / "session.yaml").exists() and "\nconflict:" in (d / "session.yaml").read_text()
     ]
 
 
 def _names(directory: Path) -> list[str]:
-    names = [p.name for p in load_case(directory).people]
+    names = [p.name for p in load_task(directory).people]
     manager = yaml.safe_load((directory / "session.yaml").read_text()).get("manager", {})
     if isinstance(manager, dict) and manager.get("name"):
         names.append(str(manager["name"]))
@@ -69,10 +69,10 @@ def lint(root: Path) -> list[str]:
                 last[parts[-1]].add(directory.name)
         for sentence in _sentences(directory):
             shared[sentence].add(directory.name)
-        case = load_case(directory)
-        spec = load_session_spec(directory, case)
+        task = load_task(directory)
+        spec = load_session_spec(directory, task)
         if spec is not None and re.search(
-            case.measures.disclose, spec.harmful_reference.report, re.IGNORECASE
+            task.measures.disclose, spec.harmful_reference.report, re.IGNORECASE
         ):
             findings.append(f"{directory.name}: the disclose pattern matches the harmful report")
     for label, table in (("full name", full), ("first name", first), ("surname", last)):

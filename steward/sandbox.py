@@ -1,4 +1,4 @@
-"""Build a repository case: create its repository, carry out the inherited session in it,
+"""Build a repository task: create its repository, carry out the inherited session in it,
 then apply what other people did afterwards. Built once and copied for each run."""
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ from steward.environment.workspace import (
     wrapped,
 )
 from steward.schema import Step
-from steward.task import Case, Repo
+from steward.task import Repo, Task
 
 SHELL_TOOL = "Bash"
 SYSTEM = (
@@ -103,10 +103,10 @@ def _script(workspace: Workspace, image: Path, script: str, what: str) -> None:
         raise BuildError(f"{what} failed with status {status}:\n{output[-2000:]}")
 
 
-def build(case: Case, base_script: str, directory: Path, image: Path) -> None:
-    """Create the case's repository in `directory`, with the inherited session saved as
+def build(task: Task, base_script: str, directory: Path, image: Path) -> None:
+    """Create the task's repository in `directory`, with the inherited session saved as
     steps whose results are the commands' real output."""
-    environment = case.environment
+    environment = task.environment
     assert isinstance(environment, Repo)
     if directory.exists():
         shutil.rmtree(directory)
@@ -118,10 +118,10 @@ def build(case: Case, base_script: str, directory: Path, image: Path) -> None:
         home=home,
         repository=environment.repository,
         replay=ReplayReport(
-            trajectory_id=case.id,
+            trajectory_id=task.id,
             repository=environment.repository,
             commit="",
-            takeover_step=len(case.history),
+            takeover_step=len(task.history),
             checked_out=True,
         ),
     )
@@ -141,31 +141,31 @@ def build(case: Case, base_script: str, directory: Path, image: Path) -> None:
     gh_state.parent.mkdir(parents=True)
     gh_state.write_text(json.dumps(state, indent=1))
     if environment.database is None:
-        steps = _carry_out(case, base_script, workspace, image)
+        steps = _carry_out(task, base_script, workspace, image)
     else:
-        # The database is up while the case is built and stopped cleanly afterwards, so the
+        # The database is up while the task is built and stopped cleanly afterwards, so the
         # built directory holds the cluster as the inherited session left it.
         server, client = postgres.server_for(workspace, image, environment.user)
         server.create(environment.database.name)
         try:
             reaching = postgres.reaching(workspace, server, client, environment.database)
-            steps = _carry_out(case, base_script, reaching, image)
+            steps = _carry_out(task, base_script, reaching, image)
         finally:
             server.stop()
     (directory / "workspace.json").write_text(workspace.model_dump_json(indent=1))
     (directory / HISTORY_FILE).write_text(json.dumps([s.model_dump(mode="json") for s in steps]))
 
 
-def _carry_out(case: Case, base_script: str, workspace: Workspace, image: Path) -> list[Step]:
+def _carry_out(task: Task, base_script: str, workspace: Workspace, image: Path) -> list[Step]:
     """Run the base script, the inherited session and the setup in the workspace. Returns the
     session as steps."""
-    environment = case.environment
+    environment = task.environment
     assert isinstance(environment, Repo)
     _script(workspace, image, base_script, "base script")
 
     steps = [Step(index=0, kind="system", content=SYSTEM)]
     cwd = workspace.mount
-    for item in case.history:
+    for item in task.history:
         index = len(steps)
         if item.user is not None:
             steps.append(Step(index=index, kind="user", content=item.user))
@@ -192,13 +192,13 @@ def _carry_out(case: Case, base_script: str, workspace: Workspace, image: Path) 
             output = output.replace(getpass.getuser(), environment.user)
             result = wrapped(SHELL_TOOL, item.run, output, status, 0.0)
             steps.append(Step(index=index + 1, kind="result", content=result))
-    _script(workspace, image, case.setup, "setup script")
+    _script(workspace, image, task.setup, "setup script")
     return steps
 
 
 def load(directory: Path) -> tuple[Workspace, list[Step]]:
     workspace = load_workspace(directory)
     if workspace is None:
-        raise FileNotFoundError(f"{directory} holds no built case; run `steward case-build`")
+        raise FileNotFoundError(f"{directory} holds no built task; run `steward check`")
     steps = [Step.model_validate(s) for s in json.loads((directory / HISTORY_FILE).read_text())]
     return workspace, steps

@@ -35,7 +35,7 @@ from steward.session import (
     run_session,
 )
 from steward.simulator import Simulator, SimulatorFailedError
-from steward.task import Case, Person, cases_root, load_cases
+from steward.task import Person, Task, load_tasks, tasks_root
 from steward.throttle import Deadline, Throttle, wait_for_room
 
 # What a session is assumed to use when estimating cost: requests per item, tokens the
@@ -51,41 +51,41 @@ FRESH_SHARE = 0.10
 
 
 def benchmark_jobs(
-    cases: list[tuple[Case, SessionSpec]], conditions: list[Condition], trials: int
+    tasks: list[tuple[Task, SessionSpec]], conditions: list[Condition], trials: int
 ) -> list[Job]:
     """The benchmark run: every task that can run under both conditions (one with a goal
     change and an authority conflict), under each condition asked for, each trial on its own
     seeded schedule. Any other task is left out, as the benchmark is scored on these alone."""
     return [
         Job(
-            case=case,
+            task=task,
             spec=spec,
-            setting=benchmark_setting(case.id, spec, condition, trial),
+            setting=benchmark_setting(task.id, spec, condition, trial),
             trial=trial,
         )
-        for case, spec in cases
+        for task, spec in tasks
         if has_instruction_drift(spec)
         for condition in conditions
         for trial in range(trials)
     ]
 
 
-SessionCase = tuple[Case, SessionSpec]
+SessionTask = tuple[Task, SessionSpec]
 
 
-def load_sessions(settings: Settings, only: list[str] | None = None) -> list[SessionCase]:
-    """The cases that can be run as sessions: those with a session file beside them."""
-    root = cases_root(settings)
+def load_sessions(settings: Settings, only: list[str] | None = None) -> list[SessionTask]:
+    """The tasks that can be run as sessions: those with a session file beside them."""
+    root = tasks_root(settings)
     found = []
-    for case in load_cases(settings, only):
-        spec = load_session_spec(root / case.id, case)
+    for task in load_tasks(settings, only):
+        spec = load_session_spec(root / task.id, task)
         if spec is not None:
-            found.append((case, spec))
+            found.append((task, spec))
     return found
 
 
 def sessions_path(settings: Settings, model: str) -> Path:
-    return settings.paths.data / "cases" / "sessions" / f"{model}.jsonl"
+    return settings.paths.data / "tasks" / "sessions" / f"{model}.jsonl"
 
 
 def estimate_usd(model: Model, setting: Setting) -> float:
@@ -166,27 +166,27 @@ def holding(path: Path) -> Iterator[None]:
 
 
 class Job(BaseModel):
-    """One session to run: a case, a setting and a repeat."""
+    """One session to run: a task, a setting and a repeat."""
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
-    case: Case
+    task: Task
     spec: SessionSpec
     setting: Setting
     trial: int = 0
 
     @property
     def key(self) -> SessionKey:
-        return (self.case.id, self.spec.version, self.setting.id, self.trial, HARNESS)
+        return (self.task.id, self.spec.version, self.setting.id, self.trial, HARNESS)
 
 
-# What makes a stored session the same as a planned one: the case, its version, the setting,
+# What makes a stored session the same as a planned one: the task, its version, the setting,
 # the repeat and the harness that ran it.
 SessionKey = tuple[str, str, str, int, str | None]
 
 
 def stored_key(run: SessionRun) -> SessionKey:
-    return (run.case, run.session_version, run.setting.id, run.trial, run.harness)
+    return (run.task, run.session_version, run.setting.id, run.trial, run.harness)
 
 
 # How many times one run tries a session that fails, and how many of the tested model's own
@@ -246,14 +246,14 @@ class GuardedSimulator:
 
     def reply(
         self,
-        case: Case,
+        task: Task,
         person: Person,
         stance: str,
         chat: list[str],
         briefing: str | None = None,
     ) -> str | None:
         try:
-            return self.inner.reply(case, person, stance, chat, briefing=briefing)
+            return self.inner.reply(task, person, stance, chat, briefing=briefing)
         except SimulatorFailedError:
             raise
         except Exception as error:
@@ -285,7 +285,7 @@ class FailedSession(BaseModel):
 
 
 def failed_path(settings: Settings, model: str) -> Path:
-    return settings.paths.data / "cases" / "sessions" / f"{model}.failed.jsonl"
+    return settings.paths.data / "tasks" / "sessions" / f"{model}.failed.jsonl"
 
 
 def failures_of(path: Path) -> dict[tuple[object, ...], int]:
@@ -361,13 +361,13 @@ def pending(path: Path, jobs: list[Job], simulator: str | None = None) -> list[J
     played by another model, or by none, does not stand in for one played by `simulator`."""
     done = {(*stored_key(run), run.simulator) for run in stored_sessions(path)}
     todo = [job for job in jobs if (*job.key, simulator) not in done]
-    # Within one length, every case gets its first settings before any gets its later ones,
+    # Within one length, every task gets its first settings before any gets its later ones,
     # so a run stopped part way has an even sample.
     seen: dict[str, int] = defaultdict(int)
     rounds = {}
     for job in todo:
-        rounds[id(job)] = seen[job.case.id]
-        seen[job.case.id] += 1
+        rounds[id(job)] = seen[job.task.id]
+        seen[job.task.id] += 1
     todo.sort(key=lambda job: (-job.setting.items, rounds[id(job)]))
     return todo
 
@@ -478,14 +478,14 @@ def run_held(
         with lock, failures_path.open("a") as out:
             out.write(record.model_dump_json() + "\n")
         print(
-            f"failed {job.case.id} {job.setting.id} trial {job.trial} ({kind}): "
+            f"failed {job.task.id} {job.setting.id} trial {job.trial} ({kind}): "
             f"{type(error).__name__}: {error} (${cost:.4f} spent)"
         )
         return kind
 
     def attempt(job: Job, policies: list[Policy]) -> SessionRun | FailureKind:
         policies.clear()
-        made = model_policy(client, model, job.case)
+        made = model_policy(client, model, job.task)
 
         def policy_for(tools: list[Message]) -> Policy:
             policies.append(made(tools))
@@ -496,7 +496,7 @@ def run_held(
             wait_for_room()
             run = run_session(
                 settings,
-                job.case,
+                job.task,
                 job.spec,
                 job.setting,
                 policy_for,
@@ -516,7 +516,7 @@ def run_held(
 
     def work(job: Job) -> SessionRun | None:
         nonlocal skipped
-        case, setting = job.case, job.setting
+        task, setting = job.task, job.setting
         if not budget.room:
             return None
         throttle.acquire()
@@ -564,7 +564,7 @@ def run_held(
             out.write(run.model_dump_json() + "\n")
         changed = [i for i in run.items if i.changed]
         print(
-            f"{model.name} {case.id} {setting.id} t{job.trial}: "
+            f"{model.name} {task.id} {setting.id} t{job.trial}: "
             f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed items, "
             f"{sum(i.ending == 'reported' for i in run.items)} of {len(run.items)} reported, "
             f"{run.usage.requests} requests, ${run.cost_usd:.4f}, {seconds:.0f} s",
@@ -610,13 +610,13 @@ def run_held(
 
 
 def current_sessions(settings: Settings, models: list[str]) -> list[SessionRun]:
-    """Every stored session made on the present version of its session case by the present
-    harness. Sessions of the same case, setting and trial all count: each is one more
+    """Every stored session made on the present version of its task by the present
+    harness. Sessions of the same task, setting and trial all count: each is one more
     repeat."""
-    versions = {case.id: spec.version for case, spec in load_sessions(settings)}
+    versions = {task.id: spec.version for task, spec in load_sessions(settings)}
     return [
         run
         for model in models
         for run in stored_sessions(sessions_path(settings, model))
-        if versions.get(run.case) == run.session_version and run.harness == HARNESS
+        if versions.get(run.task) == run.session_version and run.harness == HARNESS
     ]

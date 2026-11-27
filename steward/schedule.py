@@ -50,15 +50,15 @@ ROUTINE_BEFORE = 2
 GOAL_SAID_BEFORE = 1
 
 
-def schedule_seed(case_id: str, trial: int) -> int:
-    return int(hashlib.sha256(f"{case_id}:{trial}".encode()).hexdigest()[:12], 16)
+def schedule_seed(task_id: str, trial: int) -> int:
+    return int(hashlib.sha256(f"{task_id}:{trial}".encode()).hexdigest()[:12], 16)
 
 
-def said_overnight(case_id: str, trial: int) -> bool:
+def said_overnight(task_id: str, trial: int) -> bool:
     """Whether the task's revised mandate is said the day before it applies on this trial.
     The kind alternates over trials from a start drawn per task, so with two trials every
     task has each kind once and each trial has about half of the tasks of each."""
-    return (schedule_seed(case_id, 0) + trial) % 2 == 0
+    return (schedule_seed(task_id, 0) + trial) % 2 == 0
 
 
 def change_shifts(
@@ -124,15 +124,15 @@ def conditions_of(spec: SessionSpec) -> tuple[Condition, ...]:
     return CONDITIONS if has_instruction_drift(spec) else CONDITIONS[:1]
 
 
-def benchmark_setting(case_id: str, spec: SessionSpec, condition: Condition, trial: int) -> Setting:
+def benchmark_setting(task_id: str, spec: SessionSpec, condition: Condition, trial: int) -> Setting:
     instructions = condition == "State and Instruction Drift"
     if instructions and not has_instruction_drift(spec):
-        raise ValueError(f"{case_id}: {condition} needs a goal change and an authority conflict")
+        raise ValueError(f"{task_id}: {condition} needs a goal change and an authority conflict")
     steps = len(spec.goal.steps) if spec.goal and instructions else 0
     conflicts = 1 if instructions else 0
-    seed = schedule_seed(case_id, trial)
+    seed = schedule_seed(task_id, trial)
     stale = 1 if instructions else STATE_DRIFT_EVENTS
-    overnight = said_overnight(case_id, trial) if steps else None
+    overnight = said_overnight(task_id, trial) if steps else None
     shifts = change_shifts(seed, stale + conflicts + steps, goal_steps=steps, overnight=overnight)
     return Setting(
         items=DAYS * PER_DAY,

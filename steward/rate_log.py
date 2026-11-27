@@ -2,7 +2,7 @@
 
 Every response from the provider is counted as it arrives: its status, its token usage and
 the rate-limit headers it carries. Every `WINDOW_SECONDS` one line is appended to
-`data/cases/rate/<model>.jsonl` with what the window saw, how many sessions were running
+`data/tasks/rate/<model>.jsonl` with what the window saw, how many sessions were running
 and allowed at once and which tested model the run was running. Requests of the tested model and of the simulator are counted apart,
 since when one model plays both they share the provider's limit.
 """
@@ -150,7 +150,7 @@ _logs_lock = threading.Lock()
 
 def rate_log(settings: Settings, model: str) -> RateLog:
     """The one log of a model in this process, shared by its agent and simulator clients."""
-    path = settings.paths.data / "cases" / "rate" / f"{model}.jsonl"
+    path = settings.paths.data / "tasks" / "rate" / f"{model}.jsonl"
     with _logs_lock:
         if path not in _logs:
             _logs[path] = RateLog(path)

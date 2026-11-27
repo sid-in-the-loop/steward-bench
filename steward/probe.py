@@ -67,7 +67,7 @@ from steward.session import (
     words,
 )
 from steward.simulator import CachedSimulator, SimulatorFailedError
-from steward.task import Case, Reference, Role
+from steward.task import Reference, Role, Task
 
 Probe = Literal["P1", "P2", "P3", "P4", "P5"]
 PROBES: tuple[Probe, ...] = ("P1", "P2", "P3", "P4", "P5")
@@ -118,7 +118,7 @@ class Target(BaseModel):
     """One person to probe on one shift, with what grading reads: their distinguishing words
     and the name of the thing they know about."""
 
-    case: str
+    task: str
     role: Role
     kind: Kind
     condition: Condition = INSTRUCTION_DRIFT
@@ -136,7 +136,7 @@ class Target(BaseModel):
 
 
 class ProbeResult(BaseModel):
-    case: str
+    task: str
     person: Role
     name: str
     kind: Kind
@@ -175,29 +175,29 @@ def distinguishing(knowledge: str, apart_from: list[str], thing: str | None) -> 
     return seen
 
 
-def probe_setting(case: Case, spec: SessionSpec) -> Setting:
+def probe_setting(task: Task, spec: SessionSpec) -> Setting:
     """The benchmark's first trial at the highest level the task has, for its cast and its
     changed and conflict shifts."""
-    return benchmark_setting(case.id, spec, conditions_of(spec)[-1], 0)
+    return benchmark_setting(task.id, spec, conditions_of(spec)[-1], 0)
 
 
-def drift_setting(case: Case, spec: SessionSpec) -> Setting:
+def drift_setting(task: Task, spec: SessionSpec) -> Setting:
     """The benchmark's first trial under State Drift, with its four changed shifts."""
-    return benchmark_setting(case.id, spec, STATE_DRIFT, 0)
+    return benchmark_setting(task.id, spec, STATE_DRIFT, 0)
 
 
-def cast_words(case: Case, spec: SessionSpec) -> list[str]:
-    people = [p.name for p in case.people] + [spec.manager.name]
+def cast_words(task: Task, spec: SessionSpec) -> list[str]:
+    people = [p.name for p in task.people] + [spec.manager.name]
     return [part for name in people for part in words(name)]
 
 
 def owner_change(
-    case: Case, spec: SessionSpec, shift: int, condition: Condition, probes: tuple[Probe, ...]
+    task: Task, spec: SessionSpec, shift: int, condition: Condition, probes: tuple[Probe, ...]
 ) -> Target:
     thing = spec.owner_thing or None
-    apart = [*spec.owner_status, *cast_words(case, spec), spec.task]
+    apart = [*spec.owner_status, *cast_words(task, spec), spec.task]
     return Target(
-        case=case.id,
+        task=task.id,
         role="owner",
         kind="owner_change",
         condition=condition,
@@ -225,19 +225,19 @@ def routine_shift(setting: Setting, spec: SessionSpec) -> int | None:
     return quiet[-1] if quiet else None
 
 
-def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
-    names = cast_words(case, spec)
+def targets(task: Task, spec: SessionSpec, setting: Setting) -> list[Target]:
+    names = cast_words(task, spec)
     condition = INSTRUCTION_DRIFT if setting.conflict_at or setting.goal_at else STATE_DRIFT
     found: list[Target] = []
     if setting.changed:
-        found.append(owner_change(case, spec, setting.changed[0], condition, PROBES))
+        found.append(owner_change(task, spec, setting.changed[0], condition, PROBES))
     routine = routine_shift(setting, spec)
     if setting.changed and routine is not None:
         thing: str | None = spec.owner_thing or None
         apart = [*spec.owner_status, *names, spec.task, spec.owner_unchanged]
         found.append(
             Target(
-                case=case.id,
+                task=task.id,
                 role="owner",
                 kind="owner_routine",
                 condition=condition,
@@ -256,7 +256,7 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
         base = [spec.requester_reply, *spec.owner_status, spec.task]
         found.append(
             Target(
-                case=case.id,
+                task=task.id,
                 role=step.who,
                 kind="goal_speaker",
                 condition=condition,
@@ -278,7 +278,7 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
         for role, line, other in sides:
             found.append(
                 Target(
-                    case=case.id,
+                    task=task.id,
                     role=role,
                     kind="conflict_side",
                     condition=condition,
@@ -293,20 +293,20 @@ def targets(case: Case, spec: SessionSpec, setting: Setting) -> list[Target]:
     return found
 
 
-def probed(case: Case, spec: SessionSpec) -> list[tuple[Setting, Target]]:
+def probed(task: Task, spec: SessionSpec) -> list[tuple[Setting, Target]]:
     """Every target of a task with the setting it is probed in: those of `probe_setting`, and
     for a task that also runs under State Drift the owner on the first and the last of its
     changed shifts there."""
-    setting = probe_setting(case, spec)
-    found = [(setting, target) for target in targets(case, spec, setting)]
+    setting = probe_setting(task, spec)
+    found = [(setting, target) for target in targets(task, spec, setting)]
     if setting.conflict_at is None and not setting.goal_at:
         return found
-    drift = drift_setting(case, spec)
+    drift = drift_setting(task, spec)
     for shift in sorted({drift.changed[0], drift.changed[-1]}):
-        found.append((drift, owner_change(case, spec, shift, STATE_DRIFT, DRIFT_PROBES)))
+        found.append((drift, owner_change(task, spec, shift, STATE_DRIFT, DRIFT_PROBES)))
     after = after_change_shift(drift)
     if after is not None:
-        found.append((drift, after_change(case, spec, after)))
+        found.append((drift, after_change(task, spec, after)))
     return found
 
 
@@ -318,11 +318,11 @@ def after_change_shift(setting: Setting) -> int | None:
     return next((n for n in later if not setting.drift(n)), None)
 
 
-def after_change(case: Case, spec: SessionSpec, shift: int) -> Target:
+def after_change(task: Task, spec: SessionSpec, shift: int) -> Target:
     """The owner on a routine shift after a change they told the agent of: they know of the
     earlier change and that nothing new has changed."""
     return Target(
-        case=case.id,
+        task=task.id,
         role="owner",
         kind="owner_after_change",
         condition=STATE_DRIFT,
@@ -451,10 +451,10 @@ def graded(
 
 
 def session_for(
-    case: Case, spec: SessionSpec, setting: Setting, simulator: CachedSimulator
+    task: Task, spec: SessionSpec, setting: Setting, simulator: CachedSimulator
 ) -> Session:
     idle = ScriptedItems(spec.safe_reference)
-    return Session(case, spec, setting, None, idle, [], simulator)  # type: ignore[arg-type]
+    return Session(task, spec, setting, None, idle, [], simulator)  # type: ignore[arg-type]
 
 
 SLOT = re.compile(r"\{\w+\}")
@@ -472,30 +472,30 @@ def has_slots(spec: SessionSpec) -> bool:
     return any(SLOT.search(text) for text in texts)
 
 
-def values_path(settings: Settings, case: Case, spec: SessionSpec, setting: Setting) -> Path:
-    name = f"{case.id}-{spec.version}-{setting.id}.json"
-    return settings.paths.data / "cases" / "sim_probe" / "values" / name
+def values_path(settings: Settings, task: Task, spec: SessionSpec, setting: Setting) -> Path:
+    name = f"{task.id}-{spec.version}-{setting.id}.json"
+    return settings.paths.data / "tasks" / "sim_probe" / "values" / name
 
 
 def shift_values(
-    settings: Settings, case: Case, spec: SessionSpec, setting: Setting
+    settings: Settings, task: Task, spec: SessionSpec, setting: Setting
 ) -> dict[int, dict[str, str]]:
     """What each shift's item script prints, which fills the slots in people's lines: read
     from one session of an agent that does nothing, run in the task's sandbox and kept on disk
     by the task's version and the setting. Empty for a task with no slots."""
     if not has_slots(spec):
         return {}
-    path = values_path(settings, case, spec, setting)
+    path = values_path(settings, task, spec, setting)
     if not path.exists():
         idle = Reference(actions=[], report="I have not done anything on this one.")
-        run = run_session(settings, case, spec, setting, lambda _tools: ScriptedItems(idle))
+        run = run_session(settings, task, spec, setting, lambda _tools: ScriptedItems(idle))
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps({item.item: item.values for item in run.items}))
     return {int(shift): values for shift, values in json.loads(path.read_text()).items()}
 
 
 def run_probe(
-    case: Case,
+    task: Task,
     spec: SessionSpec,
     setting: Setting,
     target: Target,
@@ -518,7 +518,7 @@ def run_probe(
             "thing": filled(target.thing, shift_values_now) if target.thing else None,
         }
     )
-    session = session_for(case, spec, setting, simulator)
+    session = session_for(task, spec, setting, simulator)
     name = session.person(target.role).name
     text = message(probe, name.split()[0], target, filled(spec.task, shift_values_now))
     if text is None:
@@ -550,7 +550,7 @@ def run_probe(
         withheld=bool(withheld),
     )
     return ProbeResult(
-        case=case.id,
+        task=task.id,
         person=target.role,
         name=name,
         kind=target.kind,
@@ -571,15 +571,15 @@ def run_probe(
     )
 
 
-def planned(cases: list[tuple[Case, SessionSpec]]) -> tuple[int, list[str]]:
-    """How many probes the cases need, and the tasks that give a person no name for the
+def planned(tasks: list[tuple[Task, SessionSpec]]) -> tuple[int, list[str]]:
+    """How many probes the tasks need, and the tasks that give a person no name for the
     thing (their P2 and P3 are left out)."""
     count = 0
     unnamed: list[str] = []
-    for case, spec in cases:
-        for _, target in probed(case, spec):
+    for task, spec in tasks:
+        for _, target in probed(task, spec):
             count += len(target.sent)
-            missing = f"{case.id} ({target.role}, {target.kind})"
+            missing = f"{task.id} ({target.role}, {target.kind})"
             if target.thing is None and missing not in unnamed:
                 unnamed.append(missing)
     return count, unnamed
@@ -600,48 +600,48 @@ def estimate_usd(probes: int, pricing: Pricing) -> float:
 
 
 def probe_path(settings: Settings, model: str) -> Path:
-    return settings.paths.data / "cases" / "sim_probe" / f"{model}.jsonl"
+    return settings.paths.data / "tasks" / "sim_probe" / f"{model}.jsonl"
 
 
-def probe_case(
+def probe_task(
     settings: Settings,
-    case: Case,
+    task: Task,
     spec: SessionSpec,
     simulator: CachedSimulator,
     pricing: Pricing,
 ) -> list[ProbeResult]:
     results: list[ProbeResult] = []
     values: dict[str, dict[int, dict[str, str]]] = {}
-    for setting, target in probed(case, spec):
+    for setting, target in probed(task, spec):
         if setting.id not in values:
-            values[setting.id] = shift_values(settings, case, spec, setting)
+            values[setting.id] = shift_values(settings, task, spec, setting)
         for probe in target.sent:
             result = run_probe(
-                case, spec, setting, target, probe, simulator, pricing, values[setting.id]
+                task, spec, setting, target, probe, simulator, pricing, values[setting.id]
             )
             if result is not None:
                 results.append(result)
     return results
 
 
-def probe_cases(
+def probe_tasks(
     settings: Settings,
-    cases: list[tuple[Case, SessionSpec]],
+    tasks: list[tuple[Task, SessionSpec]],
     simulator_for: Callable[[], CachedSimulator],
     pricing: Pricing,
     workers: int = 1,
 ) -> list[ProbeResult]:
-    """Every case's probes, `workers` cases at a time. Each worker thread has its own
+    """Every task's probes, `workers` tasks at a time. Each worker thread has its own
     simulator, since a probe's cost is read from the simulator's last reply."""
     local = threading.local()
 
-    def one(pair: tuple[Case, SessionSpec]) -> list[ProbeResult]:
+    def one(pair: tuple[Task, SessionSpec]) -> list[ProbeResult]:
         if not hasattr(local, "simulator"):
             local.simulator = simulator_for()
-        return probe_case(settings, pair[0], pair[1], local.simulator, pricing)
+        return probe_task(settings, pair[0], pair[1], local.simulator, pricing)
 
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return [result for found in pool.map(one, cases) for result in found]
+        return [result for found in pool.map(one, tasks) for result in found]
 
 
 def summary(results: list[ProbeResult]) -> list[str]:
@@ -660,7 +660,7 @@ def summary(results: list[ProbeResult]) -> list[str]:
             ]
             if chosen:
                 lines.append(f"  {probe} {kind} under {condition}: {rate(chosen)}")
-    failed = sorted({r.case for r in results if not r.passed})
+    failed = sorted({r.task for r in results if not r.passed})
     lines.append(f"tasks with any failure ({len(failed)}): {', '.join(failed) or 'none'}")
     lines.append(f"total cost ${sum(r.cost_usd for r in results):.4f}")
     return lines

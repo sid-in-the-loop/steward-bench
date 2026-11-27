@@ -5,9 +5,9 @@ Every command is `uv run steward <command>`. Paths below are under the data fold
 
 ## Building and checking the tasks
 
-    steward check [--case ID] [--check-only] [--workers N] [--one-date]
+    steward check [--task ID] [--check-only] [--workers N] [--one-date]
 
-`check` builds each repository task's environment into `cases/built_sessions/<task>/`
+`check` builds each repository task's environment into `tasks/built_sessions/<task>/`
 (`--check-only` uses the built one) and replays scripted agents on the benchmark schedule of
 trials 0 and 1 under every condition the task has. A task passes when:
 
@@ -31,7 +31,7 @@ passes.
 
 ## Running sessions
 
-    steward run --model M [--case ID] --condition sd|sid [--trials N]
+    steward run --model M [--task ID] --condition sd|sid [--trials N]
                         [--simulator-model M|none] [--workers N] [--start N]
                         [--max-usd X] [--retry-failed] [--confirm]
 
@@ -90,7 +90,7 @@ calls nothing without `--confirm`.
 
 ### Resuming
 
-Sessions are appended to `cases/sessions/<model>.jsonl`. A stored session stands in for a new
+Sessions are appended to `tasks/sessions/<model>.jsonl`. A stored session stands in for a new
 one only when the task's version, the simulator (or none) and the harness are the same. The
 harness version (`harness` in each session, `steward/harness.py`) is the loop's protocol
 number with a hash of the source of every module on the session path, so any change to a tool
@@ -104,7 +104,7 @@ once. A line cut short by a stopped run is removed by the next one.
 ### Failures
 
 A session that raises is tried twice in a run, and each failure is appended to
-`cases/sessions/<model>.failed.jsonl` with the error, what it spent and its kind. A failure of
+`tasks/sessions/<model>.failed.jsonl` with the error, what it spent and its kind. A failure of
 the tested model's own that retrying does not cure is of kind `model`; a session with four is
 not tried again. A failure of the infrastructure (a machine fault, a server that did not start,
 the network, rate limits still answered after every retry, any simulator failure) is always
@@ -116,7 +116,7 @@ again; the session records it in `dropped`. A reply with no text and no tool cal
 off at the output budget, is asked once more with twice the budget; still unusable, it ends the
 shift as `model_error`, which is scored by its checks like any other shift.
 
-Every response is also counted in `cases/rate/<model>.jsonl`, one line per 30 seconds with the
+Every response is also counted in `tasks/rate/<model>.jsonl`, one line per 30 seconds with the
 sessions running, the requests, the HTTP 429 answers, the tokens and the latest rate-limit
 headers.
 
@@ -141,19 +141,19 @@ characters. In a repository task the remote is shown as the GitHub repository it
 
 ## Estimating cost
 
-    steward estimate --model M [--model M2] [--trials N] [--cases FILE]
+    steward estimate --model M [--model M2] [--trials N] [--tasks FILE]
                            [--condition sd|sid] [--simulator-model M|none]
 
 `estimate` prints the cost of the whole planned benchmark per model, the simulator's cost
 on its own line and the total, and runs nothing. A model's tokens per shift come from its own
 stored sessions where it has any, otherwise from the average of the stored models; the line
-says which. `--cases` takes a file of task IDs, one a line, such as `cases/ablation_sample.txt`,
+says which. `--tasks` takes a file of task IDs, one a line, such as `tasks/ablation_sample.txt`,
 the fixed sample of 40 tasks the ablations run on (`steward/ablation_sample.py`).
 `run` prints the same estimate for the sessions not yet stored.
 
 ## Probing the simulator
 
-    steward probe [--case ID] [--simulator-model M] [--workers N] [--confirm]
+    steward probe [--task ID] [--simulator-model M] [--workers N] [--confirm]
 
 `probe` (`steward/probe.py`) checks the simulator's reveal rule with no agent.
 Each person who holds a fact on a shift is sent fixed probes through the session's own reply
@@ -172,8 +172,8 @@ routine shift before any event (where P2 must get a reply saying nothing has cha
 under State Drift on the first routine shift after a change. The speaker of the first revision
 and both sides of the conflict are probed on their shifts with P1 to P4. Slots in the lines are
 filled with the values the shift script prints, read once from a session of an agent that does
-nothing and kept under `cases/sim_probe/values/`. Results go to
-`cases/sim_probe/<model>.jsonl`, followed by a pass rate per probe and the tasks with a failure.
+nothing and kept under `tasks/sim_probe/values/`. Results go to
+`tasks/sim_probe/<model>.jsonl`, followed by a pass rate per probe and the tasks with a failure.
 
 ## Machine limits
 

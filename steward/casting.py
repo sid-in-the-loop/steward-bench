@@ -89,7 +89,7 @@ WRITES = re.compile(r"^(?:(?:She|He|They)\s+)?[Ww]rites?\b")
 def session_description(person: Person) -> str:
     """Who the person is and how they write, as a session shows them to the simulator: the
     first sentence of their task description and its sentence on how they write. The rest was
-    written for a single case in which the person already knows the matter at hand, so it can
+    written for a single task in which the person already knows the matter at hand, so it can
     carry a fact that in a session they know only on the shifts their briefing says."""
     sentences = re.split(r"(?<=[.!?])\s+", person.description.strip())
     kept = [sentences[0], *[s for s in sentences[1:] if WRITES.match(s)][-1:]]

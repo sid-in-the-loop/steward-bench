@@ -1,4 +1,4 @@
-"""A task's case file: who is involved, what the agent inherits, and how the outcome is
+"""A task's `task.yaml`: who is involved, what the agent inherits, and how the outcome is
 read; and where the tasks are found."""
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ class Database(Strict):
 
 
 class Repo(Strict):
-    """A small repository built for the case. `base` names a script under cases/_bases that
+    """A small repository built for the task. `base` names a script under tasks/_bases that
     creates it; `history` is then carried out in it, so what the agent inherits is what
     really happened there."""
 
@@ -68,7 +68,7 @@ class During(Strict):
     """Something another person does while the agent is working: a script run in the
     environment, once. With `after_actions` it runs when the agent has taken that many
     actions; with `before_change` it runs just before the agent's first action that matches
-    the case's change pattern, so the timing is the same however fast the agent works. The
+    the task's change pattern, so the timing is the same however fast the agent works. The
     agent is not told."""
 
     after_actions: int | None = Field(default=None, ge=1)
@@ -119,7 +119,7 @@ class Measures(Strict):
 
 
 class Reference(Strict):
-    """A scripted run with a known outcome, used to check the case itself."""
+    """A scripted run with a known outcome, used to check the task itself."""
 
     actions: list[Action]
     report: str
@@ -136,13 +136,13 @@ DOMAIN_NAMES: dict[Domain, str] = {
 }
 
 
-def case_identifier(domain: Domain, title: str) -> str:
-    """The identifier of a case: its domain and a short hash of its title. It is derived, not
-    chosen, so a case is named by what it is about and never by a code."""
+def task_identifier(domain: Domain, title: str) -> str:
+    """The identifier of a task: its domain and a short hash of its title. It is derived, not
+    chosen, so a task is named by what it is about and never by a code."""
     return f"{domain}-{hashlib.sha1(title.encode()).hexdigest()[:10]}"
 
 
-class Case(Strict):
+class Task(Strict):
     id: str
     domain: Domain
     title: str
@@ -160,60 +160,60 @@ class Case(Strict):
     during: During | None = None
     lines: Lines
     measures: Measures
-    # Set when the case is loaded: a short hash of everything a run depends on.
+    # Set when the task is loaded: a short hash of everything a run depends on.
     version: str = ""
     safe_reference: Reference
-    # A harmless twin of a case, where the inherited belief is still true, has none.
+    # A harmless twin of a task, where the inherited belief is still true, has none.
     harmful_reference: Reference | None = None
 
     def person(self, role: Role) -> Person:
         return next(p for p in self.people if p.role == role)
 
 
-# What a run of a case depends on. A change to any of these makes earlier runs out of date;
+# What a run of a task depends on. A change to any of these makes earlier runs out of date;
 # a change to its title or description does not.
 RUN_FIELDS = {"environment", "people", "history", "setup", "during", "lines", "measures"}
 GH_STAND_IN = Path(__file__).parent / "environment" / "shims" / "gh"
 
 
-def load_case(directory: Path) -> Case:
-    """Read `case.yaml`; `setup` names a script beside it, which is read in."""
-    raw = yaml.safe_load((directory / "case.yaml").read_text())
+def load_task(directory: Path) -> Task:
+    """Read `task.yaml`; `setup` names a script beside it, which is read in."""
+    raw = yaml.safe_load((directory / "task.yaml").read_text())
     raw["setup"] = (directory / raw["setup"]).read_text()
-    case = Case.model_validate(raw)
-    # A case without a database is hashed as it was before cases could have one, so its
+    task = Task.model_validate(raw)
+    # A task without a database is hashed as it was before tasks could have one, so its
     # stored runs stay current.
-    without = isinstance(case.environment, Repo) and case.environment.database is None
+    without = isinstance(task.environment, Repo) and task.environment.database is None
     left_out: dict[str, set[str]] = {"environment": {"database"}} if without else {}
-    parts = [case.model_dump_json(include=RUN_FIELDS, exclude=left_out)]
-    if isinstance(case.environment, Repo):
-        parts.append((directory.parent / "_bases" / case.environment.base).read_text())
-        # The GitHub stand-in counts only for a case that calls it.
+    parts = [task.model_dump_json(include=RUN_FIELDS, exclude=left_out)]
+    if isinstance(task.environment, Repo):
+        parts.append((directory.parent / "_bases" / task.environment.base).read_text())
+        # The GitHub stand-in counts only for a task that calls it.
         if re.search(r"\bgh\s", parts[0]):
             parts.append(GH_STAND_IN.read_text())
-    case.version = hashlib.sha1("\n".join(parts).encode()).hexdigest()[:10]
-    return case
+    task.version = hashlib.sha1("\n".join(parts).encode()).hexdigest()[:10]
+    return task
 
 
-# A file a builder leaves in a case directory while the case is being written; the case is
+# A file a builder leaves in a task directory while the task is being written; the task is
 # skipped until the builder removes it.
 BUILDING_MARKER = ".building"
 
 
-def case_directories(root: Path, named: list[str] | None = None) -> list[Path]:
-    """The finished case directories: those holding a case.yaml and no building marker. A case
+def task_directories(root: Path, named: list[str] | None = None) -> list[Path]:
+    """The finished task directories: those holding a task.yaml and no building marker. A task
     named in `named` is included even while it is being built, so its builder can check it."""
     return [
         path.parent
-        for path in sorted(root.glob("*/case.yaml"))
+        for path in sorted(root.glob("*/task.yaml"))
         if not (path.parent / BUILDING_MARKER).exists() or path.parent.name in (named or [])
     ]
 
 
-def cases_root(settings: Settings) -> Path:
-    return settings.paths.root / "cases"
+def tasks_root(settings: Settings) -> Path:
+    return settings.paths.root / "tasks"
 
 
-def load_cases(settings: Settings, only: list[str] | None = None) -> list[Case]:
-    cases = [load_case(d) for d in case_directories(cases_root(settings), only)]
-    return [c for c in cases if not only or c.id in only]
+def load_tasks(settings: Settings, only: list[str] | None = None) -> list[Task]:
+    tasks = [load_task(d) for d in task_directories(tasks_root(settings), only)]
+    return [c for c in tasks if not only or c.id in only]

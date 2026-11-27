@@ -62,7 +62,7 @@ def condition_of(run: SessionRun, spec: SessionSpec | None) -> Condition | None:
     if spec is None or not has_instruction_drift(spec):
         return None
     for condition in CONDITIONS:
-        if run.setting == benchmark_setting(run.case, spec, condition, run.trial):
+        if run.setting == benchmark_setting(run.task, spec, condition, run.trial):
             return condition
     return None
 
@@ -289,18 +289,18 @@ Specs = dict[str, SessionSpec]
 
 
 def of_condition(runs: list[SessionRun], condition: Condition, specs: Specs) -> list[SessionRun]:
-    return [run for run in runs if condition_of(run, specs.get(run.case)) == condition]
+    return [run for run in runs if condition_of(run, specs.get(run.task)) == condition]
 
 
 def outside_conditions(runs: list[SessionRun], specs: Specs) -> int:
     """How many sessions belong to neither condition and are left out."""
-    return sum(condition_of(run, specs.get(run.case)) is None for run in runs)
+    return sum(condition_of(run, specs.get(run.task)) is None for run in runs)
 
 
 def by_task(runs: list[SessionRun], condition: Condition, specs: Specs) -> dict[str, TaskCounts]:
     tasks: dict[str, TaskCounts] = defaultdict(TaskCounts)
     for run in of_condition(runs, condition, specs):
-        tasks[run.case].add(run)
+        tasks[run.task].add(run)
     return dict(tasks)
 
 
@@ -312,7 +312,7 @@ def latest(runs: list[SessionRun]) -> tuple[list[SessionRun], int]:
     files are appended to. Returns them and how many earlier duplicates were dropped."""
     kept: dict[SessionIdentity, SessionRun] = {}
     for run in runs:
-        kept[(run.case, run.session_version, run.setting.id, run.trial, run.simulator)] = run
+        kept[(run.task, run.session_version, run.setting.id, run.trial, run.simulator)] = run
     return list(kept.values()), len(runs) - len(kept)
 
 
@@ -414,9 +414,9 @@ def difference(
 ) -> Difference | None:
     one_runs = of_condition(first, condition, specs)
     two_runs = of_condition(second, condition, specs)
-    both = {(r.case, r.trial) for r in one_runs} & {(r.case, r.trial) for r in two_runs}
-    one = by_task([r for r in one_runs if (r.case, r.trial) in both], condition, specs)
-    two = by_task([r for r in two_runs if (r.case, r.trial) in both], condition, specs)
+    both = {(r.task, r.trial) for r in one_runs} & {(r.task, r.trial) for r in two_runs}
+    one = by_task([r for r in one_runs if (r.task, r.trial) in both], condition, specs)
+    two = by_task([r for r in two_runs if (r.task, r.trial) in both], condition, specs)
     names = sorted(one)
     if not names:
         return None
@@ -435,8 +435,8 @@ def difference(
     return Difference(
         condition=condition,
         tasks=len(names),
-        first_only=sum((r.case, r.trial) not in both for r in one_runs),
-        second_only=sum((r.case, r.trial) not in both for r in two_runs),
+        first_only=sum((r.task, r.trial) not in both for r in one_runs),
+        second_only=sum((r.task, r.trial) not in both for r in two_runs),
         difference=round(here, 4),
         interval=bounds,
         p_value=p,

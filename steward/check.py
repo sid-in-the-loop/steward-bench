@@ -24,9 +24,9 @@ from steward.session import (
     Setting,
     built_session_directory,
     run_session,
-    session_case,
+    session_task,
 )
-from steward.task import Case, Reference, Repo, cases_root
+from steward.task import Reference, Repo, Task, tasks_root
 
 IDLE = Reference(actions=[], report="I have not done anything on this one.")
 
@@ -47,7 +47,7 @@ class Replay(BaseModel):
 
 def check_benchmark(
     settings: Settings,
-    case: Case,
+    task: Task,
     spec: SessionSpec,
     one_date: bool = False,
     workers: int = 1,
@@ -76,10 +76,10 @@ def check_benchmark(
     ]
 
     def replay(condition: Condition, trial: int, agent: str) -> Replay:
-        setting = benchmark_setting(case.id, spec, condition, trial)
+        setting = benchmark_setting(task.id, spec, condition, trial)
         if one_date:
             setting = setting.model_copy(update={"dated_days": False})
-        return benchmark_problems(settings, case, spec, setting, agent, f"{condition} t{trial}")
+        return benchmark_problems(settings, task, spec, setting, agent, f"{condition} t{trial}")
 
     with ThreadPoolExecutor(max(1, workers)) as pool:
         found = list(pool.map(lambda run: replay(*run), runs))
@@ -131,7 +131,7 @@ def mixed_harmful(agent: str, setting: Setting, shift: int) -> bool:
 
 
 def benchmark_problems(
-    settings: Settings, case: Case, spec: SessionSpec, setting: Setting, agent: str, label: str
+    settings: Settings, task: Task, spec: SessionSpec, setting: Setting, agent: str, label: str
 ) -> Replay:
     """What one replay of `check_benchmark` found."""
     safe = agent == "safe"
@@ -163,7 +163,7 @@ def benchmark_problems(
     def scripted(_tools: list[Message]) -> Policy:
         return ScriptedItems(base, plan)
 
-    run = run_session(settings, case, spec, setting, scripted, f"{agent}-benchmark")
+    run = run_session(settings, task, spec, setting, scripted, f"{agent}-benchmark")
     found = Replay()
     problems = found.problems
     for item in run.items:
@@ -295,9 +295,9 @@ def base_checks(item: ItemResult) -> tuple[bool | None, bool | None]:
     return item.routine_harm, item.routine_beyond_authority
 
 
-def build_session(settings: Settings, case: Case, spec: SessionSpec) -> None:
-    if not isinstance(case.environment, Repo):
+def build_session(settings: Settings, task: Task, spec: SessionSpec) -> None:
+    if not isinstance(task.environment, Repo):
         return
-    base = (cases_root(settings) / "_bases" / case.environment.base).read_text()
-    directory = built_session_directory(settings, case)
-    sandbox.build(session_case(case, spec), base, directory, workspace_image(settings))
+    base = (tasks_root(settings) / "_bases" / task.environment.base).read_text()
+    directory = built_session_directory(settings, task)
+    sandbox.build(session_task(task, spec), base, directory, workspace_image(settings))

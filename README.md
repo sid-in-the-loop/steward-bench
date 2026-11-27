@@ -86,10 +86,10 @@ Every command is `uv run steward <command>`; `--help` on any of them lists its o
 
 | Command | What it does |
 |---|---|
-| `check [--case ID] [--check-only] [--workers N]` | Builds each task's environment and replays its references on the benchmark schedule (docs/running.md). Prints `<id>: ok` for a task that passes |
+| `check [--task ID] [--check-only] [--workers N]` | Builds each task's environment and replays its references on the benchmark schedule (docs/running.md). Prints `<id>: ok` for a task that passes |
 | `estimate --model M [--model M2] [--trials N] [--condition sd\|sid]` | Prints the cost of the whole planned benchmark per model and for the simulator. Calls nothing |
 | `run --model M --condition sd\|sid [--trials N] [--max-usd X] [--confirm]` | Runs the benchmark sessions not yet stored. Without `--confirm` it prints the estimate and stops |
-| `probe [--case ID] [--simulator-model M] [--confirm]` | Sends the user simulator fixed probes with no agent and grades its replies |
+| `probe [--task ID] [--simulator-model M] [--confirm]` | Sends the user simulator fixed probes with no agent and grades its replies |
 | `score --model M [--model M2] --simulator-model S\|none` | Prints every metric per model and condition from the stored sessions, and the difference between each pair of models |
 | `lint-tasks` | Lists repeated names, shared sentences and loose disclose patterns across tasks |
 
@@ -110,12 +110,12 @@ which is enough to exercise the environments.
 
 | Path under the data folder | Contents |
 |---|---|
-| `cases/built_sessions/<task>/` | Each repository task's built environment |
-| `cases/sessions/<model>.jsonl` | One line per finished session: its setting, every event and every shift's measures |
-| `cases/sessions/<model>.failed.jsonl` | Sessions that raised, with the error, its kind and what they spent |
-| `cases/simulator_cache/` | Every simulator reply, by model and request, so a rerun gets the same reply |
-| `cases/rate/<model>.jsonl` | Requests, rate limits and tokens per 30 seconds of a run |
-| `cases/sim_probe/<model>.jsonl` | One line per probe with its grade, tokens and cost |
+| `tasks/built_sessions/<task>/` | Each repository task's built environment |
+| `tasks/sessions/<model>.jsonl` | One line per finished session: its setting, every event and every shift's measures |
+| `tasks/sessions/<model>.failed.jsonl` | Sessions that raised, with the error, its kind and what they spent |
+| `tasks/simulator_cache/` | Every simulator reply, by model and request, so a rerun gets the same reply |
+| `tasks/rate/<model>.jsonl` | Requests, rate limits and tokens per 30 seconds of a run |
+| `tasks/sim_probe/<model>.jsonl` | One line per probe with its grade, tokens and cost |
 | `phase2/gym_states/` | Saved Workplace world states, rebuilt once per task |
 | `logs/` | Logs of each command |
 
@@ -125,8 +125,8 @@ unchanged, and a stopped run loses only the sessions it was running.
 ## Repository layout
 
 ```
-cases/                  the 120 tasks, one folder each, and the base scripts in cases/_bases
-cases/_worlds/          the recorded session the Workplace tasks start from
+tasks/                  the 120 tasks, one folder each, and the base scripts in tasks/_bases
+tasks/_worlds/          the recorded session the Workplace tasks start from
 steward/                the harness: task models, the session loop, environments, policies, scoring
 tests/                  tests on fixtures and fake environments
 docs/                   framework.md, tasks.md, running.md, scoring.md

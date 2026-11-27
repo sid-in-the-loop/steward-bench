@@ -14,7 +14,7 @@ from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 from steward.execution.gemini_policy import GEMINI_URL, GeminiPolicy
 from steward.execution.policy import Dialect, Message, ModelPolicy, Policy, RunSettings
 from steward.prices import Pricing, pricing_of
-from steward.task import Case
+from steward.task import Task
 
 MUSE_URL = "https://api.meta.ai/v1"
 # Long enough for a reply that thinks at length; the Gemini 4 guides ask for 20 minutes.
@@ -80,7 +80,7 @@ class ReasoningPolicy(ModelPolicy):
 PolicyFor = Callable[[list[Message]], Policy]
 
 
-def model_policy(client: httpx.Client, model: Model, case: Case) -> PolicyFor:
+def model_policy(client: httpx.Client, model: Model, task: Task) -> PolicyFor:
     if model.dialect == "anthropic":
         # A timeout of its own: with the SDK's default one it refuses, before sending, any
         # request whose output budget could take more than ten minutes, as the retry's does.
@@ -89,7 +89,7 @@ def model_policy(client: httpx.Client, model: Model, case: Case) -> PolicyFor:
     if model.dialect == "gemini":
         return lambda tools: GeminiPolicy(client, model.name, tools)
     dialect = model.dialect
-    key = hashlib.sha1(case.id.encode()).hexdigest()[:16]
+    key = hashlib.sha1(task.id.encode()).hexdigest()[:16]
     settings = RunSettings()
     if model.output_tokens is not None:
         settings = RunSettings(max_tokens_per_turn=model.output_tokens)

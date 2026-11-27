@@ -1,8 +1,8 @@
 # Tasks
 
 A task is one scenario in one environment (docs/framework.md). Each is a folder under
-`cases/` named `{domain}-{hash}`, where the hash is the first ten hex digits of the SHA-1 of
-the task's title (`case_identifier` in `steward/task.py`). The domains are `swe`
+`tasks/` named `{domain}-{hash}`, where the hash is the first ten hex digits of the SHA-1 of
+the task's title (`task_identifier` in `steward/task.py`). The domains are `swe`
 (Software), `terminal`, `workplace`, `mlops` (ML operations), `dbops` (Database operations)
 and `misc` (Miscellaneous). Reports name a task by its domain and title.
 
@@ -13,13 +13,13 @@ deputy. They are kept so that the tasks keep their versions and stored sessions 
 
 ## What a task holds
 
-A task folder holds `case.yaml`, `session.yaml` and the shift script `item.sh`.
+A task folder holds `task.yaml`, `session.yaml` and the shift script `item.sh`.
 
-`case.yaml` describes the environment and the people.
+`task.yaml` describes the environment and the people.
 
 | Field | Meaning |
 |---|---|
-| `environment` | `repo`: a small repository built from a script in `cases/_bases`, with a `database` if the task needs one. `world`: a Workplace world rebuilt from a recorded session kept in `cases/_worlds` (`trajectory_id`, `takeover_step`) |
+| `environment` | `repo`: a small repository built from a script in `tasks/_bases`, with a `database` if the task needs one. `world`: a Workplace world rebuilt from a recorded session kept in `tasks/_worlds` (`trajectory_id`, `takeover_step`) |
 | `people` | The requester (the user of the session), the principal (`owner`) and a bystander, each with a name and a description |
 | `history` | The inherited session. In a repository task each `run` step is executed and its real output recorded |
 | `setup`, `lines`, `measures` | The setup script, fixed lines and patterns; `measures.change`, `look` and `disclose` are read in sessions |
@@ -29,13 +29,13 @@ A task folder holds `case.yaml`, `session.yaml` and the shift script `item.sh`.
 
 | Field | Meaning |
 |---|---|
-| `start` | Run once when the environment is built, in place of the case's setup |
+| `start` | Run once when the environment is built, in place of the task's setup |
 | `item` | The shift script, run before every shift. It rebuilds the shift's state so that each shift stands on its own and prints `name=value` lines last, which fill `{name}` in the texts and the reference actions |
 | `task` | What the requester says to hand over a shift |
 | `manager` | The fourth person, a non-principal |
 | `requester_reply`, `owner_changed`, `owner_unchanged` | What the requester answers, and what the principal knows on a stale-authorization shift and on a routine shift |
 | `owner_thing` | The particular thing `owner_changed` is about, as an agent that had looked would name it. Read by `probe` only and no part of the version |
-| `descriptions` | Who a person is, as the simulator is shown them in a session, where the first sentence of their description in `case.yaml` would tell what they may know only on some shifts |
+| `descriptions` | Who a person is, as the simulator is shown them in a session, where the first sentence of their description in `task.yaml` would tell what they may know only on some shifts |
 | `owner_status`, `bystander_opinion`, `manager_push` | What each person says unprompted, in turn |
 | `accurate_note` | A handover note for the accurate-notes setting |
 | `harm`, `authority`, `done` | Checks run after every shift; each exits 0 when the shift caused no harm, stayed within the mandate, and did the work |
@@ -51,9 +51,9 @@ tool of the task's own that needs one is given it as an argument.
 
 ## Versions
 
-Each task has a version: a short hash of `TASK_PROTOCOL`, the case's version and every field of
-`session.yaml` that can change a session, with `owner_thing` left out
-(`load_session_spec` in `steward/session.py`). The case's version covers its
+Each task has a version: a short hash of `TASK_PROTOCOL`, the version of its `task.yaml` and
+every field of `session.yaml` that can change a session, with `owner_thing` left out
+(`load_session_spec` in `steward/session.py`). The version of `task.yaml` covers its
 environment, people, history, setup, lines and measures, the base script, and the `gh` stand-in
 where the task uses it. Fields added after sessions were first stored are left out at their
 defaults, so those sessions kept their versions. A stored session counts only while its task's
@@ -62,10 +62,10 @@ version is unchanged, so editing a task retires its earlier sessions without del
 
 ## Environments
 
-Repository tasks are built from a base script in `cases/_bases/`: `tally.sh` (Software),
+Repository tasks are built from a base script in `tasks/_bases/`: `tally.sh` (Software),
 `ops.sh` (Terminal), `lab.sh` (ML operations), `warehouse_db.sh` (Database operations) and
 `home.sh` (Miscellaneous). The build runs the base, the inherited session and the start script,
-and keeps the result under the data folder (`cases/built_sessions/<task>/`); each session runs
+and keeps the result under the data folder (`tasks/built_sessions/<task>/`); each session runs
 on a private copy.
 
 A Workplace task's world is Toolathlon-GYM's tool servers over a private PostgreSQL database
@@ -134,7 +134,7 @@ as the harness:
 - Every program of the agent's that a script runs goes through `as_agent`
   (`steward/environment/shims/as_agent`), in namespaces of its own where the key folder and
   the harness's files are empty and the harness's environment is gone.
-  `tests/cases/test_agent_code.py` fails on any task script that runs agent code without it.
+  `tests/tasks/test_agent_code.py` fails on any task script that runs agent code without it.
 - git on the harness's path is `harness_git`, which runs no hook, filter, pager, helper or
   other command named in the agent's configuration. `tests/test_harness_sandbox.py` plants each
   of them and shows that the agent's git runs them and the harness's does not.
@@ -152,19 +152,19 @@ reach.
 
 ## Adding a task
 
-1. Create `cases/<id>/` and the empty file `cases/<id>/.building`. Every loader skips a folder
-   that holds it, except when the task is named with `--case`.
+1. Create `tasks/<id>/` and the empty file `tasks/<id>/.building`. Every loader skips a folder
+   that holds it, except when the task is named with `--task`.
 2. Write the title as one sentence that says what the routine does and what changes, and take
    the identifier from it:
    `python3 -c "import hashlib;print('<key>-'+hashlib.sha1('<title>'.encode()).hexdigest()[:10])"`.
-3. Write `case.yaml`, `session.yaml` and `item.sh`, starting from a task of the same
+3. Write `task.yaml`, `session.yaml` and `item.sh`, starting from a task of the same
    environment. Include a `goal` and a `conflict`, so the task runs under both conditions.
 4. Validate, then delete `.building`:
 
 ```bash
-uv run steward check --case <id>
+uv run steward check --task <id>
 uv run steward lint-tasks
-uv run pytest -q tests/cases
+uv run pytest -q tests/tasks
 ```
 
 The rules every task keeps:

@@ -41,7 +41,7 @@ from steward.sandbox import (
     workspace_image,
 )
 from steward.schema import Trajectory
-from steward.task import Case, Database, Repo, World, cases_root
+from steward.task import Database, Repo, Task, World, tasks_root
 
 HISTORY_TOKENS = 150_000
 STATUS_MARK = "__status__"
@@ -62,7 +62,7 @@ class RetryingExecutor(LiveExecutor):
             if not runtime_failed(output):
                 if faulted(output) and await self.machine_faulting():
                     raise MachineFaultError(f"the machine faulted during: {command[:80]}")
-                return self._as_the_case_machine(output)
+                return self._as_the_task_machine(output)
             await asyncio.sleep(2.0 * (attempt + 1))
         raise RuntimeError(f"the container runtime kept failing for: {command[:80]}")
 
@@ -70,9 +70,9 @@ class RetryingExecutor(LiveExecutor):
         probe, _ = await self.run_status(MACHINE_PROBE)
         return faulted(probe) or PROBE_OK not in probe
 
-    def _as_the_case_machine(self, output: str) -> str:
+    def _as_the_task_machine(self, output: str) -> str:
         """The container runs as this machine's user on this machine's host, and commands such
-        as `id` or `ls -l` show it. The case's user and a plain host name are shown instead."""
+        as `id` or `ls -l` show it. The task's user and a plain host name are shown instead."""
         user = PurePosixPath(self.workspace.home).name
         host = socket.gethostname()
         for real, shown in [(host, "workstation"), (host.split(".")[0], "workstation")]:
@@ -178,14 +178,14 @@ class CheckedWorld:
         return int(counted()) if counted is not None else 0
 
 
-class CaseExecutor(Executor, Protocol):
+class TaskExecutor(Executor, Protocol):
     """An environment whose checks also return what they printed."""
 
     async def checked(self, command: str, limit: int = CHECK_OUTPUT_LIMIT) -> tuple[bool, str]: ...
 
 
 class Prepared(BaseModel):
-    """A case's environment ready for one run."""
+    """A task's environment ready for one run."""
 
     model_config = {"arbitrary_types_allowed": True}
 
@@ -197,13 +197,13 @@ class Prepared(BaseModel):
     answer_key: AnswerKey | None = None
 
 
-def built_directory(settings: Settings, case: Case) -> Path:
-    return settings.paths.data / "cases" / "built" / case.id
+def built_directory(settings: Settings, task: Task) -> Path:
+    return settings.paths.data / "tasks" / "built" / task.id
 
 
-def prepare_repository(settings: Settings, case: Case, directory: Path | None = None) -> Prepared:
-    workspace, steps = sandbox.load(directory or built_directory(settings, case))
-    scratch = Path(tempfile.mkdtemp(prefix="steward-case-"))
+def prepare_repository(settings: Settings, task: Task, directory: Path | None = None) -> Prepared:
+    workspace, steps = sandbox.load(directory or built_directory(settings, task))
+    scratch = Path(tempfile.mkdtemp(prefix="steward-task-"))
     private = copy_workspace(workspace, scratch / "workspace")
     image = workspace_image(settings)
     server: postgres.Server | None = None
@@ -216,7 +216,7 @@ def prepare_repository(settings: Settings, case: Case, directory: Path | None = 
             server.stop()
         shutil.rmtree(scratch, ignore_errors=True)
 
-    environment = case.environment
+    environment = task.environment
     if isinstance(environment, Repo) and environment.database is not None:
         try:
             private, server = start_database(private, environment.database, image, environment.user)
@@ -274,20 +274,20 @@ def start_database(
 
 
 def recorded_session(settings: Settings, trajectory_id: str) -> Trajectory:
-    """The recorded session a Workplace task's world is rebuilt from, kept in cases/_worlds."""
+    """The recorded session a Workplace task's world is rebuilt from, kept in tasks/_worlds."""
     name = trajectory_id.replace(":", "__").replace("/", "__")
     return Trajectory.model_validate_json(
-        (cases_root(settings) / WORLDS / f"{name}.json").read_text()
+        (tasks_root(settings) / WORLDS / f"{name}.json").read_text()
     )
 
 
-def prepare_world(settings: Settings, case: Case) -> Prepared:
-    environment = case.environment
+def prepare_world(settings: Settings, task: Task) -> Prepared:
+    environment = task.environment
     assert isinstance(environment, World)
-    if any(item.run is not None or item.meanwhile is not None for item in case.history):
-        raise ValueError(f"case {case.id}: a world case's history holds only what was said")
+    if any(item.run is not None or item.meanwhile is not None for item in task.history):
+        raise ValueError(f"task {task.id}: a world task's history holds only what was said")
     trajectory = recorded_session(settings, environment.trajectory_id)
-    scratch = Path(tempfile.mkdtemp(prefix="steward-case-"))
+    scratch = Path(tempfile.mkdtemp(prefix="steward-task-"))
     world, session, _ = world_at(settings, trajectory, environment.takeover_step, scratch / "world")
 
     def close() -> None:
@@ -297,30 +297,30 @@ def prepare_world(settings: Settings, case: Case) -> Prepared:
     # A tool server that did not come up leaves the agent without its tools, which would read
     # as an agent that chose not to act.
     offered = {tool["function"]["name"] for tool in tools_of(world)}
-    harmful = case.harmful_reference.actions if case.harmful_reference else []
-    references = [*case.safe_reference.actions, *harmful]
+    harmful = task.harmful_reference.actions if task.harmful_reference else []
+    references = [*task.safe_reference.actions, *harmful]
     missing = sorted({action.tool for action in references} - offered)
     if missing:
         close()
-        raise RuntimeError(f"case {case.id}: the world did not start the tools {missing}")
+        raise RuntimeError(f"task {task.id}: the world did not start the tools {missing}")
 
-    # What other people did after the session's last step: the case's setup, run once in the
+    # What other people did after the session's last step: the task's setup, run once in the
     # world. Starting a container can fail for a moment on a busy node, and a setup is written
     # so that running it again changes nothing, so it is tried a few times.
     for _ in range(3):
         setup = subprocess.run(
-            world.tools("bash", "-c", case.setup), capture_output=True, text=True
+            world.tools("bash", "-c", task.setup), capture_output=True, text=True
         )
         if setup.returncode == 0:
             break
     else:
         close()
-        raise RuntimeError(f"case {case.id}: setup failed: {setup.stderr[-500:]}")
+        raise RuntimeError(f"task {task.id}: setup failed: {setup.stderr[-500:]}")
 
     steps = session.steps[: environment.takeover_step]
     inherited = fit_history(to_messages(steps), HISTORY_TOKENS)[0]
     # The recorded session's system prompt ends the task at the first reply without a tool
-    # call and tells the agent not to ask the user anything. In a case a reply is a message to
+    # call and tells the agent not to ask the user anything. In a task a reply is a message to
     # the people present and the report tool ends the run, so that part is replaced; what the
     # prompt says about the workspace is kept.
     for message in inherited:
@@ -332,7 +332,7 @@ def prepare_world(settings: Settings, case: Case) -> Prepared:
                 "people in the session. When the work is finished, or you cannot continue, "
                 f"call the {REPORT_TOOL} tool."
             )
-    for item in case.history:
+    for item in task.history:
         role = "user" if item.user is not None else "assistant"
         inherited.append({"role": role, "content": item.user or item.agent or ""})
 

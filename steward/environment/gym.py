@@ -31,7 +31,7 @@ USER = "eigent"
 # read, name it, so a world restored from an older save has its owner's password replaced.
 LEGACY_PASSWORD = "camel"
 # The agent's tool servers connect as a role without superuser rights, so a tool that passes
-# SQL through cannot read the steward schema, where a case keeps its shift flags and checks.
+# SQL through cannot read the steward schema, where a task keeps its shift flags and checks.
 AGENT_USER, AGENT_PASSWORD = "agent", "agent"
 PRIVATE_SCHEMA = "steward"
 # The agent may read and change the world's rows, and nothing more: no new objects in a schema
@@ -184,13 +184,13 @@ class World:
         return [*arguments, str(self.images.postgres), *command]
 
     def tools(self, *command: str, user: str = USER, binds: tuple[str, ...] = ()) -> list[str]:
-        """A command next to the tools. The agent's tool servers run as `AGENT_USER`; a case's
+        """A command next to the tools. The agent's tool servers run as `AGENT_USER`; a task's
         setup and checks keep the owner's rights.
 
         Every command is contained: it sees no host directory but the ones bound here, no
         other process (each runs in a process namespace of its own) and none of the host's
         environment, so nothing the agent runs can read this world's directory, its saves,
-        the cases, the owner's password or the script of a setup or check that runs beside it. Setup and checks
+        the tasks, the owner's password or the script of a setup or check that runs beside it. Setup and checks
         start outside /workspace, which the agent can write, so a module planted there is not
         imported by a Python script they pipe in."""
         password = self.password if user == USER else AGENT_PASSWORD
@@ -356,7 +356,7 @@ class World:
 
     def share_with_agent(self) -> None:
         """Let the agent's role read and change the rows of every world schema, and nothing of
-        the private one. A schema a case's setup creates later is shared as it is created."""
+        the private one. A schema a task's setup creates later is shared as it is created."""
         share = self.query_command("psql", "-q", "-v", "ON_ERROR_STOP=1", "-d", DATABASE)
         subprocess.run([*share, "-c", SHARE_WITH_AGENT], check=True, capture_output=True)
 

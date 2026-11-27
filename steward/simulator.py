@@ -34,7 +34,7 @@ import httpx
 
 from steward.config import Settings
 from steward.execution.policy import RESPONSES, Usage, post_with_retry
-from steward.task import Case, Person
+from steward.task import Person, Task
 
 MODEL = "claude-haiku-5-5"
 # The model that plays people in session runs (the user's decision, 2026-11-15).
@@ -135,7 +135,7 @@ class SimulatorFailedError(RuntimeError):
 class Simulator(Protocol):
     def reply(
         self,
-        case: Case,
+        task: Task,
         person: Person,
         stance: str,
         chat: list[str],
@@ -180,7 +180,7 @@ class CachedSimulator:
 
     def reply(
         self,
-        case: Case,
+        task: Task,
         person: Person,
         stance: str,
         chat: list[str],
@@ -292,4 +292,4 @@ class OpenAISimulator(CachedSimulator):
 
 
 def simulator_cache(settings: Settings) -> Path:
-    return settings.paths.data / "cases" / "simulator_cache"
+    return settings.paths.data / "tasks" / "simulator_cache"

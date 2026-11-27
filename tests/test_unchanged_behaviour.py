@@ -20,9 +20,9 @@ from steward.schema import Step
 from steward.score import condition_of
 from steward.session import HARNESS, Session, SessionRun, SessionSpec, load_session_spec
 from steward.simulator import CachedSimulator
-from steward.task import Case, Person, case_directories, load_case
+from steward.task import Person, Task, load_task, task_directories
 
-ROOT = Path(__file__).parents[1] / "cases"
+ROOT = Path(__file__).parents[1] / "tasks"
 GOLDEN = Path(__file__).parent / "golden"
 STORED = GOLDEN / "stored_sessions.jsonl"
 MODEL = "gpt-6-luna"
@@ -31,13 +31,13 @@ SECOND = "gpt-6-luna-copy"
 
 
 @cache
-def benchmark_tasks() -> list[tuple[Case, SessionSpec]]:
+def benchmark_tasks() -> list[tuple[Task, SessionSpec]]:
     found = []
-    for directory in case_directories(ROOT):
-        case = load_case(directory)
-        spec = load_session_spec(directory, case)
+    for directory in task_directories(ROOT):
+        task = load_task(directory)
+        spec = load_session_spec(directory, task)
         if spec is not None and has_instruction_drift(spec):
-            found.append((case, spec))
+            found.append((task, spec))
     return found
 
 
@@ -46,7 +46,7 @@ def golden(name: str) -> str:
 
 
 def test_the_task_versions_are_unchanged() -> None:
-    versions = {case.id: [case.version, spec.version] for case, spec in benchmark_tasks()}
+    versions = {task.id: [task.version, spec.version] for task, spec in benchmark_tasks()}
     assert versions == json.loads(golden("task_versions.json"))
 
 
@@ -55,9 +55,9 @@ def stored_rows() -> list[SessionRun]:
 
 
 def test_stored_sessions_parse_with_their_settings_and_conditions() -> None:
-    specs = {case.id: spec for case, spec in benchmark_tasks()}
+    specs = {task.id: spec for task, spec in benchmark_tasks()}
     read = [
-        [run.case, run.trial, run.setting.id, condition_of(run, specs[run.case])]
+        [run.task, run.trial, run.setting.id, condition_of(run, specs[run.task])]
         for run in stored_rows()
     ]
     assert read == json.loads(golden("stored_sessions_read.json"))
@@ -66,13 +66,13 @@ def test_stored_sessions_parse_with_their_settings_and_conditions() -> None:
 @pytest.fixture
 def stored_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A data folder holding the stored sessions as current sessions of two models."""
-    versions = {case.id: spec.version for case, spec in benchmark_tasks()}
-    folder = tmp_path / "data" / "cases" / "sessions"
+    versions = {task.id: spec.version for task, spec in benchmark_tasks()}
+    folder = tmp_path / "data" / "tasks" / "sessions"
     folder.mkdir(parents=True)
     for model in (MODEL, SECOND):
         rows = []
         for run in stored_rows():
-            current = {"harness": HARNESS, "session_version": versions[run.case], "model": model}
+            current = {"harness": HARNESS, "session_version": versions[run.task], "model": model}
             rows.append(run.model_copy(update=current).model_dump_json())
         (folder / f"{model}.jsonl").write_text("".join(row + "\n" for row in rows))
     monkeypatch.setenv("STEWARD_DATA", str(tmp_path / "data"))
@@ -157,19 +157,19 @@ def digest(value: object) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
 
 
-def session_texts(case: Case, spec: SessionSpec, cache_dir: Path) -> object:
+def session_texts(task: Task, spec: SessionSpec, cache_dir: Path) -> object:
     texts = []
     for condition in conditions_of(spec):
-        setting = benchmark_setting(case.id, spec, condition, 0)
+        setting = benchmark_setting(task.id, spec, condition, 0)
         seen: list[list[Message]] = []
         sent: list[str] = []
         asked: list[object] = []
         people: list[Person] = [
-            spec.manager if r == "manager" else case.person(r) for r in setting.present
+            spec.manager if r == "manager" else task.person(r) for r in setting.present
         ]
         agent = Agent([person.name.split()[0] for person in people[1:]], seen)
         session = Session(
-            case,
+            task,
             spec,
             setting,
             Environment(sent),  # type: ignore[arg-type]
@@ -183,14 +183,14 @@ def session_texts(case: Case, spec: SessionSpec, cache_dir: Path) -> object:
     return texts
 
 
-def probe_texts(case: Case, spec: SessionSpec, cache_dir: Path) -> object:
+def probe_texts(task: Task, spec: SessionSpec, cache_dir: Path) -> object:
     asked: list[object] = []
     simulator = Simulator(cache_dir / "probe", asked)
     results = []
-    for setting, target in probed(case, spec):
+    for setting, target in probed(task, spec):
         for probe in target.sent:
             result = run_probe(
-                case, spec, setting, target, probe, simulator, Pricing(prompt=1, completion=1)
+                task, spec, setting, target, probe, simulator, Pricing(prompt=1, completion=1)
             )
             if result is not None:
                 results.append([result.message, result.passed, result.revealed])
@@ -199,11 +199,11 @@ def probe_texts(case: Case, spec: SessionSpec, cache_dir: Path) -> object:
 
 def test_what_the_agent_and_the_simulator_are_shown_is_unchanged(tmp_path: Path) -> None:
     shown = {
-        case.id: [
-            session_texts(case, spec, tmp_path / case.id),
-            probe_texts(case, spec, tmp_path / case.id),
+        task.id: [
+            session_texts(task, spec, tmp_path / task.id),
+            probe_texts(task, spec, tmp_path / task.id),
         ]
-        for case, spec in benchmark_tasks()
+        for task, spec in benchmark_tasks()
     }
     steps = [
         Step(index=0, kind="action", content="", tool="bash", tool_input={"command": "ls"}),

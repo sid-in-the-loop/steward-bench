@@ -1,7 +1,7 @@
-"""A PostgreSQL server that stays up for a whole run of a repository case.
+"""A PostgreSQL server that stays up for a whole run of a repository task.
 
-Each shell command of a case runs in its own container, so nothing a command starts outlives
-it. A case that needs a database gets one server, started outside those containers when the
+Each shell command of a task runs in its own container, so nothing a command starts outlives
+it. A task that needs a database gets one server, started outside those containers when the
 run is prepared and stopped when the run closes. Its data directory and its socket lie in the
 run's own directory, so runs in parallel share nothing. The server runs confined: in its own
 process and network namespace, with no network, and with nothing of the machine shown to it
@@ -9,8 +9,8 @@ but its data directory, its socket directory and its access rules, which it can 
 Every command reaches it through the socket, with the client programs of the server's own
 image shown to the command's container.
 
-The agent connects as a role of its own, named after the case's user: an administrator that
-owns the case's databases and what is in them, may create databases and holds every other
+The agent connects as a role of its own, named after the task's user: an administrator that
+owns the task's databases and what is in them, may create databases and holds every other
 ordinary role with the right to grant it, but is neither a superuser nor allowed to create
 roles, since PostgreSQL 15 lets a role that may create roles grant itself the roles that run
 programs and read files on the server. It changes a password or drops a role through two
@@ -55,7 +55,7 @@ SETUP_ACCESS = f"local all {SUPERUSER} trust\n"
 ACCESS = (
     f"local all {SUPERUSER} scram-sha-256\nlocal all {{role}} trust\nlocal all all scram-sha-256\n"
 )
-# The agent's role: an administrator of the case's databases without superuser rights. It
+# The agent's role: an administrator of the task's databases without superuser rights. It
 # reads every session's activity and may end the sessions of other roles that are not
 # superusers, as an administrator does.
 AGENT_ROLE = """DO $steward$

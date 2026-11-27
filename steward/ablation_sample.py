@@ -14,7 +14,7 @@ from pathlib import Path
 from steward.config import Settings
 from steward.schedule import has_instruction_drift
 from steward.session import SessionSpec
-from steward.task import Case, cases_root
+from steward.task import Task, tasks_root
 
 SIZE = 40
 SEED = 20261127
@@ -22,7 +22,7 @@ SAMPLE_FILE = "ablation_sample.txt"
 
 
 def sample_path(settings: Settings) -> Path:
-    return cases_root(settings) / SAMPLE_FILE
+    return tasks_root(settings) / SAMPLE_FILE
 
 
 def shares(counts: dict[str, int], size: int) -> dict[str, int]:
@@ -49,8 +49,8 @@ def draw(environments: dict[str, str], size: int = SIZE, seed: int = SEED) -> li
     return sorted(chosen)
 
 
-def benchmark_environments(cases: list[tuple[Case, SessionSpec]]) -> dict[str, str]:
-    return {case.id: case.domain for case, spec in cases if has_instruction_drift(spec)}
+def benchmark_environments(tasks: list[tuple[Task, SessionSpec]]) -> dict[str, str]:
+    return {task.id: task.domain for task, spec in tasks if has_instruction_drift(spec)}
 
 
 def read_sample(path: Path) -> list[str]:

@@ -815,7 +815,7 @@ class LiveExecutor:
         self.offered: frozenset[str] | None = None
         # Mounted read-only over the remote's info folder while a check reads the answer key.
         self.locked_info: Path | None = None
-        # The TZ the agent's commands are given, read before each one; see cases/clock.py.
+        # The TZ the agent's commands are given, read before each one; see steward/clock.py.
         self.zone: Callable[[], str | None] | None = None
 
     def was_offered(self, tool: str) -> bool:

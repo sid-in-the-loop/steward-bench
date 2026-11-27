@@ -15,7 +15,7 @@ from steward.config import Settings, load_settings
 
 if TYPE_CHECKING:
     from steward.models import Model
-    from steward.runner import SessionCase
+    from steward.runner import SessionTask
     from steward.simulator import CachedSimulator
 
 log = logging.getLogger("steward")
@@ -34,10 +34,10 @@ def setup_logging(settings: Settings) -> None:
 
 
 def cmd_lint_tasks(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.task import cases_root
+    from steward.task import tasks_root
     from steward.task_lint import lint
 
-    findings = lint(cases_root(settings))
+    findings = lint(tasks_root(settings))
     for finding in findings:
         print(finding)
     print(f"{len(findings)} findings")
@@ -49,13 +49,13 @@ def cmd_check(settings: Settings, args: argparse.Namespace) -> int:
     from steward.runner import load_sessions
 
     failed = 0
-    for case, spec in load_sessions(settings, args.case):
+    for task, spec in load_sessions(settings, args.task):
         if not args.check_only:
-            build_session(settings, case, spec)
+            build_session(settings, task, spec)
         warnings: list[str] = []
-        problems = check_benchmark(settings, case, spec, args.one_date, args.workers, warnings)
+        problems = check_benchmark(settings, task, spec, args.one_date, args.workers, warnings)
         failed += bool(problems)
-        print(f"{case.id}: {'ok' if not problems else 'FAILED'}")
+        print(f"{task.id}: {'ok' if not problems else 'FAILED'}")
         for problem in problems:
             print(f"  {problem}")
         for warning in warnings:
@@ -66,7 +66,7 @@ def cmd_check(settings: Settings, args: argparse.Namespace) -> int:
 def cmd_run(settings: Settings, args: argparse.Namespace) -> int:
     from steward.runner import load_sessions
 
-    return run_benchmark(settings, args, load_sessions(settings, args.case))
+    return run_benchmark(settings, args, load_sessions(settings, args.task))
 
 
 # The value of --simulator-model that runs sessions with nobody played by a model.
@@ -87,7 +87,7 @@ def runnable(names: list[str]) -> list[Model] | None:
         return None
 
 
-def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
+def run_benchmark(settings: Settings, args: argparse.Namespace, tasks: list[SessionTask]) -> int:
     """The benchmark run: the seeded two-day schedule under each condition asked for. The
     estimate covers the tested model's sessions not yet stored; the limit covers the tested
     models and the simulator together, and what the simulator spent is printed at the end."""
@@ -114,7 +114,7 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
         )
         return 2
     conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition)]
-    jobs = benchmark_jobs(cases, conditions, trials)
+    jobs = benchmark_jobs(tasks, conditions, trials)
     models = runnable(args.model)
     played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
     playing = runnable([played_by]) if played_by else []
@@ -195,26 +195,26 @@ def cmd_probe(settings: Settings, args: argparse.Namespace) -> int:
     """Send the simulator four fixed probes per person who holds a fact, with no agent, and
     grade the replies by rule."""
     from steward.models import MODELS
-    from steward.probe import estimate_usd, planned, probe_cases, probe_path, summary
+    from steward.probe import estimate_usd, planned, probe_path, probe_tasks, summary
     from steward.runner import load_sessions
 
-    cases = [
-        (case, spec)
-        for case, spec in load_sessions(settings, args.case)
-        if args.case or (spec.goal is not None and spec.conflict is not None)
+    tasks = [
+        (task, spec)
+        for task, spec in load_sessions(settings, args.task)
+        if args.task or (spec.goal is not None and spec.conflict is not None)
     ]
     pricing = MODELS[args.simulator_model].pricing
-    probes, unnamed = planned(cases)
+    probes, unnamed = planned(tasks)
     for task in unnamed:
         print(f"no name for the thing, P2 and P3 left out: {task}")
     dollars = estimate_usd(probes, pricing)
-    print(f"{len(cases)} tasks, {probes} probes with {args.simulator_model}, about ${dollars:.2f}")
+    print(f"{len(tasks)} tasks, {probes} probes with {args.simulator_model}, about ${dollars:.2f}")
     if not args.confirm:
         print("Add --confirm to run.")
         return 0
-    results = probe_cases(
+    results = probe_tasks(
         settings,
-        cases,
+        tasks,
         lambda: simulator_for(settings, args.simulator_model),
         pricing,
         args.workers,
@@ -269,8 +269,8 @@ def cmd_estimate(settings: Settings, args: argparse.Namespace) -> int:
     from steward.schedule import SHORT_FORMS
 
     only = None
-    if args.cases is not None:
-        only = [line.strip() for line in args.cases.read_text().splitlines() if line.strip()]
+    if args.tasks is not None:
+        only = [line.strip() for line in args.tasks.read_text().splitlines() if line.strip()]
     try:
         prices = {name: pricing_of(name) for name in dict.fromkeys(args.model)}
         played = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
@@ -321,7 +321,7 @@ def cmd_score(settings: Settings, args: argparse.Namespace) -> int:
         score,
     )
 
-    specs = {case.id: spec for case, spec in load_sessions(settings)}
+    specs = {task.id: spec for task, spec in load_sessions(settings)}
     simulator = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
     runs = {}
     for model in args.model:
@@ -375,7 +375,7 @@ def build_parser() -> argparse.ArgumentParser:
         return sub
 
     sub = add("check", cmd_check, "build each task and replay its references on the schedule")
-    sub.add_argument("--case", action="append", help="a task ID; repeat for several")
+    sub.add_argument("--task", action="append", help="a task ID; repeat for several")
     sub.add_argument("--check-only", action="store_true", help="do not rebuild, only check")
     sub.add_argument(
         "--one-date", action="store_true", help="show every shift the session's first date"
@@ -383,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_argument("--workers", type=int, default=1, help="replays run at once per task")
     sub = add("run", cmd_run, "run models on the benchmark sessions not yet stored")
     sub.add_argument("--model", action="append", required=True)
-    sub.add_argument("--case", action="append", help="a task ID; repeat for several")
+    sub.add_argument("--task", action="append", help="a task ID; repeat for several")
     sub.add_argument(
         "--condition",
         action="append",
@@ -422,7 +422,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = add("probe", cmd_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(
-        "--case",
+        "--task",
         action="append",
         help="a task ID; repeat for several (default: every benchmark task)",
     )
@@ -440,7 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = add("estimate", cmd_estimate, "estimate the whole benchmark's cost, run nothing")
     sub.add_argument("--model", action="append", required=True)
     sub.add_argument("--trials", type=int, default=1)
-    sub.add_argument("--cases", type=Path, help="a file of task IDs, one a line (default: all)")
+    sub.add_argument("--tasks", type=Path, help="a file of task IDs, one a line (default: all)")
     sub.add_argument("--condition", action="append", choices=["sd", "sid"], help="default both")
     sub.add_argument("--simulator-model", default="claude-sonnet-5-5", help="or 'none'")
     add("lint-tasks", cmd_lint_tasks, "list repeated names, shared sentences and loose patterns")
