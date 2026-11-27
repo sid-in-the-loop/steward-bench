@@ -538,6 +538,7 @@ def reaching(workspace: Workspace, server: Server, client: Path, database: Datab
             "harness_binds": [f"{server.password_file}:{PASSWORD_MOUNT}:ro"],
             "harness_environment": harness,
             "harness_prologue": owners_rights_script(),
+            "harness_before_agent": hand_over_script(server.role),
             "harness_epilogue": invokers_rights_script() + hand_over_script(server.role),
         }
     )

@@ -116,6 +116,8 @@ def test_commands_reach_the_server_through_its_socket_and_client_programs(tmp_pa
         script.index("SECURITY DEFINER") < script.index("true") < script.index("SECURITY INVOKER")
     )
     assert f"{server.sockets}:/var/run/postgresql:ro" in reaching.binds
+    # What a script made just before is the agent's when a program of the agent's runs.
+    assert "ALTER DATABASE" in (folder / "before-agent").read_text()
     plain = ws.container_command(workspace, "image.sif", workspace.mount, "true", 60)
     assert not any("postgres" in part.lower() or part.startswith("PG") for part in plain)
 

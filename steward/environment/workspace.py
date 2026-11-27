@@ -198,6 +198,9 @@ class Workspace(BaseModel):
     # Run before and after each of the harness's own commands, in its container; their
     # status is not read.
     harness_prologue: str = ""
+    # Run by `as_agent`, with the harness's rights, before each program of the agent's that a
+    # harness command starts, so that what the script made just before is the agent's.
+    harness_before_agent: str = ""
     harness_epilogue: str = ""
 
     @property
@@ -431,6 +434,7 @@ def harness_files(
     (directory / "agent-env").write_text("".join(f"{n}={v}\n" for n, v in agent.items()))
     (directory / "harness-names").write_text("".join(f"{n}\n" for n in harness_only))
     (directory / "key").write_text(f"{REMOTE_MOUNT}/info\n")
+    (directory / "before-agent").write_text(workspace.harness_before_agent)
 
 
 def container_command(
@@ -934,7 +938,9 @@ class GhBroker:
 
     def start(self) -> Workspace:
         """Start the stand-in; returns the workspace whose agent commands reach it."""
-        quiet = self.workspace.model_copy(update={"harness_prologue": "", "harness_epilogue": ""})
+        quiet = self.workspace.model_copy(
+            update={"harness_prologue": "", "harness_epilogue": "", "harness_before_agent": ""}
+        )
         run = self.folder / "run"
         run.mkdir()
         binds = [
