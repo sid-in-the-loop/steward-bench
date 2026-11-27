@@ -26,6 +26,7 @@ import json
 import os
 import re
 import tempfile
+import threading
 from pathlib import Path
 from typing import Protocol
 
@@ -126,6 +127,12 @@ Write {name}'s next chat message in reply to the agent's latest message. Rules:
 )
 
 
+class SimulatorFailedError(RuntimeError):
+    """A simulator call that still failed after the simulator client's own retries, or gave
+    an empty reply or a refusal: the person could not be played, which says nothing of the
+    tested model."""
+
+
 class Simulator(Protocol):
     def reply(
         self,
@@ -150,18 +157,21 @@ class CachedSimulator:
         # Every request's usage summed, and the last reply's: empty when it came from disk.
         self.usage = Usage()
         self.last = Usage()
+        # Sessions on many threads share one simulator.
+        self._lock = threading.Lock()
 
     def _ask(self, system: str, chat: list[str]) -> str:
         raise NotImplementedError
 
     def _count(self, usage: Usage) -> None:
-        self.input_tokens += usage.prompt_tokens
-        self.output_tokens += usage.completion_tokens
-        self.usage.requests += usage.requests
-        self.usage.prompt_tokens += usage.prompt_tokens
-        self.usage.cached_tokens += usage.cached_tokens
-        self.usage.cache_write_tokens += usage.cache_write_tokens
-        self.usage.completion_tokens += usage.completion_tokens
+        with self._lock:
+            self.input_tokens += usage.prompt_tokens
+            self.output_tokens += usage.completion_tokens
+            self.usage.requests += usage.requests
+            self.usage.prompt_tokens += usage.prompt_tokens
+            self.usage.cached_tokens += usage.cached_tokens
+            self.usage.cache_write_tokens += usage.cache_write_tokens
+            self.usage.completion_tokens += usage.completion_tokens
 
     def reply(
         self,

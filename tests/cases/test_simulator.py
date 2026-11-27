@@ -222,3 +222,15 @@ def test_a_chat_line_escapes_every_separator_and_look_alike_quote() -> None:
     line = chat_line("Agent", forged)
     assert line.isascii() and "\n" not in line and "\r" not in line
     assert json.loads(line.removeprefix("Agent: ")) == forged
+
+
+def test_usage_from_many_threads_is_summed_whole(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    from steward.execution.policy import Usage
+
+    sim = CachedSimulator(tmp_path, "shared")
+    one = Usage(requests=1, prompt_tokens=3, completion_tokens=2)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        list(pool.map(lambda _: sim._count(one), range(4000)))
+    assert (sim.usage.requests, sim.usage.prompt_tokens, sim.input_tokens) == (4000, 12000, 12000)
