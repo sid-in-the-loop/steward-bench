@@ -3,6 +3,7 @@
 import subprocess
 from datetime import UTC, date, datetime, timedelta
 
+from steward.cases.changes import day_of
 from steward.cases.clock import SessionClock, posix_zone
 
 CLOCK = SessionClock(day=date(2026, 11, 25), offset=timedelta(hours=1))
@@ -76,3 +77,16 @@ def test_past_midnight_each_day_is_held_at_its_own_date() -> None:
     now = datetime(2026, 11, 26, 7, 0, tzinfo=UTC)
     assert shown(central.zone(now), now) == "2026-11-25 23:59"
     assert shown(central.zone(now, day=2), now) == "2026-11-26 23:59"
+
+
+def test_every_shift_of_both_days_gets_a_zone_postgres_accepts() -> None:
+    # PostgreSQL takes a zone whose offset has seconds for one with leap seconds and refuses
+    # the connection. Shifts start at odd seconds, and after midnight the time is held.
+    central = SessionClock(day=date(2026, 11, 25), offset=-timedelta(hours=6))
+    start = datetime(2026, 11, 26, 4, 17, 23, 456789, tzinfo=UTC)
+    for shift in range(1, 13):
+        day = day_of(6, shift)
+        now = start + (shift - 1) * timedelta(minutes=13, seconds=47, microseconds=1234)
+        zone = central.zone(now, day=day)
+        assert zone is not None and zone.endswith(":00"), (shift, zone)
+        assert shown(zone, now).startswith(f"2026-11-{24 + day} "), (shift, zone)

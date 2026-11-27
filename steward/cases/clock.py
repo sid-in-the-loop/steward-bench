@@ -26,6 +26,7 @@ PRINTED = re.compile(r"(\d{4}-\d{2}-\d{2}) ([+-])(\d{2})(\d{2})")
 # The furthest a POSIX offset reaches: its hours stop short of 25, and a day is kept clear.
 LONGEST_OFFSET = timedelta(hours=23, minutes=59)
 HELD_AT = time(23, 59)
+MINUTE = timedelta(minutes=1)
 
 
 class SessionClock(BaseModel):
@@ -52,7 +53,10 @@ class SessionClock(BaseModel):
         local = utc + self.offset + later
         if local.date() > shown:
             local = datetime.combine(shown, HELD_AT)
-        offset = max(min(local - utc, LONGEST_OFFSET), -LONGEST_OFFSET)
+        # Whole minutes: PostgreSQL refuses a zone whose offset has seconds, taking it for
+        # one with leap seconds. Rounding down keeps a held time on its date.
+        offset = MINUTE * ((local - utc) // MINUTE)
+        offset = max(min(offset, LONGEST_OFFSET), -LONGEST_OFFSET)
         if (utc + offset).date() != shown:
             return None
         return posix_zone(offset)

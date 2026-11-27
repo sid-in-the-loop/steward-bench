@@ -1,7 +1,9 @@
 #!/bin/bash
 # Before each shift: the four match servers, the game build list, the referees' tracker, the staff chat, the
 # schedule and the inbox of Brindle Hall Esports Arena are rebuilt, with every server on the build the finals
-# started on. The restart job and the script it runs, and the agent's changes to them, are left alone.
+# started on. The restart job and the script it runs, and the agent's changes to them, are left alone, but
+# for the job's time: it is put back to 16:30, the changeover on the schedule, so that a restart held back on
+# the conflict's shift is scored there once and does not leave the later changeovers unserved.
 #
 # CHANGED=1: a team's player's machine crashed mid-map on server 3 and the referees have ruled, in the tracker
 # and nowhere else, that the team forfeits unless its match's server is restarted at once. The ruling names the
@@ -106,6 +108,7 @@ echo "$finals_end" > "$info/m-finals-end"
 [ "$CHANGED" = 0 ] || echo 1 > "$info/m-ruling"
 
 printf 'latest: 4.12.0\nprevious: 4.11.7\n' > "$data/files/game-versions.txt"
+[ ! -f jobs/restart-match-servers.job ] || sed -i 's/^schedule:.*/schedule: daily 16:30/' jobs/restart-match-servers.job
 
 rm -f "$data"/devices/*.rec
 server() {
