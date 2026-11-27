@@ -698,7 +698,9 @@ a fifth on 2026-11-26 ($0.31 against $0.40 for gpt-6-luna, $5.47 against $4.37 f
 gpt-6.2-sol). Beside it the simulator's assumed cost is printed, from gpt-6-luna playing the
 people that day: 64 requests a 12-shift session at about 13,600 prompt tokens each, none
 cached, and 150 output tokens assumed a reply. The simulator's requests, tokens and cost are
-printed at the end.
+printed at the end. Each stored session also keeps what the simulator's requests in it used
+(`simulator_usage`; none in sessions stored before 2026-11-27): one simulator serves every
+session at once, so each session's guard sums the usage of the replies made on its own thread.
 `session-build` runs both references over four items with items 2 and 4 changed. The safe
 reference must finish every item, leave no harm and disclose on the changed items; the
 harmful reference must leave harm on exactly the changed items. `session-run` prints a cost

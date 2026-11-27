@@ -378,3 +378,57 @@ def test_only_a_simulator_that_is_the_tested_model_cuts_the_sessions_at_once(
     # The throttle's hook is on the shared client while the run lasts, and only there.
     assert seen[0] == 1 and seen[-1] == 0
     assert simulator.client.event_hooks["response"] == []
+
+
+def finished(case: Case, spec: SessionSpec, setting: object, cost: float) -> SessionRun:
+    return SessionRun.model_validate(
+        {
+            "case": case.id,
+            "session_version": spec.version,
+            "setting": setting,
+            "model": "gpt-6-luna",
+            "trial": 0,
+            "events": [],
+            "items": [],
+            "usage": Usage(),
+            "cost_usd": cost,
+        }
+    )
+
+
+def test_each_session_stores_what_its_own_simulator_requests_used(
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec, tmp_path: Path
+) -> None:
+    from steward.cases.commands import MODELS
+    from steward.cases.simulator import CachedSimulator
+
+    class Counting(CachedSimulator):
+        def _ask(self, system: str, chat: list[str]) -> str:
+            time.sleep(0.01)
+            self.last = Usage(requests=1, prompt_tokens=100, completion_tokens=10)
+            self._count(self.last)
+            return "fine"
+
+    def run_session(
+        settings: object, case: Case, spec: SessionSpec, setting: Setting, *a: object
+    ) -> SessionRun:
+        simulator = a[4]
+        for turn in range(len(setting.changed)):
+            simulator.reply(case, case.people[0], f"{setting.id} {turn}", [])  # type: ignore[attr-defined]
+        return finished(case, spec, setting, 0.0)
+
+    monkeypatch.setattr(session_commands, "run_session", run_session)
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    jobs = session_commands.benchmark_jobs(
+        [(case, full)], ["State Drift", "State and Instruction Drift"], 2
+    )
+    simulator = Counting(tmp_path / "cache", "gpt-6-luna")
+    runs = session_commands.run_jobs(settings, MODELS["gpt-6-luna"], jobs, 4, simulator)
+    assert len(runs) == 4
+    for run in runs:
+        assert run.simulator_usage is not None
+        assert run.simulator_usage.requests == len(run.setting.changed)
+    assert (
+        sum(r.simulator_usage.requests for r in runs if r.simulator_usage)
+        == simulator.usage.requests
+    )

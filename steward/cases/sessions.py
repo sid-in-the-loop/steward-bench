@@ -657,6 +657,8 @@ class SessionRun(BaseModel):
     items: list[ItemResult]
     usage: Usage
     cost_usd: float
+    # What the simulator's requests in the session used, where the runner counted them.
+    simulator_usage: Usage | None = None
     # Wall-clock seconds the session took, where the runner measured it.
     seconds: float | None = None
     # With a goal change: whether the goal as it stood at the end was met.

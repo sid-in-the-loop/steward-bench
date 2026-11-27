@@ -129,6 +129,14 @@ class Usage(BaseModel):
         if isinstance(provider, str) and provider not in self.providers:
             self.providers.append(provider)
 
+    def merge(self, other: Usage) -> None:
+        self.requests += other.requests
+        self.prompt_tokens += other.prompt_tokens
+        self.cached_tokens += other.cached_tokens
+        self.cache_write_tokens += other.cache_write_tokens
+        self.completion_tokens += other.completion_tokens
+        self.largest_prompt_tokens = max(self.largest_prompt_tokens, other.largest_prompt_tokens)
+
 
 class RequestFailedError(RuntimeError):
     """A request that still failed after every retry."""

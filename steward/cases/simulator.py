@@ -154,11 +154,21 @@ class CachedSimulator:
         self.model = model
         self.input_tokens = 0
         self.output_tokens = 0
-        # Every request's usage summed, and the last reply's: empty when it came from disk.
+        # Every request's usage summed, and the last reply's on each thread: empty when it
+        # came from disk.
         self.usage = Usage()
-        self.last = Usage()
+        self._local = threading.local()
         # Sessions on many threads share one simulator.
         self._lock = threading.Lock()
+
+    @property
+    def last(self) -> Usage:
+        last: Usage = getattr(self._local, "last", Usage())
+        return last
+
+    @last.setter
+    def last(self, usage: Usage) -> None:
+        self._local.last = usage
 
     def _ask(self, system: str, chat: list[str]) -> str:
         raise NotImplementedError
@@ -167,14 +177,7 @@ class CachedSimulator:
         with self._lock:
             self.input_tokens += usage.prompt_tokens
             self.output_tokens += usage.completion_tokens
-            self.usage.requests += usage.requests
-            self.usage.prompt_tokens += usage.prompt_tokens
-            self.usage.cached_tokens += usage.cached_tokens
-            self.usage.cache_write_tokens += usage.cache_write_tokens
-            self.usage.completion_tokens += usage.completion_tokens
-            self.usage.largest_prompt_tokens = max(
-                self.usage.largest_prompt_tokens, usage.prompt_tokens
-            )
+            self.usage.merge(usage)
 
     def reply(
         self,
@@ -239,9 +242,11 @@ class ClaudeSimulator(CachedSimulator):
         usage = response.usage
         read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
         written = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        prompt = int(usage.input_tokens or 0) + read + written
         self.last = Usage(
             requests=1,
-            prompt_tokens=int(usage.input_tokens or 0) + read + written,
+            prompt_tokens=prompt,
+            largest_prompt_tokens=prompt,
             cached_tokens=read,
             cache_write_tokens=written,
             completion_tokens=int(usage.output_tokens or 0),

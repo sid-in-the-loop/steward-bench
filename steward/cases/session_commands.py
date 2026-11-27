@@ -751,11 +751,13 @@ def failure_kind(error: BaseException) -> FailureKind:
 
 class GuardedSimulator:
     """A simulator whose failures are reported as `SimulatorFailedError`, so that a session
-    whose people could not be played is never counted against the tested model."""
+    whose people could not be played is never counted against the tested model. One guards
+    one session and sums what its requests used, from the reply each made on its thread."""
 
     def __init__(self, inner: Simulator) -> None:
         self.inner = inner
         self.model = getattr(inner, "model", None)
+        self.usage = Usage()
 
     def reply(
         self,
@@ -771,6 +773,10 @@ class GuardedSimulator:
             raise
         except Exception as error:
             raise SimulatorFailedError(f"{type(error).__name__}: {error}") from error
+        finally:
+            last = getattr(self.inner, "last", None)
+            if isinstance(last, Usage):
+                self.usage.merge(last)
 
 
 class FailedSession(BaseModel):
@@ -909,7 +915,6 @@ def run_held(
     played_by = getattr(simulator, "model", None)
     failures_path = failed_path(settings, model.name)
     failed_before = {} if retry_failed else failures_of(failures_path)
-    guarded = GuardedSimulator(simulator) if simulator is not None else None
     todo = []
     given_up = 0
     for job in pending(path, jobs, played_by):
@@ -968,9 +973,10 @@ def run_held(
             policies.append(made(tools))
             return policies[-1]
 
+        guarded = GuardedSimulator(simulator) if simulator is not None else None
         try:
             wait_for_room()
-            return run_session(
+            run = run_session(
                 settings,
                 job.case,
                 job.spec,
@@ -985,6 +991,9 @@ def run_held(
             )
         except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
             return failed(job, policies, error)
+        if guarded is not None:
+            run.simulator_usage = guarded.usage
+        return run
 
     def work(job: Job) -> SessionRun | None:
         nonlocal skipped
