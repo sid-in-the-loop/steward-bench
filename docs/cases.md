@@ -905,7 +905,9 @@ probed where sessions showed the simulator failing and the first probe never loo
 routine shift before the first event, briefed with `owner_unchanged`, with P1 and P2, where
 both must get a reply that does not tell the change and P2 also one that says nothing has
 changed ("nothing has changed", "nothing new", "not that I know"; not any negation, so "No
-idea, ask Mirabel." fails); and on the State Drift schedule, on the
+idea, ask Mirabel." fails, or one that repeats two content words of `owner_unchanged`: until
+2026-11-27 73 of the 123 tasks' own `owner_unchanged`, said word for word, failed, and a test
+now holds every task's to pass); and on the State Drift schedule, on the
 first and the last of its four changed shifts, with P1, P2 and P5. A probe reaches its shift
 as a session does: every shift up to it is opened through the session's own path
 (`Session._open_shift`), so the chat holds who spoke unprompted, the goal line or the

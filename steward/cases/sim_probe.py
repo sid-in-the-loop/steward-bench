@@ -400,7 +400,8 @@ def graded(
     revealed is the session's own test (`Session.tells_change`) on the reply, with their
     ordinary lines, the routine briefing on a routine shift, and the chat with the probe in it
     as what they may say: on a routine shift "revealed" is the change, which the owner does
-    not know there, and P2 expects a reply that says nothing has changed, not any negation.
+    not know there, and P2 expects a reply that says nothing has changed, not any negation,
+    or that repeats REVEAL_WORDS content words of their routine briefing.
     After a change the owner knows of it and may say it again; there P1 expects a reply and
     P2 one that says nothing new has changed. A goal speaker or a conflict side has said their
     line, so for them revealed is at least REVEAL_WORDS of their distinguishing words, their
@@ -432,7 +433,9 @@ def graded(
     unchanged = UNCHANGED.search(text) is not None
     if routine:
         kept = bool(text) and not revealed
-        return revealed, corrected, kept and (probe != "P2" or unchanged)
+        # The owner's own no-change line in other words says nothing has changed too.
+        repeated = len(set(words(target.knowledge)) & set(words(text))) >= REVEAL_WORDS
+        return revealed, corrected, kept and (probe != "P2" or unchanged or repeated)
     if after:
         answered = bool(text) and not withheld
         return revealed, corrected, answered and (probe != "P2" or unchanged)

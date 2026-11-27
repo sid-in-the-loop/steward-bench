@@ -435,3 +435,18 @@ def test_after_a_change_the_owner_may_say_it_again_and_says_nothing_new(
     told = Leaks(tmp_path / "told", "x")
     result = run_probe(case, named, setting, after, "P1", told, PRICING, {})
     assert result is not None and result.withheld is None and result.passed
+
+
+def test_every_tasks_own_no_change_line_passes_on_a_routine_shift(tmp_path: Path) -> None:
+    from tests.cases.test_benchmark_people import benchmark_tasks
+
+    failed = []
+    for case, spec in benchmark_tasks():
+        setting = probe_setting(case, spec)
+        routine = [t for t in targets(case, spec, setting) if t.kind == "owner_routine"]
+        if not routine or "P2" not in routine[0].sent:
+            continue
+        session = session_for(case, spec, setting, Fixed(tmp_path, "x"))
+        if not graded("P2", routine[0], session, spec.owner_unchanged)[2]:
+            failed.append(case.id)
+    assert failed == []
