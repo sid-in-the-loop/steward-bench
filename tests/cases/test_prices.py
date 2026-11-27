@@ -47,7 +47,7 @@ def test_a_model_without_a_price_has_none_assumed() -> None:
 
 
 @pytest.mark.parametrize(
-    ("name", "reason"), [("some-model-1", "no price confirmed"), ("gemini-4-neon", "no endpoint")]
+    ("name", "reason"), [("some-model-1", "no price confirmed"), ("some-model-2", "no endpoint")]
 )
 def test_the_run_refuses_a_model_it_cannot_price_or_reach(
     name: str,
@@ -56,7 +56,10 @@ def test_the_run_refuses_a_model_it_cannot_price_or_reach(
     full: SessionSpec,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Every priced model has an endpoint, so one with a price alone is made for the test.
+    monkeypatch.setitem(PRICES, "some-model-2", PRICES["gpt-6-luna"])
     settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
     argv = ["run", "--model", name, "--condition", "sd", "--confirm"]
     assert run_benchmark(settings, build_parser().parse_args(argv), [(case, full)]) == 2

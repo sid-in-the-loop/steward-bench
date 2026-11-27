@@ -35,7 +35,12 @@ Dialect = Literal["openrouter", "openai"]
 # How many times the output budget grows for the one retry of an empty or cut-off reply.
 RETRY_BUDGET_FACTOR = 2
 # Sent when supported; a model that rejects one is run without it.
-OPTIONAL_PARAMETERS = ("temperature", "prompt_cache_retention", "prompt_cache_key")
+OPTIONAL_PARAMETERS = (
+    "temperature",
+    "prompt_cache_retention",
+    "prompt_cache_key",
+    "parallel_tool_calls",
+)
 
 
 # The parameters each model has rejected in this process, so that later sessions of the
@@ -139,11 +144,14 @@ def post_with_retry(
     body: dict[str, Any],
     sleep: Callable[[float], None] = time.sleep,
     path: str = CHAT_COMPLETIONS,
+    field: str | None = None,
 ) -> dict[str, Any]:
     """POST a model request, retrying rate limits, server errors and transport errors with
     exponential backoff. A rate limit waits at least as long as the server asks and is retried
     up to RATE_LIMIT_ATTEMPTS times; other failures up to RETRY_ATTEMPTS times. A 200 reply
-    without its result field is retried as a server error."""
+    without its result field (`field`, by default the endpoint's in REPLY_FIELD) is retried as
+    a server error."""
+    field = field or REPLY_FIELD[path]
     problem = ""
     failures = rate_limits = 0
     asked = 0.0
@@ -175,8 +183,8 @@ def post_with_retry(
             problem = f"reply is not JSON: {response.text[:200]}"
             failures += 1
             continue
-        if REPLY_FIELD[path] not in reply:
-            problem = f"no {REPLY_FIELD[path]} in reply: {str(reply.get('error'))[:200]}"
+        if field not in reply:
+            problem = f"no {field} in reply: {str(reply.get('error'))[:200]}"
             failures += 1
             continue
         return reply
@@ -300,7 +308,12 @@ class ModelPolicy:
                 "messages": self.wire_messages(messages),
                 "max_tokens": budget,
                 "temperature": self.settings.temperature,
+                # One tool call a turn, as the session runs one action at a time.
+                "parallel_tool_calls": False,
             }
+            if self.cache_key:
+                body["prompt_cache_key"] = self.cache_key
+                body["prompt_cache_retention"] = "24h"
             if self.provider:
                 # One provider only, so every run is served at the same precision.
                 body["provider"] = {"order": [self.provider], "allow_fallbacks": False}

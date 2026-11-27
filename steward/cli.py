@@ -145,6 +145,8 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
             f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
             f"for the tested model (tokens from {source})"
         )
+        if model.reasoning is not None:
+            line += f", reasoning at its provider's default ({model.reasoning})"
         for sim, profile in played:
             assumed = sum(session_usd(sim.pricing, profile, job.setting.items) for job in todo)
             line += (

@@ -452,8 +452,8 @@ def run_held(
     rates = rate_log(settings, model.name)
     client = httpx.Client(
         base_url=model.base_url,
-        headers={"Authorization": f"Bearer {os.environ.get(model.api_key_env, '')}"},
-        timeout=httpx.Timeout(300.0, connect=30.0),
+        headers=model.auth_headers(os.environ.get(model.api_key_env, "")),
+        timeout=httpx.Timeout(model.timeout_seconds, connect=30.0),
         event_hooks={"response": [throttle.observe, rates.hook("agent")]},
     )
     skipped = 0
@@ -509,6 +509,7 @@ def run_held(
             return failed(job, policies, error)
         if guarded is not None:
             run.simulator_usage = guarded.usage
+        run.reasoning = model.reasoning
         return run
 
     def work(job: Job) -> SessionRun | None:

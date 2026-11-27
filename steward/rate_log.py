@@ -49,9 +49,19 @@ class Window(BaseModel):
 
 
 def usage_of(body: object) -> tuple[int, int, int]:
-    """Prompt, cached and output tokens from a Responses or Chat Completions reply."""
+    """Prompt, cached and output tokens from a Responses, Chat Completions or Gemini
+    generateContent reply. Gemini's output tokens are the reply's and the thinking's."""
     if not isinstance(body, dict):
         return 0, 0, 0
+    gemini = body.get("usageMetadata")
+    if isinstance(gemini, dict):
+        return (
+            int(gemini.get("promptTokenCount") or 0)
+            + int(gemini.get("toolUsePromptTokenCount") or 0),
+            int(gemini.get("cachedContentTokenCount") or 0),
+            int(gemini.get("candidatesTokenCount") or 0)
+            + int(gemini.get("thoughtsTokenCount") or 0),
+        )
     usage = body.get("usage") or {}
     prompt = usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0
     details = usage.get("input_tokens_details") or usage.get("prompt_tokens_details") or {}

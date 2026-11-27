@@ -29,6 +29,7 @@ SESSION_MODULES = (
     "steward.environment.tools",
     "steward.environment.workspace",
     "steward.execution.anthropic_policy",
+    "steward.execution.gemini_policy",
     "steward.execution.history",
     "steward.execution.policy",
     "steward.execution.record",

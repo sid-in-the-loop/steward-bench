@@ -50,8 +50,9 @@ condition and gridworld (docs/scoring.md).
 - Python 3.12 and [uv](https://docs.astral.sh/uv/).
 - About 2.5 GB of container images under the data folder, listed below.
 - API keys for the models you run, in the environment or in `.env` (see `.env.example`):
-  `OPENAI_API_KEY` for the OpenAI models and `ANTHROPIC_API_KEY` for the Claude models and the
-  default user simulator.
+  `OPENAI_API_KEY` for the OpenAI models, `ANTHROPIC_API_KEY` for the Claude models and the
+  default user simulator, `GEMINI_API_KEY` for the Gemini models and `MUSE_API_KEY` for the
+  Muse models. `docs/running.md` lists each model's API.
 
 The images live in `$STEWARD_DATA/apptainer/` (by default `data/apptainer/`):
 

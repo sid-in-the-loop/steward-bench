@@ -53,8 +53,38 @@ hold.
 
 The tested models with an endpoint are listed in `MODELS` in `steward/models.py`, at
 their prices in `PRICES` in `steward/prices.py`. A model that has no price there, or no
-endpoint, is refused with a message. The OpenAI models are called through the Responses API
-and the Claude models through the Messages API (`steward/execution/anthropic_policy.py`).
+endpoint, is refused with a message. Each model is called under the name its provider's API
+gives it:
+
+| Models | API | Key |
+|---|---|---|
+| gpt-6-luna, gpt-5.6-luna, gpt-5-mini, gpt-6.2-sol, gpt-6.1-terra | OpenAI Responses API | `OPENAI_API_KEY` |
+| claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5 | Anthropic Messages API (`steward/execution/anthropic_policy.py`) | `ANTHROPIC_API_KEY` |
+| gemini-4-carbon, gemini-4-argon, gemini-4-neon, gemini-4-hydrogen | Gemini API `generateContent` (`steward/execution/gemini_policy.py`) | `GEMINI_API_KEY` |
+| muse-wonder-1.0, muse-spark-1.3, muse-ember-1.0 | Meta Model API Chat Completions, `https://api.meta.ai/v1` | `MUSE_API_KEY` |
+
+No request sets a reasoning level, so every model reasons at its provider's default. `run`
+prints that default beside each model, and each stored session keeps it as `reasoning`:
+`medium` for claude-opus-5-5 and claude-haiku-5-5, `high` for claude-sonnet-5-5 (effort);
+`medium` for gemini-4-carbon and gemini-4-argon, `high` for gemini-4-neon and
+gemini-4-hydrogen (thinking level); `max` for muse-wonder-1.0 and muse-ember-1.0, `high` for
+muse-spark-1.3 (reasoning effort). The OpenAI models record none. Each is the default the
+provider's documentation states, as no reply reports it.
+
+Claude and Gemini replies carry thinking that the API expects to see again unchanged with the
+tool calls of later turns (Gemini refuses a request whose current turn has a function call
+without its thought signature), so their policies keep each reply and send it back in place
+of the session's record of that turn. A function call the model did not write, such as one
+from the inherited history, gets Gemini's placeholder signature only when it falls in the
+current turn, where signatures are checked. Muse's Chat Completions endpoint carries no
+reasoning between turns and needs only the conversation. Gemini and Muse requests may take
+up to 20 minutes. Gemini 4 ignores a temperature and is sent none; Muse models are sent the
+run's temperature of 0.
+
+`scripts/smoke-models [--model M ...] [--confirm]` makes one tool call and one answer to its
+result per model, Claude Opus, Gemini and Muse by default, and prints each turn and the usage
+the provider reported. It prints an upper bound on its cost first, $2.90 for all eight, and
+calls nothing without `--confirm`.
 
 ### Resuming
 

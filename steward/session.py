@@ -510,6 +510,8 @@ class SessionRun(BaseModel):
     session_version: str
     setting: Setting
     model: str
+    # The model's reasoning setting: its provider's default, as `Model.reasoning` gives it.
+    reasoning: str | None = None
     trial: int
     simulator: str | None = None
     # The harness that ran the session (`HARNESS`).
