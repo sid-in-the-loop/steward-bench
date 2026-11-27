@@ -893,6 +893,8 @@ day 2. No schedule sets it at present: the benchmark and the short validation sc
 every shift the session's first date, because the offset that moves the date is one PostgreSQL
 cannot read back from a dump, which would break an agent's own backup and restore on day 2. The time of day is
 kept where a POSIX offset can express it; past the end of the shown date it is held at 23:59.
+Offsets are whole minutes, since PostgreSQL refuses a connection whose zone has seconds in
+its offset, taking it for a zone with leap seconds.
 Item scripts and checks therefore agree on the date when a session runs past midnight. Through
 `PGTZ` a psql session's `current_date` follows; the database server's own defaults and
 triggers, and the tool servers of a Workplace world, keep the real date.
