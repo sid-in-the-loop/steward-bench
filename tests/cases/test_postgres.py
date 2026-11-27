@@ -19,7 +19,7 @@ from steward.environment.repository import ReplayReport
 from steward.execution.record import Action
 from steward.schema import Step
 
-ROOT = Path(__file__).parents[2] / "cases"
+ROOT = Path(__file__).parent / "tasks"
 RETENTION = "dbops-1d2c83c28d"
 
 

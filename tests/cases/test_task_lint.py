@@ -7,12 +7,14 @@ from steward.cases.case import BUILDING_MARKER
 from steward.cases.task_lint import lint, scaled_directories
 
 ROOT = Path(__file__).parents[2] / "cases"
+TASKS = Path(__file__).parent / "tasks"
 
 
 def copy_task(source: str, root: Path, name: str) -> Path:
     # Copied without a building marker, so a task another builder is editing can still serve.
     target = root / name
-    shutil.copytree(ROOT / source, target, ignore=shutil.ignore_patterns(BUILDING_MARKER))
+    found = ROOT / source if (ROOT / source).exists() else TASKS / source
+    shutil.copytree(found, target, ignore=shutil.ignore_patterns(BUILDING_MARKER))
     return target
 
 
