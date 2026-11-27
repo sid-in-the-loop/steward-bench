@@ -164,3 +164,22 @@ def test_a_question_nobody_answered_is_closed_with_a_user_turn() -> None:
     policy.next_turn(messages)
     last = client.requests[-1]["messages"][-1]
     assert last == {"role": "user", "content": [{"type": "text", "text": NO_REPLY}]}
+
+
+def test_each_inherited_call_of_a_turn_gets_its_own_result() -> None:
+    client = FakeClient([[text("ok")]])
+    policy = AnthropicPolicy(client, "claude-opus-5-5", TOOLS)
+    calls = [{"id": f"call_{n}", "type": "function", "function": {"name": "Bash"}} for n in (1, 2)]
+    messages: list[Message] = [
+        {"role": "user", "content": "Rebuild integration."},
+        {"role": "assistant", "content": "", "tool_calls": calls},
+        {"role": "tool", "tool_call_id": "call_1", "content": "one"},
+        {"role": "tool", "tool_call_id": "call_2", "content": "two"},
+        {"role": "user", "content": "Go on."},
+    ]
+    policy.next_turn(messages)
+    results = client.requests[0]["messages"][2]["content"]
+    assert [(r["tool_use_id"], r["content"]) for r in results[:2]] == [
+        ("call_1", "one"),
+        ("call_2", "two"),
+    ]

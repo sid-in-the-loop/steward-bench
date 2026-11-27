@@ -19,7 +19,8 @@ from steward.execution.record import Action
 
 MAX_TOKENS = 16_000
 # The output budget of the one retry of an empty, cut-off or refused reply.
-RETRY_MAX_TOKENS = 2 * MAX_TOKENS
+RETRY_FACTOR = 2
+RETRY_MAX_TOKENS = RETRY_FACTOR * MAX_TOKENS
 # What the report tool is answered with, so that the turn after a report is well formed.
 REPORT_RECEIVED = "Report received."
 # The Messages API takes no conversation that ends with the model's own turn. When the agent
@@ -64,10 +65,18 @@ class AnthropicPolicy:
 
     thought: str | None = None
 
-    def __init__(self, client: MessagesClient, model: str, tools: list[Message]) -> None:
+    def __init__(
+        self,
+        client: MessagesClient,
+        model: str,
+        tools: list[Message],
+        max_tokens: int = MAX_TOKENS,
+    ) -> None:
         self.client = client
         self.model = model
         self.tools = claude_tools(tools)
+        # The output budget of a request; its one retry gets twice as much.
+        self.max_tokens = max_tokens
         self.usage = Usage()
         # The content blocks of each reply, by the position its turn takes in the session.
         self.replies: dict[int, list[Any]] = {}
@@ -78,7 +87,8 @@ class AnthropicPolicy:
         result, and a report by a short acknowledgement."""
         system: list[str] = []
         turns: list[dict[str, Any]] = []
-        owed: str | None = None
+        # The tool uses still to be answered, in the order they were made.
+        owed: list[str] = []
 
         def add(role: str, blocks: list[Any]) -> None:
             if turns and turns[-1]["role"] == role:
@@ -87,11 +97,13 @@ class AnthropicPolicy:
                 turns.append({"role": role, "content": list(blocks)})
 
         def settle() -> None:
-            nonlocal owed
-            if owed is not None:
-                result = {"type": "tool_result", "tool_use_id": owed, "content": REPORT_RECEIVED}
+            while owed:
+                result = {
+                    "type": "tool_result",
+                    "tool_use_id": owed.pop(0),
+                    "content": REPORT_RECEIVED,
+                }
                 add("user", [result])
-                owed = None
 
         wire = ModelPolicy.wire_messages(messages)
         for index, (message, entry) in enumerate(zip(messages, wire, strict=True)):
@@ -100,8 +112,10 @@ class AnthropicPolicy:
                 system.append(str(message.get("content") or ""))
                 continue
             if role == "tool":
-                call = owed or tool_use_id(str(entry.get("tool_call_id") or ""))
-                owed = None
+                own = tool_use_id(str(entry.get("tool_call_id") or ""))
+                # Each result answers the call of its own id, else the oldest one owed: a
+                # kept reply's tool use has the provider's id, not the session's.
+                call = owed.pop(owed.index(own) if own in owed else 0) if owed else own
                 content = str(message.get("content") or "") or "(no output)"
                 add("user", [{"type": "tool_result", "tool_use_id": call, "content": content}])
                 continue
@@ -109,7 +123,7 @@ class AnthropicPolicy:
             if role == "assistant" and index in self.replies:
                 blocks = self.replies[index]
                 add("assistant", blocks)
-                owed = next((b.id for b in blocks if b.type == "tool_use"), None)
+                owed.extend(b.id for b in blocks if b.type == "tool_use")
                 continue
             if role == "assistant":
                 blocks = []
@@ -122,11 +136,12 @@ class AnthropicPolicy:
                         arguments = json.loads(function.get("arguments") or "{}")
                     except json.JSONDecodeError:
                         arguments = {}
-                    owed = tool_use_id(str(call_entry["id"]))
+                    call_id = tool_use_id(str(call_entry["id"]))
+                    owed.append(call_id)
                     blocks.append(
                         {
                             "type": "tool_use",
-                            "id": owed,
+                            "id": call_id,
                             "name": function["name"],
                             "input": arguments if isinstance(arguments, dict) else {},
                         }
@@ -171,10 +186,10 @@ class AnthropicPolicy:
 
     def next_turn(self, messages: list[Message]) -> Turn:
         system, turns = self._conversation(messages)
-        response = self._create(system, turns, MAX_TOKENS)
+        response = self._create(system, turns, self.max_tokens)
         if self.unusable(response) is not None:
             # Asked once more with room to finish; a reply still unusable ends the shift.
-            response = self._create(system, turns, RETRY_MAX_TOKENS)
+            response = self._create(system, turns, RETRY_FACTOR * self.max_tokens)
         blocks = list(response.content)
         thoughts = [b.thinking for b in blocks if b.type == "thinking" and b.thinking]
         self.thought = "\n\n".join(thoughts) or None
