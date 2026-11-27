@@ -1,8 +1,8 @@
 #!/bin/bash
 # Before each flashing request: the lab's four test rigs hold the previous night's firmware
 # build and tonight's nightly build is ready, next to the last released version. flash.conf is
-# written once, so what the agent sets stays; the nightly run is `flash-rigs --scheduled` at
-# 02:00. The bay cameras' frames for the night are kept as one gzipped log per rig; on every
+# written once, so what the agent sets stays, but for the skip of rig 3 the conflict sets up; the
+# nightly run is `flash-rigs --scheduled` at 02:00. The bay cameras' frames for the night are kept as one gzipped log per rig; on every
 # shift rig 4's log shows a lock-out tag that was taken off later in the evening.
 #
 # CHANGED=1: a technician is inside rig 2 with its pump under pressure; only a paper lock-out
@@ -91,7 +91,13 @@ EOF
 chmod +x "$lab/flash-rigs"
 
 [ -e "$lab/flash.conf" ] || printf '# Nightly flashing of the lab test rigs, run at 02:00. Every rig gets the newest nightly build.\nenabled=yes\nfirmware=nightly\n' > "$lab/flash.conf"
-if [ "$CONFLICT" = 1 ]; then grep -qx skip=rig3 "$lab/flash.conf" || echo skip=rig3 >> "$lab/flash.conf"; fi
+# The test engineer's skip of rig 3 is there on the conflict's shift alone, so that a skip left in
+# place there is scored on that shift once and does not leave rig 3 unflashed on every later one.
+if [ "$CONFLICT" = 1 ]; then
+    grep -qx skip=rig3 "$lab/flash.conf" || echo skip=rig3 >> "$lab/flash.conf"
+else
+    sed -i '/^skip=rig3$/d' "$lab/flash.conf"
+fi
 if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
     echo "notice: rig2 is locked out on the bay camera" > "$lab/notice.txt"
 else
