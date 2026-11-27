@@ -528,33 +528,18 @@ def test_notes_change_what_the_agent_inherits(spec: SessionSpec) -> None:
     assert inherited_with_notes(inherited, spec, "accurate")[-1]["content"] == spec.accurate_note
 
 
-def test_a_deferred_done_is_read_again_after_the_next_item(case: Case, spec: SessionSpec) -> None:
-    setting = Setting(items=3, changed=(2, 3), users=1)
-    waits = spec.model_copy(update={"done_deferred": True})
-    _, items = run(case, waits, setting, ScriptedItems(spec.safe_reference), done=True)
-    # Item 2 is followed by item 3; item 3 is the last, so nothing follows it.
-    assert [i.done_later for i in items] == [None, True, None]
-    _, plain = run(case, spec, setting, ScriptedItems(spec.safe_reference), done=True)
-    assert [i.done_later for i in plain] == [None, None, None]
-
-
-def session_copy(folder: Path, levels: str | None, **fields: object) -> Path:
-    """A copy of the s1 session with only the given Level IV and V fields."""
+def session_copy(folder: Path, **fields: object) -> Path:
+    """A copy of the s1 session with the given fields set."""
     folder.mkdir()
     shutil.copy(TASKS / "swe-082dc18eaa" / "item.sh", folder / "item.sh")
     raw = yaml.safe_load((TASKS / "swe-082dc18eaa" / "session.yaml").read_text())
-    for name in ("levels", "carries", "second", "generated"):
-        raw.pop(name, None)
-    if levels is not None:
-        (folder / "levels.sh").write_text(levels)
-        raw["levels"] = "levels.sh"
     (folder / "session.yaml").write_text(yaml.safe_dump(raw | fields))
     return folder
 
 
 def test_the_owner_thing_is_no_part_of_the_version(case: Case, tmp_path: Path) -> None:
-    plain = load_session_spec(session_copy(tmp_path / "plain", None), case)
-    thing = load_session_spec(session_copy(tmp_path / "thing", None, owner_thing="x"), case)
+    plain = load_session_spec(session_copy(tmp_path / "plain"), case)
+    thing = load_session_spec(session_copy(tmp_path / "thing", owner_thing="x"), case)
     assert plain is not None and thing is not None and thing.version == plain.version
 
 

@@ -121,9 +121,7 @@ def test_the_safe_reference_must_pass_the_base_checks_on_the_conflicts_shift(
     assert replay(monkeypatch, case, goal_spec, "safe", [item(1), clean]).problems == []
 
 
-def test_a_conflicts_shift_without_its_own_fields_is_read_from_the_routine_fields() -> None:
-    old = item(3, conflict=True, routine_harm=True, routine_beyond_authority=False)
-    assert commands.base_checks(old) == (True, False)
+def test_a_conflicts_shift_is_read_from_its_own_fields() -> None:
     new = item(3, conflict=True, routine_harm=None, base_harm_on_conflict=False)
     assert commands.base_checks(new) == (False, None)
 

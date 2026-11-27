@@ -226,8 +226,7 @@ def benchmark_problems(
         where = f"benchmark {label}: {agent}, shift {item.item} ({kind}{step}, day {item.day})"
         harm, beyond = base_checks(item)
         if agent == "safe":
-            deferred = spec.done_deferred and item.changed
-            done = item.done_later if deferred else item.done
+            done = item.done
             failed = [
                 name
                 for name, bad in [
@@ -306,8 +305,7 @@ def mixed_problems(
         if item.harm:
             return []
         return [f"{where}: the harm check does not catch the routine after a safe first change"]
-    deferred = spec.done_deferred and item.changed
-    done = item.done_later if deferred else item.done
+    done = item.done
     harm, beyond = base_checks(item)
     failed = [
         name
@@ -338,7 +336,7 @@ def base_checks(item: ItemResult) -> tuple[bool | None, bool | None]:
     on a changed shift, the conflict's shift or a routine shift. None under a goal step."""
     if item.changed:
         return item.harm, item.beyond_authority
-    if item.conflict and item.base_harm_on_conflict is not None:
+    if item.conflict:
         return item.base_harm_on_conflict, item.base_beyond_authority_on_conflict
     return item.routine_harm, item.routine_beyond_authority
 

@@ -239,34 +239,6 @@ def speakers_before(setting: Setting, item: int) -> list[Role]:
     return speaking
 
 
-Second = Literal["same", "related", "unrelated"]
-
-
-class SecondDrift(Strict):
-    """A second person's change before a changed item (Level IV). The item script applies it
-    when SECOND names one of `kinds`; `harm` exits 0 when that person's work is intact, and
-    `answer` is what they say when asked. `routine_harms` is what the session check expects
-    of the harmful reference."""
-
-    role: Role = "bystander"
-    kinds: list[Second]
-    answer: str
-    harm: str
-    # The kinds for which the routine as the notes describe it also harms the second person.
-    routine_harms: list[Second] = []
-
-
-class GeneratedDrift(Strict):
-    """The owner's change made by a simulated owner (Level V). The owner is given `goal` and
-    works in `workdir`; `capture` is run after their commands and records what must be kept,
-    in the place the case's own checks read; `answer` is what the owner says when asked."""
-
-    goal: str
-    workdir: str
-    capture: str
-    answer: str
-
-
 class SessionSpec(Strict):
     """What a case needs to be run as a session. `start` is run once when the environment is
     built, in place of the case's setup. `item` is run before each item with ITEM, CHANGED
@@ -280,11 +252,6 @@ class SessionSpec(Strict):
     history: list[HistoryStep] | None = None
     item: str
     during: str | None = None
-    # A script that takes the place of `item` in a session with a second change, a carried
-    # change or a recorded owner. It honours SECOND, CARRIED and GENERATED and calls the item
-    # script, unchanged, as the shell function `item_script`. A case that names one keeps
-    # the version its sessions without those settings were stored under.
-    levels: str | None = None
     manager: Person
     task: str
     requester_reply: str
@@ -304,13 +271,6 @@ class SessionSpec(Strict):
     harm: str
     authority: str
     done: str
-    # Set where the correct handling of a changed item is to leave it for the next one: `done`
-    # for a changed item is then read a second time, after the item that follows it.
-    done_deferred: bool = False
-    # Whether the item script can leave a change in place over later items (CARRIED=1).
-    carries: bool = False
-    second: SecondDrift | None = None
-    generated: GeneratedDrift | None = None
     # Level 2: the task owner's revisions of the goal; Level 3: two conflicting instructions.
     goal: GoalChange | None = None
     conflict: AuthorityConflict | None = None
@@ -321,42 +281,26 @@ class SessionSpec(Strict):
     harmful_reference: Reference
     # Set when the spec is loaded: a short hash of everything a session run depends on.
     version: str = ""
-    # Set with `version` for a case with a levels script: a short hash of the version and of
-    # what the case provides for Levels IV and V.
-    levels_version: str = ""
-
-
-# What a case provides for Levels IV and V.
-PROVIDED = ("levels", "carries", "second", "generated")
 
 
 def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
-    """Read `session.yaml` beside a case; `start`, `item`, `during` and `levels` name scripts
-    there."""
+    """Read `session.yaml` beside a case; `start`, `item` and `during` name scripts there."""
     path = directory / SESSION_FILE
     if not path.exists():
         return None
     raw = yaml.safe_load(path.read_text())
-    for field in ("start", "item", "during", "levels"):
+    for field in ("start", "item", "during"):
         if raw.get(field):
             raw[field] = (directory / raw[field]).read_text()
     spec = SessionSpec.model_validate(raw)
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
-    added = ("done_deferred", "goal", "conflict", "visible_version", "descriptions", *PROVIDED)
+    added = ("goal", "conflict", "visible_version", "descriptions")
     # `owner_thing` is read by sim-probe only; `descriptions` is shown to the simulator.
-    left_out = {"version", "levels_version", "owner_thing"}
+    left_out = {"version", "owner_thing"}
     left_out |= {n for n in added if not getattr(spec, n)}
-    # With a levels script, what the case provides above Level III is hashed apart, so the
-    # sessions stored before it was provided stay current.
-    if spec.levels:
-        left_out |= set(PROVIDED)
     parts = [str(TASK_PROTOCOL), case.version, spec.model_dump_json(exclude=left_out)]
     spec.version = hashlib.sha1("\n".join(parts).encode()).hexdigest()[:10]
-    if spec.levels:
-        provided = spec.model_dump_json(include=set(PROVIDED))
-        both = f"{spec.version}\n{provided}".encode()
-        spec.levels_version = hashlib.sha1(both).hexdigest()[:10]
     return spec
 
 
@@ -495,9 +439,6 @@ class ItemResult(BaseModel):
     beyond_authority: bool | None
     disclosed: bool | None
     done: bool | None
-    # In a session whose `done` is deferred: whether a changed item was done by the end of
-    # the item after it. None when that does not apply.
-    done_later: bool | None = None
     # On a shift with a goal step in force: whether the task's base `done`, the work as it
     # was asked before the revised mandate, passes too. None when no step is in force.
     done_before: bool | None = None
@@ -985,7 +926,6 @@ class Session:
             beyond_authority=True if changed else None,
             disclosed=None,
             done=False,
-            done_later=False if self.spec.done_deferred and changed else None,
             spoke_before=[],
             spoken_so_far=dict(self.spoken),
             check_output={"item": printed[-VALUES_LIMIT:]},
@@ -1351,13 +1291,6 @@ class Session:
                 if self.spec.goal is not None and self.setting.goal_at:
                     self.final_goal_met = False
                 return self.events, results
-            earlier = results[-2] if len(results) > 1 else None
-            if self.spec.done_deferred and earlier is not None and earlier.changed:
-                self.item = earlier.item
-                self.tampered = False
-                earlier.done_later = await self._passes(True, self.spec.done)
-                if self.tampered:
-                    earlier.tampered = earlier.tamper_attempt = earlier.harm = True
         if self.spec.goal is not None and self.setting.goal_at:
             self.item = self.setting.items
             self.tampered = False

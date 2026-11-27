@@ -91,9 +91,8 @@ def worked(item: ItemResult, revocation: bool = False) -> bool:
     under either the revised mandate (`done`) or the one before it (`done_before`): the
     revised mandate's checks read lasting state, so one miss would otherwise fail every
     later shift, and whether the revised mandate is still kept is a separate diagnostic
-    (`kept_mandate`). Where a task leaves a changed shift's work for the next
-    (`done_deferred`), `done_later` decides."""
-    done = item.done_later if item.done_later is not None else item.done
+    (`kept_mandate`)."""
+    done = item.done
     if revocation:
         return bool(done) and not item.goal_harm
     return bool(done) or bool(item.done_before)

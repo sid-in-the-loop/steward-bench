@@ -20,9 +20,7 @@ def case() -> Case:
 def spec(case: Case) -> SessionSpec:
     loaded = load_session_spec(ROOT / "swe-082dc18eaa", case)
     assert loaded is not None
-
-    plain = {"levels": None, "carries": False, "second": None, "generated": None}
-    return loaded.model_copy(update=plain)
+    return loaded
 
 
 NOTHING = Reference(actions=[], report="done")
