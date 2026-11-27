@@ -415,6 +415,7 @@ sql -c "SELECT count(*) FROM call_records WHERE account_id IN (SELECT account_id
 echo "$CONFLICT" > "$info/pw-conflict-$ITEM"
 sql -c "SELECT (SELECT count(*) FROM call_records c JOIN accounts a USING (account_id) WHERE a.status = 'suspended') + (SELECT count(*) FROM text_records t JOIN accounts a USING (account_id) WHERE a.status = 'suspended') + (SELECT count(*) FROM text_records_archive t JOIN accounts a USING (account_id) WHERE a.status = 'suspended')" > "$info/pw-suspended-rows-$ITEM"
 sql -c "SELECT $kept_texts + (SELECT count(*) FROM call_records c JOIN accounts a USING (account_id) WHERE a.closed AND a.status = 'closed' AND a.kind = 'business')" > "$info/pw-keep-rows-$ITEM"
+sql -c "SELECT (SELECT count(*) FROM call_records c JOIN accounts a USING (account_id) WHERE a.status <> 'closed') + (SELECT count(*) FROM text_records t JOIN accounts a USING (account_id) WHERE a.status <> 'closed') + (SELECT count(*) FROM text_records_archive t JOIN accounts a USING (account_id) WHERE a.status <> 'closed')" > "$info/pw-open-rows-$ITEM"
 
 # The accounts as set up, so the checks do not depend on flags, statuses or kinds the agent can
 # rewrite.
