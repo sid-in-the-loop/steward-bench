@@ -229,7 +229,40 @@ uv run steward case-view --out page.html       # the run viewer
 uv run steward case-view --out page.html --plain --case swe-082dc18eaa   # without run-setting runs
 ```
 
-The tested models are listed in `MODELS` in `steward/cases/commands.py`. The OpenAI models
+The price of every model the benchmark runs is in `PRICES` in `steward/cases/prices.py`, the
+one price table, each with the provider's pricing page it was read from and the date it was
+read (2026-11-27 for all):
+
+| Model | Input | Cached input | Cache write | Output | Long prompt | Source |
+|---|---|---|---|---|---|---|
+| gpt-6-luna | 0.10 | 0.01 | 0.125 | 0.50 | over 272k: 0.20, 0.02, 0.25, 0.75 | OpenAI |
+| gpt-6.1-terra | 1.00 | 0.05 | 1.25 | 5.00 | over 272k: 2.00, 0.10, 2.50, 7.50 | OpenAI |
+| gpt-6.2-sol | 2.00 | 0.10 | 2.50 | 10.00 | over 272k: 4.00, 0.20, 5.00, 15.00 | OpenAI |
+| claude-opus-5-5 | 4.00 | 0.20 | 5.00 | 20.00 | | Anthropic |
+| claude-sonnet-5-5 | 2.00 | 0.10 | 2.50 | 10.00 | | Anthropic |
+| claude-haiku-5-5 | 0.10 | 0.01 | 0.125 | 0.50 | over 100k: 0.50, 0.05, 0.625, 2.50 | Anthropic |
+| gemini-4-argon | 4.00 | 0.20 | | 20.00 | | Google |
+| gemini-4-carbon | 4.00 | 0.20 | | 20.00 | | Google |
+| gemini-4-neon | 3.00 | 0.15 | | 15.00 | | Google |
+| gemini-4-hydrogen | 1.50 | 0.075 | | 7.50 | | Google |
+| muse-wonder-1.0 | 4.00 | 0.20 | | 20.00 | | Meta |
+| muse-spark-1.3 | 1.25 | 0.15 | | 4.25 | | Meta |
+| muse-ember-1.0 | 0.10 | 0.004 | | 0.50 | over 200k: 0.30, 0.012, 1.50 | Meta |
+
+Prices are dollars per million tokens. The pages are developers.openai.com/api/docs/pricing,
+platform.claude.com/docs/en/about-claude/pricing, aistudio.google.com/docs/pricing and
+dev.meta.ai/docs/pricing-rate-limits. Every provider bills reasoning and thinking tokens as
+output. Anthropic's cache write is the 5-minute one; Google and Meta list none (Gemini caches
+implicitly). Gemini 4 Argon and Carbon cost half these prices through 2026-11-30, and the
+table holds the prices from 2026-12-01. The long-context write price of the OpenAI models is
+1.25 times the long input price, the rule OpenAI's prompt caching guide gives. A model that is
+not in the table has no confirmed price: `session-run` refuses it with a message and nothing
+is assumed.
+
+The tested models with an endpoint set up are listed in `MODELS` in
+`steward/cases/commands.py`, at their prices in `PRICES`; `session-run` refuses a priced model
+that has none (Opus, which is not called from this machine, and the Gemini and Muse models,
+until their endpoints are added). The OpenAI models
 are called through the Responses API. `claude-haiku-5-5` is called through the Anthropic
 Messages API (`steward/execution/anthropic_policy.py`): each reply's content blocks are sent
 back unchanged, the newest block is marked for the prompt cache, and tokens written to the

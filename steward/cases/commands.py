@@ -16,36 +16,41 @@ import httpx
 from steward.cases import sandbox
 from steward.cases.case import Case, Repo, case_directories, load_case
 from steward.cases.conditions import CONDITIONS, Condition, ConditionId, Timing
+from steward.cases.prices import pricing_of
 from steward.cases.run import Model, Run, Variant, built_directory, model_policy, run_case
 from steward.cases.simulator import ClaudeSimulator
 from steward.config import Settings
-from steward.execution.evaluate import Pricing, workspace_image
+from steward.execution.evaluate import workspace_image
 from steward.execution.policy import Message, Policy, ScriptedPolicy
 
-# Dollars per million tokens: input, cached input, output.
+# The models with an endpoint set up here, at their prices in PRICES. claude-sonnet-5-5 plays
+# people in session runs and is not run as an agent from this machine.
 MODELS = {
-    name: Model(name=name, pricing=Pricing(prompt=prompt, cached=cached, completion=completion))
-    for name, prompt, cached, completion in [
-        ("gpt-6-luna", 0.10, 0.01, 0.50),
-        ("gpt-5.6-luna", 0.20, 0.02, 1.20),
-        ("gpt-5-mini", 0.25, 0.025, 2.00),
-        ("gpt-6.2-sol", 2.00, 0.10, 10.00),
-        ("gpt-6.1-terra", 1.00, 0.05, 5.00),
-    ]
+    name: Model(name=name, pricing=pricing_of(name))
+    for name in ["gpt-6-luna", "gpt-5.6-luna", "gpt-5-mini", "gpt-6.2-sol", "gpt-6.1-terra"]
+} | {
+    name: Model(
+        name=name, dialect="anthropic", api_key_env="ANTHROPIC_API_KEY", pricing=pricing_of(name)
+    )
+    for name in ["claude-haiku-5-5", "claude-sonnet-5-5"]
 }
-MODELS["claude-haiku-5-5"] = Model(
-    name="claude-haiku-5-5",
-    dialect="anthropic",
-    api_key_env="ANTHROPIC_API_KEY",
-    pricing=Pricing(prompt=0.10, cached=0.01, cache_write=0.125, completion=0.50),
-)
-# The model that plays people in session runs; not run as an agent from this machine.
-MODELS["claude-sonnet-5-5"] = Model(
-    name="claude-sonnet-5-5",
-    dialect="anthropic",
-    api_key_env="ANTHROPIC_API_KEY",
-    pricing=Pricing(prompt=2.00, cached=0.10, cache_write=2.50, completion=10.00),
-)
+
+
+class UnknownModelError(KeyError):
+    def __str__(self) -> str:
+        return str(self.args[0])
+
+
+def endpoint(name: str) -> Model:
+    """The model to run, or a refusal that says why it cannot be run."""
+    pricing_of(name)
+    if name not in MODELS:
+        raise UnknownModelError(
+            f"{name} has a price but no endpoint set up in MODELS in steward/cases/commands.py"
+        )
+    return MODELS[name]
+
+
 # What one run is assumed to use when estimating cost: tokens of fresh input, cached input
 # and output.
 ASSUMED_TOKENS = (60_000, 400_000, 12_000)

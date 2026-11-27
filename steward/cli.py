@@ -15,6 +15,7 @@ from steward.config import Settings, load_settings
 from steward.filter.batch import CostGuardError
 
 if TYPE_CHECKING:
+    from steward.cases.run import Model
     from steward.cases.session_commands import SessionCase
     from steward.cases.simulator import CachedSimulator
 
@@ -768,7 +769,7 @@ def cmd_session_build(settings: Settings, args: argparse.Namespace) -> int:
 
 
 def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
-    from steward.cases.commands import MODELS, simulator_cache
+    from steward.cases.commands import simulator_cache
     from steward.cases.session_commands import estimate_usd, load_sessions, run_sessions
     from steward.cases.sessions import EXPERIMENTS, Setting
 
@@ -782,7 +783,9 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
             chosen[setting.id] = setting
     if args.items:
         chosen = {k: s for k, s in chosen.items() if s.items in args.items}
-    models = [MODELS[name] for name in args.model]
+    models = runnable(args.model)
+    if models is None:
+        return 2
     for model in models:
         each = sum(estimate_usd(model, setting) for setting in chosen.values())
         count = len(cases) * len(chosen) * trials
@@ -820,6 +823,17 @@ EXPERIMENT_TRIALS = 3
 BENCHMARK_MAX_USD = 25.0
 
 
+def runnable(names: list[str]) -> list[Model] | None:
+    """The models to run, or None after saying why one of them cannot be run."""
+    from steward.cases.commands import endpoint
+
+    try:
+        return [endpoint(name) for name in names]
+    except KeyError as error:
+        print(f"Refused: {error}", file=sys.stderr)
+        return None
+
+
 def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[SessionCase]) -> int:
     """The benchmark run: the seeded two-day schedule under each condition asked for. The
     estimate covers the tested model's sessions not yet stored; the limit covers the tested
@@ -847,10 +861,12 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
         return 2
     conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition)]
     jobs = benchmark_jobs(cases, conditions, trials)
-    models = [MODELS[name] for name in args.model]
+    models = runnable(args.model)
     played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
+    playing = runnable([played_by]) if played_by else []
+    if models is None or playing is None:
+        return 2
     limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
-    playing = MODELS.get(played_by) if played_by else None
     for model in models:
         todo = pending(sessions_path(settings, model.name), jobs, played_by)
         dollars = sum(estimate_usd(model, job.setting) for job in todo)
@@ -858,9 +874,9 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
             f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
             "for the tested model"
         )
-        if playing is not None:
-            assumed = sum(estimate_simulator_usd(playing, job.setting) for job in todo)
-            line += f" and about ${assumed:.2f} for the simulator {playing.name}"
+        for sim in playing:
+            assumed = sum(estimate_simulator_usd(sim, job.setting) for job in todo)
+            line += f" and about ${assumed:.2f} for the simulator {sim.name}"
         print(line)
     print(f"limit ${limit:.2f} for the tested models and the simulator together")
     if not args.confirm:
