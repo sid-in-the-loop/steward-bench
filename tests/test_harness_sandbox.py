@@ -236,3 +236,14 @@ def test_the_agent_reaches_the_github_stand_in_only_through_its_own_process(
     finally:
         broker.stop()
     assert broker.process is None
+
+
+def test_a_script_without_a_shebang_runs_under_bash_as_the_harness_would_run_it(
+    tmp_path: Path,
+) -> None:
+    workspace = make_workspace(tmp_path)
+    tool = workspace.tree / "deploy"
+    tool.write_text("set -euo pipefail\necho ran-under-bash\n")
+    tool.chmod(0o755)
+    output, status = harness(workspace, "as_agent ./deploy")
+    assert status == 0 and "ran-under-bash" in output, output

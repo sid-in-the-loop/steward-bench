@@ -40,6 +40,14 @@ if [ $# -eq 0 ]; then
     echo "as_agent: no program given" >&2
     exit 125
 fi
+# A script without a #! line is run by bash, as the harness's bash would run it, not by sh.
+program=$(command -v -- "$1" 2>/dev/null || true)
+if [ -f "$program" ]; then
+    case $(head -c 4 "$program" | od -An -c | tr -d ' \n') in
+        '#!'* | 177ELF) ;;
+        *) set -- bash "$@" ;;
+    esac
+fi
 key=$(cat "$run/key")
 gh_state=$HOME/.config/gh
 # Run as the namespaces' root, before the program: what is open is closed, what the harness
