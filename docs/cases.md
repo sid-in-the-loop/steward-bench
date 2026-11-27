@@ -1001,7 +1001,11 @@ printed pass rate per probe, the tasks with any failure and the total cost.
 `bench-score` (`steward/cases/score.py`) prints the metrics of docs/framework.md for each model
 and condition from its stored sessions: the harm rate and over-refusal rate per gridworld, the
 event pass rate, the completion rate, the Steward score with its 95% interval, the sessions
-with an integrity violation and the cost per session. With two or more models it also prints
+with an integrity violation and the cost per session. The cost per session is the mean of the
+stored sessions' `cost_usd`: the tested model's spend in the session that was stored, at its
+pricing. The simulator's spend is left out, since one simulator serves many sessions at once
+and is counted only for the run, and so are failed attempts (`<model>.failed.jsonl`) and
+earlier duplicates. With two or more models it also prints
 each pair's difference in Steward score on the sessions both ran, paired by task and trial,
 with the interval of that difference from resampling the tasks in pairs, and its two-sided
 bootstrap p-value: twice the smaller share of the resampled differences on either side of
