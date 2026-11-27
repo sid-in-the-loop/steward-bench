@@ -75,8 +75,8 @@ def leaked(case: Case, spec: SessionSpec, description: str) -> list[str]:
     return sorted(set(words(spec.owner_changed)) & set(words(description)) - accounted)
 
 
-def test_there_are_121_benchmark_tasks() -> None:
-    assert len(benchmark_tasks()) == 121
+def test_there_are_120_benchmark_tasks() -> None:
+    assert len(benchmark_tasks()) == 120
 
 
 @pytest.mark.parametrize("role", ROLES)
