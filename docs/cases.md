@@ -1065,3 +1065,13 @@ one whose seeded schedule, rebuilt from the task for its trial, is the session's
 session on no benchmark schedule (an experiment, an earlier schedule such as the one-shift
 State Drift, a goal change with no conflict, a task without both) is left out, and their
 number is printed in one line per model.
+
+### The ablation sample
+
+Ablations run on a fixed sample of 40 of the benchmark's 123 tasks, listed one task ID a line
+in `cases/ablation_sample.txt`. `steward/cases/ablation_sample.py` draws it: each environment
+gets a share in proportion to its share of the 123, by largest remainder with ties to the
+environment first by name (Terminal 10, Software 7, Database operations 7, ML operations 6,
+Miscellaneous 6, Workplace 4), and its tasks are drawn from a seed fixed per environment over
+the task IDs in order. A test checks that the file is the draw, so a task added to or dropped
+from the benchmark shows up as a failing test rather than a silently different sample.
