@@ -42,7 +42,6 @@ SESSION_MODULES = (
     "steward.schema",
     "steward.session",
     "steward.simulator",
-    "steward.store",
     "steward.task",
     "steward.tripwire",
 )

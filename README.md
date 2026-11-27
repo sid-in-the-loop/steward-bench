@@ -125,6 +125,7 @@ unchanged, and a stopped run loses only the sessions it was running.
 
 ```
 cases/                  the 120 tasks, one folder each, and the base scripts in cases/_bases
+cases/_worlds/          the recorded session the Workplace tasks start from
 steward/                the harness: task models, the session loop, environments, policies, scoring
 tests/                  tests on fixtures and fake environments
 docs/                   framework.md, tasks.md, running.md, scoring.md

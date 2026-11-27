@@ -17,10 +17,6 @@ class Paths(BaseModel):
     data: Path
 
     @property
-    def normalized(self) -> Path:
-        return self.data / "normalized"
-
-    @property
     def upstream_tasks(self) -> Path:
         return self.data / "upstream_tasks"
 

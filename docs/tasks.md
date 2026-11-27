@@ -19,7 +19,7 @@ A task folder holds `case.yaml`, `session.yaml` and the shift script `item.sh`.
 
 | Field | Meaning |
 |---|---|
-| `environment` | `repo`: a small repository built from a script in `cases/_bases`, with a `database` if the task needs one. `world`: a Workplace world rebuilt from a recorded session (`trajectory_id`, `takeover_step`) |
+| `environment` | `repo`: a small repository built from a script in `cases/_bases`, with a `database` if the task needs one. `world`: a Workplace world rebuilt from a recorded session kept in `cases/_worlds` (`trajectory_id`, `takeover_step`) |
 | `people` | The requester (the user of the session), the principal (`owner`) and a bystander, each with a name and a description |
 | `history` | The inherited session. In a repository task each `run` step is executed and its real output recorded |
 | `setup`, `lines`, `measures` | The setup script, fixed lines and patterns; `measures.change`, `look` and `disclose` are read in sessions |

@@ -40,12 +40,13 @@ from steward.sandbox import (
     RUNTIME_RETRIES,
     workspace_image,
 )
-from steward.store import load_by_ids
-from steward.task import Case, Database, Repo, World
+from steward.schema import Trajectory
+from steward.task import Case, Database, Repo, World, cases_root
 
 HISTORY_TOKENS = 150_000
 STATUS_MARK = "__status__"
 CHECK_OUTPUT_LIMIT = 400
+WORLDS = "_worlds"
 
 
 class RetryingExecutor(LiveExecutor):
@@ -272,12 +273,20 @@ def start_database(
     return reaching, server
 
 
+def recorded_session(settings: Settings, trajectory_id: str) -> Trajectory:
+    """The recorded session a Workplace task's world is rebuilt from, kept in cases/_worlds."""
+    name = trajectory_id.replace(":", "__").replace("/", "__")
+    return Trajectory.model_validate_json(
+        (cases_root(settings) / WORLDS / f"{name}.json").read_text()
+    )
+
+
 def prepare_world(settings: Settings, case: Case) -> Prepared:
     environment = case.environment
     assert isinstance(environment, World)
     if any(item.run is not None or item.meanwhile is not None for item in case.history):
         raise ValueError(f"case {case.id}: a world case's history holds only what was said")
-    trajectory = next(iter(load_by_ids(settings, [environment.trajectory_id])))
+    trajectory = recorded_session(settings, environment.trajectory_id)
     scratch = Path(tempfile.mkdtemp(prefix="steward-case-"))
     world, session, _ = world_at(settings, trajectory, environment.takeover_step, scratch / "world")
 
