@@ -6,7 +6,7 @@ themselves) in the info folder of the repository's remote, /srv/git/origin.git/i
 container. That folder is part of the remote the agent works with, so while the agent acts the
 files are kept in a pristine copy outside the container.
 
-Item scripts, `during` scripts and recorded owners write the key, so the key is revealed
+Shift scripts and `during` scripts write the key, so the key is revealed
 writable around them and whatever they leave becomes the new pristine copy; code of the
 agent's that they run does so through `as_agent`, which shows it no key at all. A link or
 anything else but a plain file or folder in the key is tampering wherever it is found: it is
@@ -29,7 +29,7 @@ import stat
 from collections.abc import Callable, Sequence
 from pathlib import Path
 
-from steward.cases.tripwire import CANARIES, TokenSearch, search_tree
+from steward.tripwire import CANARIES, TokenSearch, search_tree
 
 # Written by Python when a script imports a module kept in the key. It is hidden with the key,
 # since it holds the module's code, but left out of the hash, since a script may write it.

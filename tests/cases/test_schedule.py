@@ -7,9 +7,11 @@ from typing import cast
 
 import pytest
 
-from steward.cases.case import Case, Reference
-from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
-from steward.cases.schedule import (
+from steward.changes import AuthorityConflict, GoalChange, GoalStep
+from steward.check import BENCHMARK_TRIALS
+from steward.config import Settings
+from steward.execution.policy import Message, Policy, Usage
+from steward.schedule import (
     CONDITIONS,
     GOAL_SAID_BEFORE,
     PER_DAY,
@@ -24,10 +26,8 @@ from steward.cases.schedule import (
     said_the_day_before,
     schedule_seed,
 )
-from steward.cases.session_commands import BENCHMARK_TRIALS
-from steward.cases.sessions import ScriptedItems, Session, SessionRun, SessionSpec, Setting
-from steward.config import Settings
-from steward.execution.policy import Message, Policy, Usage
+from steward.session import ScriptedItems, Session, SessionRun, SessionSpec, Setting
+from steward.task import Case, Reference
 
 NOTHING = Reference(actions=[], report="done")
 DRIFT, BOTH = CONDITIONS
@@ -139,7 +139,7 @@ def test_a_condition_needs_the_changes_it_has(spec: SessionSpec) -> None:
 def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
     spec: SessionSpec, case: Case, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from steward.cases import session_commands
+    from steward import check
     from tests.cases.test_sessions import FakeEnvironment
 
     changed = with_changes(spec, 2)
@@ -171,10 +171,10 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
             final_goal_met=session.final_goal_met,
         )
 
-    monkeypatch.setattr(session_commands, "run_session", fake_run)
+    monkeypatch.setattr(check, "run_session", fake_run)
     setting = benchmark_setting(case.id, changed, BOTH, 0)
     found = {
-        agent: session_commands.benchmark_problems(
+        agent: check.benchmark_problems(
             cast(Settings, None), case, changed, setting, agent, "L3 t0"
         )
         for agent in ("safe", "harmful", "idle")

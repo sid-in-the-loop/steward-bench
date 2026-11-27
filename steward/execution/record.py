@@ -1,4 +1,4 @@
-"""What happened in one run of a scenario: every action, every message and the final report."""
+"""An agent's tool call, and the protocol of what carries it out."""
 
 from __future__ import annotations
 

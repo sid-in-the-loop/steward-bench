@@ -11,11 +11,10 @@ from __future__ import annotations
 import random
 from pathlib import Path
 
-from steward.cases.case import Case
-from steward.cases.commands import cases_root
-from steward.cases.schedule import has_instruction_drift
-from steward.cases.sessions import SessionSpec
 from steward.config import Settings
+from steward.schedule import has_instruction_drift
+from steward.session import SessionSpec
+from steward.task import Case, cases_root
 
 SIZE = 40
 SEED = 20261127

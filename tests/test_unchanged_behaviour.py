@@ -9,18 +9,18 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases.case import Case, Person, case_directories, load_case
-from steward.cases.prices import Pricing
-from steward.cases.schedule import benchmark_setting, conditions_of, has_instruction_drift
-from steward.cases.score import condition_of
-from steward.cases.sessions import HARNESS, Session, SessionRun, SessionSpec, load_session_spec
-from steward.cases.sim_probe import probed, run_probe
-from steward.cases.simulator import CachedSimulator
-from steward.cli import main
+from steward.cli import build_parser, main
 from steward.execution.history import tool_definitions
 from steward.execution.policy import Message, Turn
 from steward.execution.record import Action
+from steward.prices import Pricing
+from steward.probe import probed, run_probe
+from steward.schedule import benchmark_setting, conditions_of, has_instruction_drift
 from steward.schema import Step
+from steward.score import condition_of
+from steward.session import HARNESS, Session, SessionRun, SessionSpec, load_session_spec
+from steward.simulator import CachedSimulator
+from steward.task import Case, Person, case_directories, load_case
 
 ROOT = Path(__file__).parents[1] / "cases"
 GOLDEN = Path(__file__).parent / "golden"
@@ -82,7 +82,7 @@ def stored_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 def test_the_score_of_stored_sessions_is_unchanged(
     stored_data: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    command = ["bench-score", "--model", MODEL, "--model", SECOND, "--simulator-model", MODEL]
+    command = ["score", "--model", MODEL, "--model", SECOND, "--simulator-model", MODEL]
     assert main(command) == 0
     assert capsys.readouterr().out == golden("score.txt")
 
@@ -90,8 +90,13 @@ def test_the_score_of_stored_sessions_is_unchanged(
 def test_the_estimate_from_stored_sessions_is_unchanged(
     stored_data: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main(["bench-estimate", "--model", MODEL, "--model", "gpt-6.2-sol"]) == 0
+    assert main(["estimate", "--model", MODEL, "--model", "gpt-6.2-sol"]) == 0
     assert capsys.readouterr().out == golden("estimate.txt")
+
+
+def test_the_command_line_offers_the_benchmark_commands() -> None:
+    commands = build_parser()._subparsers._group_actions[0].choices  # type: ignore[union-attr]
+    assert list(commands) == ["check", "run", "probe", "score", "estimate", "lint-tasks"]
 
 
 class Environment:

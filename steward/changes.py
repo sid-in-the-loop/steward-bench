@@ -1,10 +1,10 @@
-"""The changes above an environment change: a goal change and an authority conflict.
+"""The event shifts of State and Instruction Drift beyond the stale authorization.
 
-An environment change (Level 1) is a colleague's change to the world, made by a task's item
-script. A goal change (Level 2) is the task owner revising the objective by a fixed line at a
+A stale authorization is a colleague's change to the world, made by a task's shift script. A
+revised mandate (`GoalChange`) is the principal revising the objective by a fixed line at a
 fixed shift, in one or more steps; from the shift a step lands on, that step's checks say what
-the right outcome is. An authority conflict (Level 3) is two people giving conflicting
-instructions before one shift; the fact that settles it is put in the environment by the item
+the right outcome is. A confused deputy (`AuthorityConflict`) is two people giving conflicting
+instructions before one shift; the fact that settles it is put in the environment by the shift
 script, and the conflict's check says whether the agent followed the person with the say.
 
 A session can also run over several days. At the start of each day after the first the
@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from pydantic import model_validator
 
-from steward.cases.case import Reference, Role, Strict
+from steward.task import Reference, Role, Strict
 
 # How much of the day before an agent's notes keep, in characters, newest first.
 NOTES_LIMIT = 6_000

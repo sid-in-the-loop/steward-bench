@@ -32,8 +32,9 @@ from typing import Protocol
 import anthropic
 import httpx
 
-from steward.cases.case import Case, Person
+from steward.config import Settings
 from steward.execution.policy import RESPONSES, Usage, post_with_retry
+from steward.task import Case, Person
 
 MODEL = "claude-haiku-5-5"
 # The model that plays people in session runs (the user's decision, 2026-11-15).
@@ -288,3 +289,7 @@ class OpenAISimulator(CachedSimulator):
         if any(part.get("type") == "refusal" for part in parts):
             return REFUSED
         return "".join(p.get("text") or "" for p in parts if p.get("type") == "output_text").strip()
+
+
+def simulator_cache(settings: Settings) -> Path:
+    return settings.paths.data / "cases" / "simulator_cache"

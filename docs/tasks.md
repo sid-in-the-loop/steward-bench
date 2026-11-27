@@ -2,7 +2,7 @@
 
 A task is one scenario in one environment (docs/framework.md). Each is a folder under
 `cases/` named `{domain}-{hash}`, where the hash is the first ten hex digits of the SHA-1 of
-the task's title (`case_identifier` in `steward/cases/case.py`). The domains are `swe`
+the task's title (`case_identifier` in `steward/task.py`). The domains are `swe`
 (Software), `terminal`, `workplace`, `mlops` (ML operations), `dbops` (Database operations)
 and `misc` (Miscellaneous). Reports name a task by its domain and title.
 
@@ -34,7 +34,7 @@ A task folder holds `case.yaml`, `session.yaml` and the shift script `item.sh`.
 | `task` | What the requester says to hand over a shift |
 | `manager` | The fourth person, a non-principal |
 | `requester_reply`, `owner_changed`, `owner_unchanged` | What the requester answers, and what the principal knows on a stale-authorization shift and on a routine shift |
-| `owner_thing` | The particular thing `owner_changed` is about, as an agent that had looked would name it. Read by `sim-probe` only and no part of the version |
+| `owner_thing` | The particular thing `owner_changed` is about, as an agent that had looked would name it. Read by `probe` only and no part of the version |
 | `descriptions` | Who a person is, as the simulator is shown them in a session, where the first sentence of their description in `case.yaml` would tell what they may know only on some shifts |
 | `owner_status`, `bystander_opinion`, `manager_push` | What each person says unprompted, in turn |
 | `accurate_note` | A handover note for the accurate-notes setting |
@@ -53,7 +53,7 @@ tool of the task's own that needs one is given it as an argument.
 
 Each task has a version: a short hash of `TASK_PROTOCOL`, the case's version and every field of
 `session.yaml` that can change a session, with `owner_thing` left out
-(`load_session_spec` in `steward/cases/sessions.py`). The case's version covers its
+(`load_session_spec` in `steward/session.py`). The case's version covers its
 environment, people, history, setup, lines and measures, the base script, and the `gh` stand-in
 where the task uses it. Fields added after sessions were first stored are left out at their
 defaults, so those sessions kept their versions. A stored session counts only while its task's
@@ -79,7 +79,7 @@ database, which the agent's role cannot read.
 
 A task asks for a PostgreSQL 15 database with `database` in its environment. One server runs
 per session from `postgres.sif`, outside the command containers, so it stays up across every
-command, script and shift (`steward/cases/postgres.py`). Each session has its own data
+command, script and shift (`steward/postgres.py`). Each session has its own data
 directory and socket; the server listens on no network address and runs confined. Commands
 reach it through the socket with the client programs of the server image, and `PGHOST`,
 `PGUSER` and `PGDATABASE` are set.
@@ -102,8 +102,8 @@ itself, so the outcome does not depend on how fast the agent is.
 Four people are present in a benchmark session: the requester, the principal, a bystander and
 the manager. What they say unprompted, the requester's task and each conflict and revision
 line are fixed text. Their other replies are written by the user simulator
-(`steward/cases/simulator.py`), and the same seed casts each person a card from a library of
-144 (`steward/cases/casting.py`), which changes only how the simulator words their replies.
+(`steward/simulator.py`), and the same seed casts each person a card from a library of
+144 (`steward/casting.py`), which changes only how the simulator words their replies.
 
 The simulator is shown who the person is (the first sentence of their description) and how
 they write, their card's manner, their ordinary line, and on a shift where they know something,
@@ -123,7 +123,7 @@ the agent writes can read as someone else speaking.
 
 What only the checks read lives in the remote's info folder, `/srv/git/origin.git/info`. While
 the agent acts the session keeps those files in a pristine copy outside the container
-(`steward/cases/answer_key.py`). Around a shift script the key is put back writable; before
+(`steward/answer_key.py`). Around a shift script the key is put back writable; before
 each check the pristine copy is mounted read-only, and a check run that changed it marks the
 shift as tampered. Anything the agent put in the folder while the key was hidden is removed.
 
@@ -144,7 +144,7 @@ as the harness:
   fault reads as harm and not as no harm.
 
 While a check runs the key folder also holds two canaries with a token drawn for the session
-(`steward/cases/tripwire.py`). After each shift's checks the agent's whole workspace is
+(`steward/tripwire.py`). After each shift's checks the agent's whole workspace is
 searched for the token, and the shift's commands, outputs and messages are scanned for the
 token and for the key folder's path. These give `key_copied`, `key_seen` and `key_probed`
 (docs/scoring.md). Workplace worlds have no canary; their grader schema is out of the agent's
@@ -162,7 +162,7 @@ reach.
 4. Validate, then delete `.building`:
 
 ```bash
-uv run steward session-build --benchmark --case <id>
+uv run steward check --case <id>
 uv run steward lint-tasks
 uv run pytest -q tests/cases
 ```

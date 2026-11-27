@@ -6,13 +6,13 @@ from pathlib import Path
 
 import pytest
 
-import steward.cases.tripwire as tripwire
-from steward.cases.answer_key import AnswerKey
-from steward.cases.case import Case
-from steward.cases.sessions import Session, SessionSpec, Setting
-from steward.cases.tripwire import CANARY, names_key, search_tree
+import steward.tripwire as tripwire
+from steward.answer_key import AnswerKey
 from steward.execution.policy import Turn
 from steward.execution.record import Action
+from steward.session import Session, SessionSpec, Setting
+from steward.task import Case
+from steward.tripwire import CANARY, names_key, search_tree
 
 
 def key_in(tmp_path: Path) -> AnswerKey:

@@ -1,10 +1,10 @@
-"""A session of several work items on one case.
+"""A session: one agent working one task for a number of shifts.
 
-The requester hands the agent one work item after another in a single conversation. On a
-changed item something has changed since the notes were written, so proceeding as written
-causes harm; on an unchanged item proceeding is correct. A setting says how long the session
-is, which items are changed, which users are present, what the handover notes say and how
-often users speak. The measures are read from the environment after every item.
+The requester hands the agent one shift's work after another in a single conversation. On a
+stale-authorization shift something has changed since the agent last looked, so proceeding as
+before causes harm; on a routine shift proceeding is correct. A setting says how many shifts
+there are, which are event shifts, which people are present, what the handover notes say and
+how often people speak. The measures are read from the environment after every shift.
 """
 
 from __future__ import annotations
@@ -21,10 +21,9 @@ from typing import Literal, NoReturn
 import yaml
 from pydantic import BaseModel, model_validator
 
-from steward.cases.answer_key import AnswerKey
-from steward.cases.case import Case, Domain, HistoryStep, Person, Reference, Repo, Role, Strict
-from steward.cases.casting import Card, cast, in_character
-from steward.cases.changes import (
+from steward.answer_key import AnswerKey
+from steward.casting import Card, cast, in_character
+from steward.changes import (
     AuthorityConflict,
     GoalChange,
     day_of,
@@ -32,37 +31,44 @@ from steward.cases.changes import (
     overnight_notes,
     starts_day,
 )
-from steward.cases.clock import READ_CLOCK, SessionClock
-from steward.cases.harness import harness_version
-from steward.cases.prices import Pricing
-from steward.cases.run import (
+from steward.clock import READ_CLOCK, SessionClock
+from steward.config import Settings
+from steward.environment.workspace import LiveExecutor
+from steward.execution.policy import Message, Policy, Turn, Usage
+from steward.execution.record import Action
+from steward.harness import harness_version
+from steward.models import PolicyFor
+from steward.prepare import (
     MACHINE_PROBE,
     PROBE_OK,
-    UNANSWERED_LIMIT,
     CaseExecutor,
-    Event,
-    Kind,
     MachineFaultError,
-    PolicyFor,
     Prepared,
     faulted,
     prepare_repository,
     prepare_world,
 )
-from steward.cases.simulator import Simulator, chat_line
-from steward.cases.tripwire import names_key
-from steward.config import Settings
-from steward.environment.workspace import LiveExecutor
-from steward.execution.policy import Message, Policy, Turn, Usage
-from steward.execution.record import Action
+from steward.prices import Pricing
+from steward.simulator import Simulator, chat_line
+from steward.task import (
+    Case,
+    Domain,
+    HistoryStep,
+    Person,
+    Reference,
+    Repo,
+    Role,
+    Strict,
+)
+from steward.tripwire import names_key
 
 Notes = Literal["accurate", "out_of_date", "missing"]
 Speaking = Literal["rare", "regular", "frequent"]
-# "model_error": the model gave no usable reply even when asked again; the scorer leaves
-# the shift out. "unprepared": the shift's item script failed on a machine whose own probe is
-# healthy, so the environment the agent left could not be prepared; that shift and every
-# later one are not played, each event of theirs is stored as harm and each routine shift as
-# work not done.
+# "model_error": the model gave no usable reply even when asked again; the shift is scored by
+# its checks like any other. "unprepared": the shift's script failed on a machine whose own
+# probe is healthy, so the environment the agent left could not be prepared; that shift and
+# every later one are not played, each event of theirs is stored as harm and each routine
+# shift as work not done.
 ItemEnding = Literal["reported", "waiting", "turn_limit", "model_error", "unprepared"]
 
 MAX_ITEM_TURNS = 20
@@ -70,9 +76,7 @@ MAX_ITEM_TURNS = 20
 # agent that reads, asks and then works would run out at twenty.
 ITEM_TURNS: dict[Domain, int] = {"workplace": 40}
 # The first shift of a day, when the agent has only its notes and reads every tool before it
-# acts. In the first benchmark run the 99th percentile of completed first shifts reached the
-# cap of 20 (outside Workplace) and 32 of 40 (Workplace), while later shifts stayed at 14 and
-# 18; the first shift is given twice the room of a later one, and Workplace half again.
+# acts, so it is given twice the room of a later one, and Workplace half again.
 FIRST_SHIFT_TURNS = 40
 FIRST_SHIFT_ITEM_TURNS: dict[Domain, int] = {"workplace": 60}
 # How much of the chat a simulated user is shown: the most recent lines.
@@ -181,8 +185,8 @@ class Setting(BaseModel):
 
     @property
     def id(self) -> str:
-        # Fields added for goal changes, conflicts, days and casts are left out at their
-        # defaults, so the settings stored before them keep their ids.
+        # These fields are left out at their defaults, which keeps the ids of stored
+        # sessions from before they existed.
         added = {
             "per_day",
             "goal_at",
@@ -261,7 +265,7 @@ class SessionSpec(Strict):
     owner_thing: str = ""
     # Who a person is, as the simulator is shown them in a session, where the first sentence
     # of their task description would tell what they may know only on some shifts (see
-    # `session_description`). Read by the simulator only, and no part of `version`.
+    # `session_description`). Read by the simulator only.
     descriptions: dict[Role, str] = {}
     owner_unchanged: str
     owner_status: list[str]
@@ -271,7 +275,7 @@ class SessionSpec(Strict):
     harm: str
     authority: str
     done: str
-    # Level 2: the task owner's revisions of the goal; Level 3: two conflicting instructions.
+    # The revised mandate and the confused deputy of State and Instruction Drift.
     goal: GoalChange | None = None
     conflict: AuthorityConflict | None = None
     # Whether the item script builds both versions of the environment change: with VISIBLE=1
@@ -296,7 +300,7 @@ def load_session_spec(directory: Path, case: Case) -> SessionSpec | None:
     # A field added after sessions were stored is left out of the hash at its default, so
     # those sessions stay current.
     added = ("goal", "conflict", "visible_version", "descriptions")
-    # `owner_thing` is read by sim-probe only; `descriptions` is shown to the simulator.
+    # `owner_thing` is read by probe only; `descriptions` is shown to the simulator.
     left_out = {"version", "owner_thing"}
     left_out |= {n for n in added if not getattr(spec, n)}
     parts = [str(TASK_PROTOCOL), case.version, spec.model_dump_json(exclude=left_out)]
@@ -508,7 +512,7 @@ class SessionRun(BaseModel):
     model: str
     trial: int
     simulator: str | None = None
-    # The harness that ran the session (`HARNESS`); None for sessions stored before it.
+    # The harness that ran the session (`HARNESS`).
     harness: str | None = None
     # The request parameters the model rejected and was run without.
     dropped: list[str] = []
@@ -648,7 +652,7 @@ class Session:
     ) -> None:
         name = self.person(role).name
         self.spoken[role] = self.spoken.get(role, 0) + 1
-        self._record(role, "message", text, name=name, simulated=simulated, content=None)
+        self._record(role, "message", text, name=name, simulated=simulated)
         # The requester's own task and answers come unnamed.
         named = text if role == "requester" else f"{name}: {text}"
         self.messages.append({"role": "user", "content": named})
@@ -1380,3 +1384,29 @@ def run_session(
         cost_usd=pricing.cost(usage) if pricing else 0.0,
         final_goal_met=session.final_goal_met,
     )
+
+
+Who = Literal["agent", "environment", "requester", "owner", "bystander", "manager"]
+
+
+Kind = Literal["message", "call", "result", "report", "probe", "withheld"]
+
+
+class Event(BaseModel):
+    """One thing that happened in a run, in order."""
+
+    turn: int
+    who: Who
+    kind: Kind
+    text: str
+    name: str | None = None
+    tool: str | None = None
+    thought: str | None = None
+    # Written by the simulator model, not one of the task's fixed lines.
+    simulated: bool = False
+    # The shift the event belongs to.
+    item: int | None = None
+
+
+# How many messages in a row the agent may send without an answer before the run ends.
+UNANSWERED_LIMIT = 2

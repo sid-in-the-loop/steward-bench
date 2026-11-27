@@ -10,8 +10,8 @@ from pathlib import Path
 
 import yaml
 
-from steward.cases.case import case_directories, load_case
-from steward.cases.sessions import load_session_spec
+from steward.session import load_session_spec
+from steward.task import case_directories, load_case
 
 # A sentence shared by this many tasks or more reads as a template.
 TEMPLATE_TASKS = 3

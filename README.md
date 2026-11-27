@@ -85,21 +85,21 @@ Every command is `uv run steward <command>`; `--help` on any of them lists its o
 
 | Command | What it does |
 |---|---|
-| `session-build --benchmark [--case ID] [--check-only] [--workers N]` | Builds each task's environment and replays its references on the benchmark schedule (docs/running.md). Prints `<id>: ok` for a task that passes |
-| `bench-estimate --model M [--model M2] [--trials N] [--condition sd\|sid]` | Prints the cost of the whole planned benchmark per model and for the simulator. Calls nothing |
-| `session-run --model M --condition sd\|sid [--trials N] [--max-usd X] [--confirm]` | Runs the benchmark sessions not yet stored. Without `--confirm` it prints the estimate and stops |
-| `sim-probe [--case ID] [--simulator-model M] [--confirm]` | Sends the user simulator fixed probes with no agent and grades its replies |
-| `bench-score --model M [--model M2] --simulator-model S\|none` | Prints every metric per model and condition from the stored sessions, and the difference between each pair of models |
+| `check [--case ID] [--check-only] [--workers N]` | Builds each task's environment and replays its references on the benchmark schedule (docs/running.md). Prints `<id>: ok` for a task that passes |
+| `estimate --model M [--model M2] [--trials N] [--condition sd\|sid]` | Prints the cost of the whole planned benchmark per model and for the simulator. Calls nothing |
+| `run --model M --condition sd\|sid [--trials N] [--max-usd X] [--confirm]` | Runs the benchmark sessions not yet stored. Without `--confirm` it prints the estimate and stops |
+| `probe [--case ID] [--simulator-model M] [--confirm]` | Sends the user simulator fixed probes with no agent and grades its replies |
+| `score --model M [--model M2] --simulator-model S\|none` | Prints every metric per model and condition from the stored sessions, and the difference between each pair of models |
 | `lint-tasks` | Lists repeated names, shared sentences and loose disclose patterns across tasks |
 
 A first run on one model:
 
 ```bash
-uv run steward session-build --benchmark --workers 3          # once, after cloning
-uv run steward bench-estimate --model gpt-6-luna
-uv run steward session-run --model gpt-6-luna --condition sd --condition sid           # estimate
-uv run steward session-run --model gpt-6-luna --condition sd --condition sid --confirm
-uv run steward bench-score --model gpt-6-luna --simulator-model claude-sonnet-5-5
+uv run steward check --workers 3          # once, after cloning
+uv run steward estimate --model gpt-6-luna
+uv run steward run --model gpt-6-luna --condition sd --condition sid           # estimate
+uv run steward run --model gpt-6-luna --condition sd --condition sid --confirm
+uv run steward score --model gpt-6-luna --simulator-model claude-sonnet-5-5
 ```
 
 `--simulator-model none` leaves the people their fixed lines and makes no simulator calls,
@@ -134,11 +134,11 @@ scripts/check           the gates run before every commit and push
 ## Costs
 
 Every command that calls a model prints an estimate first and makes no call without
-`--confirm`; `session-run` also stops starting sessions at `--max-usd` (default $25), counting
-the tested model and the simulator together. Prices are in `steward/cases/prices.py`, each
+`--confirm`; `run` also stops starting sessions at `--max-usd` (default $25), counting
+the tested model and the simulator together. Prices are in `steward/prices.py`, each
 with the provider's page it was read from. A session of gpt-6-luna has cost about $0.017; the
 whole benchmark on one model, both conditions and one trial, is 240 sessions.
-`bench-estimate` gives the current figure for any priced model.
+`estimate` gives the current figure for any priced model.
 
 ## Limitations
 

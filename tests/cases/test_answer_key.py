@@ -4,11 +4,11 @@ import asyncio
 import os
 from pathlib import Path
 
-from steward.cases.answer_key import AnswerKey
-from steward.cases.case import Case
-from steward.cases.sessions import Session, SessionSpec, Setting
+from steward.answer_key import AnswerKey
 from steward.execution.policy import Turn
 from steward.execution.record import Action
+from steward.session import Session, SessionSpec, Setting
+from steward.task import Case
 
 
 def key_in(tmp_path: Path) -> AnswerKey:

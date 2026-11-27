@@ -14,7 +14,7 @@ import random
 import re
 from typing import Literal
 
-from steward.cases.case import Person, Role, Strict
+from steward.task import Person, Role, Strict
 
 Wording = Literal["terse", "rambling", "formal", "casual", "hurried", "second-language"]
 Availability = Literal["prompt", "slow", "brief"]

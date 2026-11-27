@@ -1,13 +1,13 @@
-"""What `session-build --benchmark` counts as a problem and what as a warning."""
+"""What `check` counts as a problem and what as a warning."""
 
 from types import SimpleNamespace
 
 import pytest
 
-import steward.cases.session_commands as commands
-from steward.cases.case import Case, Reference
-from steward.cases.changes import GoalChange, GoalStep
-from steward.cases.sessions import ItemResult, SessionSpec, Setting
+import steward.check as commands
+from steward.changes import GoalChange, GoalStep
+from steward.session import ItemResult, SessionSpec, Setting
+from steward.task import Case, Reference
 
 SETTING = Setting(items=4, changed=(2,), users=1, per_day=2, goal_at=(4,))
 

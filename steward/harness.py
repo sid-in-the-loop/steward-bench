@@ -15,21 +15,11 @@ import hashlib
 from pathlib import Path
 
 SESSION_MODULES = (
-    "steward.cases",
-    "steward.cases.answer_key",
-    "steward.cases.case",
-    "steward.cases.casting",
-    "steward.cases.changes",
-    "steward.cases.clock",
-    "steward.cases.harness",
-    "steward.cases.postgres",
-    "steward.cases.prices",
-    "steward.cases.run",
-    "steward.cases.sandbox",
-    "steward.cases.schedule",
-    "steward.cases.sessions",
-    "steward.cases.simulator",
-    "steward.cases.tripwire",
+    "steward",
+    "steward.answer_key",
+    "steward.casting",
+    "steward.changes",
+    "steward.clock",
     "steward.config",
     "steward.environment.fidelity",
     "steward.environment.gym",
@@ -42,11 +32,22 @@ SESSION_MODULES = (
     "steward.execution.history",
     "steward.execution.policy",
     "steward.execution.record",
+    "steward.harness",
+    "steward.models",
+    "steward.postgres",
+    "steward.prepare",
+    "steward.prices",
+    "steward.sandbox",
+    "steward.schedule",
     "steward.schema",
+    "steward.session",
+    "steward.simulator",
     "steward.store",
+    "steward.task",
+    "steward.tripwire",
 )
 # The directory that holds the steward package.
-SOURCE_ROOT = Path(__file__).resolve().parents[2]
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
 
 
 def module_path(module: str, root: Path = SOURCE_ROOT) -> Path:

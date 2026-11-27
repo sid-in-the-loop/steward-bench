@@ -2,7 +2,7 @@
 
 import httpx
 
-from steward.cases.throttle import FIRST_LOOP_SECONDS, MARGIN_SECONDS, Deadline, Throttle
+from steward.throttle import FIRST_LOOP_SECONDS, MARGIN_SECONDS, Deadline, Throttle
 
 
 def throttle(load: float = 0.1, start: int = 4, ceiling: int = 10) -> Throttle:

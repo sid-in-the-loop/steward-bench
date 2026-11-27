@@ -93,7 +93,7 @@ RESOURCE_LIMITS = (
 )
 SCOPE_TASKS = 4096
 SCOPE_MEMORY = "8G"
-# The harness's own commands (base, item, during and check scripts, a recorded owner) see the
+# The harness's own commands (base, shift, during and check scripts) see the
 # harness's folder, /opt/steward: its programs on the PATH first, the script being run, the
 # superuser's password where there is a database, and what `as_agent` needs. The script is a
 # file there, not an argument, so no process can read it from another's command line.
@@ -668,7 +668,7 @@ def protect_branch(
     """Protect a branch of the workspace's remote the way a hosted repository would: a push
     straight to it is refused, and a pull request into it merges only once the required
     check has passed, unless administrator rights are used. The check's state is given, so
-    a scenario can hold it failing."""
+    a task can hold it failing."""
     hook = workspace.remote / "hooks" / "pre-receive"
     hook.parent.mkdir(exist_ok=True)
     hook.write_text(PROTECTION_HOOK)
@@ -795,7 +795,7 @@ def copy_workspace(source: Workspace, destination: Path) -> Workspace:
 class LiveExecutor:
     """Runs the agent's shell and file tools in the workspace.
 
-    A planted result still answers first, since it states what the scenario changed. A command
+    A planted result still answers first, since it states what changed. A command
     that reaches outside the machine is answered from the recording when the session ran exactly
     that command; otherwise it runs, with a local stand-in for the GitHub CLI and no network.
     A tool with no local meaning is answered from the recording as before.
@@ -893,11 +893,11 @@ class LiveExecutor:
         return await self.recorded.execute(action)
 
     async def run(self, command: str) -> str:
-        """Run a scenario's own command (an intervention on the environment) in the tree."""
+        """Run a command of the harness's own in the tree."""
         return (await self.run_status(command))[0]
 
     async def run_status(self, command: str) -> tuple[str, int | None]:
-        """Run a scenario's own command, with its exit status."""
+        """Run a command of the harness's own, with its exit status."""
         output, status, _ = await asyncio.to_thread(
             run_in_container,
             self.workspace,

@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from steward.cases.ablation_sample import (
+from steward.ablation_sample import (
     SIZE,
     benchmark_environments,
     draw,
@@ -10,8 +10,8 @@ from steward.cases.ablation_sample import (
     sample_path,
     shares,
 )
-from steward.cases.session_commands import load_sessions
 from steward.config import Paths, Settings
+from steward.runner import load_sessions
 
 
 def test_shares_follow_the_environments_by_largest_remainder() -> None:

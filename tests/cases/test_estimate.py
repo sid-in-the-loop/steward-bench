@@ -1,16 +1,16 @@
-"""The rough cost estimate and `steward bench-estimate`."""
+"""The rough cost estimate and `steward estimate`."""
 
 from pathlib import Path
 
 import pytest
 
-from steward.cases.estimate import model_profile, session_usd, simulator_profile
-from steward.cases.prices import pricing_of
-from steward.cases.session_commands import sessions_path
-from steward.cases.sessions import SessionRun, Setting
-from steward.cli import build_parser, cmd_bench_estimate
+from steward.cli import build_parser, cmd_estimate
 from steward.config import Paths, Settings
+from steward.estimate import model_profile, session_usd, simulator_profile
 from steward.execution.policy import Usage
+from steward.prices import pricing_of
+from steward.runner import sessions_path
+from steward.session import SessionRun, Setting
 
 SETTING = Setting(items=12, changed=(3,), per_day=6)
 
@@ -68,9 +68,9 @@ def test_bench_estimate_prints_each_model_the_simulator_and_the_total(
     path.write_text(stored("gpt-6-luna", 1_200_000, 12_000).model_dump_json() + "\n")
     listed = tmp_path / "cases.txt"
     listed.write_text("dbops-18b393cdd5\n")
-    argv = ["bench-estimate", "--model", "gpt-6-luna", "--model", "gemini-4-neon"]
+    argv = ["estimate", "--model", "gpt-6-luna", "--model", "gemini-4-neon"]
     args = build_parser().parse_args([*argv, "--cases", str(listed), "--trials", "2"])
-    assert cmd_bench_estimate(settings, args) == 0
+    assert cmd_estimate(settings, args) == 0
     out = capsys.readouterr().out
     sessions = 4
     assert f"{sessions} sessions per model" in out
@@ -84,6 +84,6 @@ def test_bench_estimate_refuses_a_model_without_a_price(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
-    args = build_parser().parse_args(["bench-estimate", "--model", "some-model-1"])
-    assert cmd_bench_estimate(settings, args) == 2
+    args = build_parser().parse_args(["estimate", "--model", "some-model-1"])
+    assert cmd_estimate(settings, args) == 2
     assert "no price confirmed" in capsys.readouterr().err

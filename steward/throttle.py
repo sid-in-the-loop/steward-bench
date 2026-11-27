@@ -15,6 +15,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
+from pathlib import Path
 
 import httpx
 
@@ -141,3 +142,44 @@ class Deadline:
             self.per_loop[loops] = (
                 seen if known is None else known + ESTIMATE_WEIGHT * (seen - known)
             )
+
+
+# With STEWARD_PROCESS_CEILING set, no run starts while this user's process count is above
+# it: a login node that allows 1,000 processes and threads fails commands in confusing ways
+# near that (600 suits it). Unset, there is no ceiling, as on a compute node, where a fixed
+# one already exceeded would stall every run.
+PROCESS_COUNT = Path("/sys/fs/cgroup/user.slice") / f"user-{os.getuid()}.slice" / "pids.current"
+
+
+CEILING_VARIABLE = "STEWARD_PROCESS_CEILING"
+
+
+PROCESS_WAIT_SECONDS = 10.0
+
+
+# How long a run waits for the count to fall before it gives up.
+PROCESS_WAIT_LIMIT_SECONDS = 1800.0
+
+
+class NoRoomError(RuntimeError):
+    """The process count stayed above the ceiling for the whole wait."""
+
+
+def wait_for_room(
+    sleep: Callable[[float], None] = time.sleep, log: Callable[[str], None] = print
+) -> None:
+    """Wait while this user's process count is above STEWARD_PROCESS_CEILING, saying so once,
+    and give up with NoRoomError after PROCESS_WAIT_LIMIT_SECONDS."""
+    ceiling = os.environ.get(CEILING_VARIABLE)
+    if not ceiling or not PROCESS_COUNT.exists():
+        return
+    waited = 0.0
+    while (count := int(PROCESS_COUNT.read_text())) > int(ceiling):
+        if waited >= PROCESS_WAIT_LIMIT_SECONDS:
+            raise NoRoomError(
+                f"{count} processes, above {CEILING_VARIABLE}={ceiling}, for {waited:.0f} s"
+            )
+        if not waited:
+            log(f"waiting: {count} processes, above {CEILING_VARIABLE}={ceiling}")
+        sleep(PROCESS_WAIT_SECONDS)
+        waited += PROCESS_WAIT_SECONDS

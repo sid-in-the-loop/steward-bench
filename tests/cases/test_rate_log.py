@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 
-from steward.cases.rate_log import RateLog, log_while, usage_of
+from steward.rate_log import RateLog, log_while, usage_of
 
 
 def response(status: int, body: object | None = None, **headers: str) -> httpx.Response:

@@ -5,9 +5,9 @@ Every command is `uv run steward <command>`. Paths below are under the data fold
 
 ## Building and checking the tasks
 
-    steward session-build --benchmark [--case ID] [--check-only] [--workers N] [--one-date]
+    steward check [--case ID] [--check-only] [--workers N] [--one-date]
 
-`session-build` builds each repository task's environment into `cases/built_sessions/<task>/`
+`check` builds each repository task's environment into `cases/built_sessions/<task>/`
 (`--check-only` uses the built one) and replays scripted agents on the benchmark schedule of
 trials 0 and 1 under every condition the task has. A task passes when:
 
@@ -21,7 +21,7 @@ trials 0 and 1 under every condition the task has. A task passes when:
   later one passes every later shift;
 - under State and Instruction Drift an agent harmful on the confused-deputy shift, idle on each
   revocation shift and safe elsewhere completes its routine shifts after the conflict as
-  `bench-score` reads them;
+  `score` reads them;
 - no replay sets off the tripwire for a copied key.
 
 An agent that does nothing and still passes done on a routine shift is a warning, not a
@@ -31,11 +31,11 @@ passes.
 
 ## Running sessions
 
-    steward session-run --model M [--case ID] --condition sd|sid [--trials N]
+    steward run --model M [--case ID] --condition sd|sid [--trials N]
                         [--simulator-model M|none] [--workers N] [--start N]
                         [--max-usd X] [--retry-failed] [--confirm]
 
-`session-run` runs the benchmark sessions of each model not yet stored, under State Drift
+`run` runs the benchmark sessions of each model not yet stored, under State Drift
 (`sd`), State and Instruction Drift (`sid`) or both. Without `--confirm` it prints the estimate
 and stops. It runs one trial unless `--trials` says otherwise, and at most the two trials that
 validation replays. The longest sessions are run first.
@@ -46,13 +46,13 @@ Responses API, with the same instructions and the same reply cache. `none` leave
 fixed lines and makes no simulator calls.
 
 `--start` begins with that many sessions at once and adds more, up to `--workers`, while the
-provider answers without rate limits (`steward/cases/throttle.py`). `--max-usd` (default $25)
+provider answers without rate limits (`steward/throttle.py`). `--max-usd` (default $25)
 holds for the tested models and the simulator together, failed sessions included: a session
 starts only when its expected cost fits beside what is spent and what the running sessions
 hold.
 
-The tested models with an endpoint are listed in `MODELS` in `steward/cases/commands.py`, at
-their prices in `PRICES` in `steward/cases/prices.py`. A model that has no price there, or no
+The tested models with an endpoint are listed in `MODELS` in `steward/models.py`, at
+their prices in `PRICES` in `steward/prices.py`. A model that has no price there, or no
 endpoint, is refused with a message. The OpenAI models are called through the Responses API
 and the Claude models through the Messages API (`steward/execution/anthropic_policy.py`).
 
@@ -60,7 +60,7 @@ and the Claude models through the Messages API (`steward/execution/anthropic_pol
 
 Sessions are appended to `cases/sessions/<model>.jsonl`. A stored session stands in for a new
 one only when the task's version, the simulator (or none) and the harness are the same. The
-harness version (`harness` in each session, `steward/cases/harness.py`) is the loop's protocol
+harness version (`harness` in each session, `steward/harness.py`) is the loop's protocol
 number with a hash of the source of every module on the session path, so any change to a tool
 description, a result string, a turn cap or a text sent to the agent or the simulator leaves
 the sessions run before it out of date. A test fails when the session path comes to import a
@@ -102,28 +102,28 @@ Workplace, since the agent then has only its notes and reads its tools first.
 At each new day the conversation starts again from the inherited start, and the agent keeps
 only its own reports of the day before, newest first, up to 6,000 characters. Every script and,
 in the repository environments, every command of the agent gets `TZ` and `PGTZ` set so its
-local date is the session's date (`steward/cases/clock.py`).
+local date is the session's date (`steward/clock.py`).
 
 Tool output longer than 20,000 characters is cut, keeping its beginning and its last 2,000
 characters. In a repository task the remote is shown as the GitHub repository it stands in for.
 
 ## Estimating cost
 
-    steward bench-estimate --model M [--model M2] [--trials N] [--cases FILE]
+    steward estimate --model M [--model M2] [--trials N] [--cases FILE]
                            [--condition sd|sid] [--simulator-model M|none]
 
-`bench-estimate` prints the cost of the whole planned benchmark per model, the simulator's cost
+`estimate` prints the cost of the whole planned benchmark per model, the simulator's cost
 on its own line and the total, and runs nothing. A model's tokens per shift come from its own
 stored sessions where it has any, otherwise from the average of the stored models; the line
 says which. `--cases` takes a file of task IDs, one a line, such as `cases/ablation_sample.txt`,
-the fixed sample of 40 tasks the ablations run on (`steward/cases/ablation_sample.py`).
-`session-run` prints the same estimate for the sessions not yet stored.
+the fixed sample of 40 tasks the ablations run on (`steward/ablation_sample.py`).
+`run` prints the same estimate for the sessions not yet stored.
 
 ## Probing the simulator
 
-    steward sim-probe [--case ID] [--simulator-model M] [--workers N] [--confirm]
+    steward probe [--case ID] [--simulator-model M] [--workers N] [--confirm]
 
-`sim-probe` (`steward/cases/sim_probe.py`) checks the simulator's reveal rule with no agent.
+`probe` (`steward/probe.py`) checks the simulator's reveal rule with no agent.
 Each person who holds a fact on a shift is sent fixed probes through the session's own reply
 path, after every shift up to it has been opened as a session opens it:
 

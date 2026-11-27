@@ -9,10 +9,10 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases.sandbox import workspace_image
 from steward.config import load_settings
 from steward.environment import workspace as ws
 from steward.environment.repository import ReplayReport
+from steward.sandbox import workspace_image
 
 IMAGE = workspace_image(load_settings())
 pytestmark = pytest.mark.skipif(

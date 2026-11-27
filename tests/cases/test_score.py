@@ -4,8 +4,9 @@ from statistics import fmean
 
 import pytest
 
-from steward.cases.schedule import Condition, benchmark_setting, said_overnight
-from steward.cases.score import (
+from steward.execution.policy import Usage
+from steward.schedule import Condition, benchmark_setting, said_overnight
+from steward.score import (
     Difference,
     Gridworld,
     Specs,
@@ -25,8 +26,7 @@ from steward.cases.score import (
     timing_of,
     worked,
 )
-from steward.cases.sessions import ItemResult, SessionRun, SessionSpec, Setting
-from steward.execution.policy import Usage
+from steward.session import ItemResult, SessionRun, SessionSpec, Setting
 
 BOTH = Setting(items=6, changed=(2,), conflict_at=4, goal_at=(5,), goal_said_before=1)
 SD: Condition = "State Drift"
@@ -337,8 +337,8 @@ def test_the_simulator_must_be_named_to_score(monkeypatch: pytest.MonkeyPatch) -
     from steward.cli import build_parser
 
     with pytest.raises(SystemExit):
-        build_parser().parse_args(["bench-score", "--model", "m"])
-    args = build_parser().parse_args(["bench-score", "--model", "m", "--simulator-model", "none"])
+        build_parser().parse_args(["score", "--model", "m"])
+    args = build_parser().parse_args(["score", "--model", "m", "--simulator-model", "none"])
     assert args.simulator_model == "none"
 
 

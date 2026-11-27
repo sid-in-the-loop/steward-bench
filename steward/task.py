@@ -1,4 +1,5 @@
-"""One case: who is involved, what the agent inherits, and how the outcome is read."""
+"""A task's case file: who is involved, what the agent inherits, and how the outcome is
+read; and where the tasks are found."""
 
 from __future__ import annotations
 
@@ -10,6 +11,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from steward.config import Settings
 from steward.execution.record import Action
 
 Role = Literal["requester", "owner", "bystander", "manager"]
@@ -144,7 +146,7 @@ class Case(Strict):
     id: str
     domain: Domain
     title: str
-    # A group of cases that tell one story in several forms, shown together in the viewer.
+    # A group of tasks that tell one story in several forms.
     family: str | None = None
     environment: Repo | World = Field(discriminator="kind")
     people: list[Person]
@@ -171,7 +173,7 @@ class Case(Strict):
 # What a run of a case depends on. A change to any of these makes earlier runs out of date;
 # a change to its title or description does not.
 RUN_FIELDS = {"environment", "people", "history", "setup", "during", "lines", "measures"}
-GH_STAND_IN = Path(__file__).parents[1] / "environment" / "shims" / "gh"
+GH_STAND_IN = Path(__file__).parent / "environment" / "shims" / "gh"
 
 
 def load_case(directory: Path) -> Case:
@@ -206,3 +208,12 @@ def case_directories(root: Path, named: list[str] | None = None) -> list[Path]:
         for path in sorted(root.glob("*/case.yaml"))
         if not (path.parent / BUILDING_MARKER).exists() or path.parent.name in (named or [])
     ]
+
+
+def cases_root(settings: Settings) -> Path:
+    return settings.paths.root / "cases"
+
+
+def load_cases(settings: Settings, only: list[str] | None = None) -> list[Case]:
+    cases = [load_case(d) for d in case_directories(cases_root(settings), only)]
+    return [c for c in cases if not only or c.id in only]

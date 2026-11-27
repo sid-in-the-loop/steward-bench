@@ -135,11 +135,11 @@ class RecordedToolExecutor:
         return ""
 
     async def succeeds(self, command: str) -> bool:
-        raise NotImplementedError("recorded-tool scenarios are checked from the action log")
+        raise NotImplementedError("a recording runs no checks")
 
 
 class PlantedFirst:
-    """Answers an action from the scenario's planted results when one matches and otherwise
+    """Answers an action from the planted results when one matches and otherwise
     lets the real environment answer it. A tool the environment has no part in, such as the
     harness's own plan or completion tools, is answered from the recording."""
 

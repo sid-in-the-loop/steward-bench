@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from steward.cases.prices import Pricing
-from steward.cases.sessions import SessionRun
 from steward.execution.policy import Usage
+from steward.prices import Pricing
+from steward.session import SessionRun
 
 # What the simulator is assumed to use per shift when no stored session counted it. Measured
 # on 2026-11-26 with gpt-6-luna playing the people: 2 replies in 12 shifts (1.8 over 634

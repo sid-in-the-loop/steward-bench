@@ -51,11 +51,12 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from steward.cases.case import Case, Reference, Role
-from steward.cases.changes import goal_step
-from steward.cases.prices import Pricing
-from steward.cases.schedule import Condition, benchmark_setting, conditions_of
-from steward.cases.sessions import (
+from steward.changes import goal_step
+from steward.config import Settings
+from steward.execution.policy import Usage
+from steward.prices import Pricing
+from steward.schedule import Condition, benchmark_setting, conditions_of
+from steward.session import (
     REVEAL_WORDS,
     ScriptedItems,
     Session,
@@ -65,9 +66,8 @@ from steward.cases.sessions import (
     run_session,
     words,
 )
-from steward.cases.simulator import CachedSimulator, SimulatorFailedError
-from steward.config import Settings
-from steward.execution.policy import Usage
+from steward.simulator import CachedSimulator, SimulatorFailedError
+from steward.task import Case, Reference, Role
 
 Probe = Literal["P1", "P2", "P3", "P4", "P5"]
 PROBES: tuple[Probe, ...] = ("P1", "P2", "P3", "P4", "P5")

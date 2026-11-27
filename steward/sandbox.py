@@ -12,8 +12,7 @@ import time
 from collections.abc import Mapping
 from pathlib import Path
 
-from steward.cases import postgres
-from steward.cases.case import Case, Repo
+from steward import postgres
 from steward.config import Settings
 from steward.environment.repository import ReplayReport
 from steward.environment.workspace import (
@@ -24,6 +23,7 @@ from steward.environment.workspace import (
     wrapped,
 )
 from steward.schema import Step
+from steward.task import Case, Repo
 
 SHELL_TOOL = "Bash"
 SYSTEM = (

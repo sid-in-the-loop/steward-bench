@@ -1,11 +1,10 @@
-"""Run one case under one condition: the model continues the inherited session in the case's
-live environment, and the measures are read from the state it leaves."""
+"""A task's environment ready for a session: its repository or Workplace world, how checks
+are read from it, and how a machine fault is told from the agent's own doing."""
 
 from __future__ import annotations
 
 import asyncio
 import getpass
-import hashlib
 import re
 import secrets
 import shutil
@@ -14,23 +13,12 @@ import subprocess
 import tempfile
 from collections.abc import Awaitable, Callable
 from pathlib import Path, PurePosixPath
-from typing import Any, Literal, Protocol
+from typing import Any, Protocol
 
-import anthropic
-import httpx
 from pydantic import BaseModel
 
-from steward.cases import postgres, sandbox
-from steward.cases.answer_key import AnswerKey
-from steward.cases.case import Case, Database, Repo, World
-from steward.cases.prices import Pricing
-from steward.cases.sandbox import (
-    IN_ORDER,
-    MACHINE_FAULTS,
-    RUNTIME_FAILURES,
-    RUNTIME_RETRIES,
-    workspace_image,
-)
+from steward import postgres, sandbox
+from steward.answer_key import AnswerKey
 from steward.config import Settings
 from steward.environment.gym import GymExecutor
 from steward.environment.gym_sessions import tools_of, world_at
@@ -42,78 +30,22 @@ from steward.environment.workspace import (
     Workspace,
     copy_workspace,
 )
-from steward.execution.anthropic_policy import MAX_RETRIES, AnthropicPolicy
 from steward.execution.history import REPORT_TOOL, fit_history, to_messages, tool_definitions
-from steward.execution.policy import Dialect, Message, ModelPolicy, Policy
+from steward.execution.policy import Message
 from steward.execution.record import Action, Executor
+from steward.sandbox import (
+    IN_ORDER,
+    MACHINE_FAULTS,
+    RUNTIME_FAILURES,
+    RUNTIME_RETRIES,
+    workspace_image,
+)
 from steward.store import load_by_ids
+from steward.task import Case, Database, Repo, World
 
 HISTORY_TOKENS = 150_000
 STATUS_MARK = "__status__"
 CHECK_OUTPUT_LIMIT = 400
-
-Who = Literal["agent", "environment", "requester", "owner", "bystander", "manager"]
-Kind = Literal["message", "call", "result", "report", "probe", "withheld"]
-# How many messages in a row the agent may send without an answer before the run ends.
-UNANSWERED_LIMIT = 2
-
-
-class Event(BaseModel):
-    """One thing that happened in a run, in order."""
-
-    turn: int
-    who: Who
-    kind: Kind
-    text: str
-    name: str | None = None
-    tool: str | None = None
-    thought: str | None = None
-    # Written by the simulator model, not one of the case's fixed lines.
-    simulated: bool = False
-    # The kind of unprompted message, where it was drawn from a case's message bank.
-    content: str | None = None
-    # The work item the event belongs to, in a session of several.
-    item: int | None = None
-
-
-class Model(BaseModel):
-    """A tested model and where it is served."""
-
-    name: str
-    base_url: str = "https://api.openai.com/v1"
-    api_key_env: str = "OPENAI_API_KEY"
-    dialect: Dialect | Literal["anthropic"] = "openai"
-    pricing: Pricing
-
-
-class ReasoningPolicy(ModelPolicy):
-    """A model policy that also asks for a summary of the model's reasoning and keeps the one
-    from the latest turn. A model that rejects the request is run without it."""
-
-    thought: str | None = None
-
-    def request_body(self, messages: list[Message]) -> dict[str, Any]:
-        body = super().request_body(messages)
-        if self.dialect == "openai" and "reasoning" not in self.dropped:
-            body["reasoning"] = {"summary": "auto"}
-        return body
-
-    def post(self, messages: list[Message]) -> dict[str, Any]:
-        try:
-            body = super().post(messages)
-        except httpx.HTTPStatusError as error:
-            if error.response.status_code != 400 or "reasoning" not in error.response.text:
-                raise
-            self.dropped.append("reasoning")
-            body = super().post(messages)
-        parts = [
-            part.get("text") or ""
-            for item in body.get("output") or []
-            if item.get("type") == "reasoning"
-            for part in item.get("summary") or []
-        ]
-        self.thought = "\n\n".join(p for p in parts if p) or None
-        return body
 
 
 class RetryingExecutor(LiveExecutor):
@@ -403,15 +335,3 @@ def prepare_world(settings: Settings, case: Case) -> Prepared:
         tools=tools_of(world),
         close=close,
     )
-
-
-PolicyFor = Callable[[list[Message]], Policy]
-
-
-def model_policy(client: httpx.Client, model: Model, case: Case) -> PolicyFor:
-    if model.dialect == "anthropic":
-        claude = anthropic.Anthropic(max_retries=MAX_RETRIES)
-        return lambda tools: AnthropicPolicy(claude, model.name, tools)
-    dialect = model.dialect
-    key = hashlib.sha1(case.id.encode()).hexdigest()[:16]
-    return lambda tools: ReasoningPolicy(client, model.name, tools, dialect=dialect, cache_key=key)

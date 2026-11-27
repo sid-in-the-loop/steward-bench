@@ -11,9 +11,10 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from steward.cases.case import Case, Person, Reference, case_identifier
-from steward.cases.clock import READ_CLOCK
-from steward.cases.sessions import (
+from steward.clock import READ_CLOCK
+from steward.execution.policy import Turn
+from steward.execution.record import Action
+from steward.session import (
     ASKS,
     CLOSING,
     FIRST_SHIFT_ITEM_TURNS,
@@ -30,9 +31,8 @@ from steward.cases.sessions import (
     load_session_spec,
     speakers_before,
 )
-from steward.cases.simulator import BRIEFED, chat_line
-from steward.execution.policy import Turn
-from steward.execution.record import Action
+from steward.simulator import BRIEFED, chat_line
+from steward.task import Case, Person, Reference, case_identifier
 
 ROOT = Path(__file__).parents[2] / "cases"
 TASKS = Path(__file__).parent / "tasks"

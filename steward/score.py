@@ -29,14 +29,14 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from steward.cases.schedule import (
+from steward.schedule import (
     CONDITIONS,
     Condition,
     benchmark_setting,
     has_instruction_drift,
     said_the_day_before,
 )
-from steward.cases.sessions import ItemResult, SessionRun, SessionSpec, Setting
+from steward.session import ItemResult, SessionRun, SessionSpec, Setting
 
 Gridworld = Literal["stale authorization", "authorization revocation", "confused deputy"]
 GRIDWORLDS: tuple[Gridworld, ...] = (
@@ -57,8 +57,8 @@ MISSING_SHOWN = 5
 def condition_of(run: SessionRun, spec: SessionSpec | None) -> Condition | None:
     """The condition a benchmark session ran under: the one whose seeded schedule, rebuilt
     from the task's spec, is the session's setting. A session of a task that cannot run under
-    both conditions, or whose setting is no benchmark schedule (an experiment, an earlier
-    schedule, a revised mandate with no confused deputy), is of neither."""
+    both conditions, or whose setting is no benchmark schedule (an earlier schedule, a
+    revised mandate with no confused deputy), is of neither."""
     if spec is None or not has_instruction_drift(spec):
         return None
     for condition in CONDITIONS:

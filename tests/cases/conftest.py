@@ -4,9 +4,9 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases.case import Case, Reference, load_case
-from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
-from steward.cases.sessions import SessionSpec, load_session_spec
+from steward.changes import AuthorityConflict, GoalChange, GoalStep
+from steward.session import SessionSpec, load_session_spec
+from steward.task import Case, Reference, load_case
 
 ROOT = Path(__file__).parent / "tasks"
 

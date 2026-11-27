@@ -7,8 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import get_args
 
-from steward.cases.case import DOMAIN_NAMES, Domain, Repo, case_identifier, load_case
-from steward.cases.sessions import load_session_spec
+from steward.session import load_session_spec
+from steward.task import DOMAIN_NAMES, Domain, Repo, case_identifier, load_case
 
 CASES = Path(__file__).parents[2] / "cases"
 BASE = CASES / "_bases" / "home.sh"

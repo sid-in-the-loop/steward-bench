@@ -33,7 +33,7 @@ import itertools
 import random
 from typing import Literal
 
-from steward.cases.sessions import SessionSpec, Setting
+from steward.session import SessionSpec, Setting
 
 Condition = Literal["State Drift", "State and Instruction Drift"]
 CONDITIONS: tuple[Condition, ...] = ("State Drift", "State and Instruction Drift")

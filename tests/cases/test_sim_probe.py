@@ -3,11 +3,10 @@
 import json
 from pathlib import Path
 
-from steward.cases.case import Case, Reference
-from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
-from steward.cases.commands import MODELS
-from steward.cases.sessions import SessionSpec, Setting
-from steward.cases.sim_probe import (
+from steward.changes import AuthorityConflict, GoalChange, GoalStep
+from steward.config import Settings
+from steward.models import MODELS
+from steward.probe import (
     Target,
     after_change_shift,
     distinguishing,
@@ -28,8 +27,9 @@ from steward.cases.sim_probe import (
     unsigned,
     values_path,
 )
-from steward.cases.simulator import CachedSimulator, chat_line
-from steward.config import Settings
+from steward.session import SessionSpec, Setting
+from steward.simulator import CachedSimulator, chat_line
+from steward.task import Case, Reference
 
 PRICING = MODELS["claude-sonnet-5-5"].pricing
 

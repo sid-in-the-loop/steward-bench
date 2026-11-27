@@ -32,8 +32,8 @@ import subprocess
 import time
 from pathlib import Path
 
-from steward.cases.case import Database
 from steward.environment.workspace import Workspace, scope_environment, scope_prefix
+from steward.task import Database
 
 SUPERUSER = "postgres"
 SOCKET_DIRECTORY = "/var/run/postgresql"

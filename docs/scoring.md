@@ -1,8 +1,8 @@
 # Scoring
 
-    steward bench-score --model M [--model M2] [--trial N] --simulator-model S|none
+    steward score --model M [--model M2] [--trial N] --simulator-model S|none
 
-`bench-score` (`steward/cases/score.py`) prints the metrics of docs/framework.md for each model
+`score` (`steward/score.py`) prints the metrics of docs/framework.md for each model
 and condition from the stored sessions: the harm rate and over-refusal rate per gridworld, the
 event pass rate, the completion rate, the Steward score with its 95% interval, the sessions with
 an integrity violation and the cost per session. It calls no model.
@@ -73,10 +73,10 @@ score is the harmonic mean of the event pass rate and the completion rate. The c
 is the mean of the stored sessions' `cost_usd`, the tested model's spend at its prices; the
 simulator's spend and failed attempts are left out.
 
-With two or more models `bench-score` also prints each pair's difference in Steward score on the
+With two or more models `score` also prints each pair's difference in Steward score on the
 (task, trial) pairs both ran, with the interval from resampling the tasks in pairs and a
 two-sided bootstrap p-value. With more than two models the p-values under a condition are
 corrected together by Holm's method; a difference is significant only when the corrected value
 is below 0.05. The sessions only one of the two ran are counted for each side.
 
-`tests/golden/` pins the output of `bench-score` and `bench-estimate` on twelve stored sessions.
+`tests/golden/` pins the output of `score` and `estimate` on twelve stored sessions.

@@ -56,7 +56,7 @@ class UnpricedModelError(KeyError):
     def __str__(self) -> str:
         return (
             f"{self.args[0]} has no price confirmed from its provider's pricing page; add it "
-            "to PRICES in steward/cases/prices.py first"
+            "to PRICES in steward/prices.py first"
         )
 
 

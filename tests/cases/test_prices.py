@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases.case import Case
-from steward.cases.commands import MODELS
-from steward.cases.prices import PRICES, UnpricedModelError, pricing_of
-from steward.cases.sessions import SessionSpec
 from steward.cli import build_parser, run_benchmark
 from steward.config import Paths, Settings
+from steward.models import MODELS
+from steward.prices import PRICES, UnpricedModelError, pricing_of
+from steward.session import SessionSpec
+from steward.task import Case
 
 BENCHMARK_MODELS = [
     "gpt-6-luna",
@@ -58,6 +58,6 @@ def test_the_run_refuses_a_model_it_cannot_price_or_reach(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
-    argv = ["session-run", "--model", name, "--condition", "sd", "--confirm"]
+    argv = ["run", "--model", name, "--condition", "sd", "--confirm"]
     assert run_benchmark(settings, build_parser().parse_args(argv), [(case, full)]) == 2
     assert reason in capsys.readouterr().err

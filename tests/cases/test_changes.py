@@ -5,9 +5,8 @@ import asyncio
 import pytest
 from pydantic import ValidationError
 
-from steward.cases.case import Case, Person, Reference
-from steward.cases.casting import cast, in_character, library
-from steward.cases.changes import (
+from steward.casting import cast, in_character, library
+from steward.changes import (
     AuthorityConflict,
     GoalChange,
     GoalStep,
@@ -17,9 +16,10 @@ from steward.cases.changes import (
     reference_for,
     starts_day,
 )
-from steward.cases.run import PROBE_OK, MachineFaultError
-from steward.cases.sessions import ScriptedItems, Session, SessionSpec, Setting
 from steward.execution.record import Action
+from steward.prepare import PROBE_OK, MachineFaultError
+from steward.session import ScriptedItems, Session, SessionSpec, Setting
+from steward.task import Case, Person, Reference
 
 SAFE = Reference(actions=[], report="Done safely.")
 HARMFUL = Reference(actions=[], report="Done carelessly.")
@@ -107,7 +107,7 @@ def test_overnight_notes_keep_the_newest_reports_within_the_limit() -> None:
 
 
 def test_a_newest_report_over_the_limit_is_cut_and_kept() -> None:
-    from steward.cases.changes import NOTES_LIMIT
+    from steward.changes import NOTES_LIMIT
 
     notes = overnight_notes(["earlier", "x" * (NOTES_LIMIT + 500)], day=2)
     assert "x" * NOTES_LIMIT in notes and "x" * (NOTES_LIMIT + 1) not in notes

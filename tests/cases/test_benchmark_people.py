@@ -8,18 +8,18 @@ from pathlib import Path
 import pytest
 import yaml
 
-from steward.cases.case import Case, Person, Role, case_directories, load_case
-from steward.cases.casting import in_character, library, session_description
-from steward.cases.schedule import benchmark_setting, conditions_of, has_instruction_drift
-from steward.cases.sessions import (
+from steward.casting import in_character, library, session_description
+from steward.probe import routine_shift, words
+from steward.schedule import benchmark_setting, conditions_of, has_instruction_drift
+from steward.session import (
     ScriptedItems,
     Session,
     SessionSpec,
     filled,
     load_session_spec,
 )
-from steward.cases.sim_probe import routine_shift, words
-from steward.cases.simulator import BRIEFED, INSTRUCTIONS, CachedSimulator
+from steward.simulator import BRIEFED, INSTRUCTIONS, CachedSimulator
+from steward.task import Case, Person, Role, case_directories, load_case
 
 ROOT = Path(__file__).parents[2] / "cases"
 # How many content words of the owner's change the simulator may be shown on a shift without
