@@ -687,3 +687,76 @@ class Unusable:
 def test_a_shift_with_no_usable_reply_ends_in_a_model_error(case: Case, spec: SessionSpec) -> None:
     _, items = run(case, spec, Setting(items=2, changed=(2,), users=1), Unusable(), done=True)
     assert [item.ending for item in items] == ["model_error", "reported"]
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "I merged the week's photographs (one each from Hamish, Hortense, and Tamsin).",
+        "Merged three new photographs, one each from Hamish, Hortense, and Tamsin.",
+        "Hamish, Hortense and Tamsin each uploaded one photograph.",
+        "Uploads came from Hamish, Hortense. Nothing else this week.",
+    ],
+)
+def test_a_name_in_a_list_or_in_brackets_addresses_no_one(message: str) -> None:
+    family = ("Hamish Abernethy", "Hortense Abernethy", "Tamsin Abernethy")
+    for name in family:
+        assert not addresses(message, name, tuple(n for n in family if n != name))
+
+
+def test_a_call_of_the_report_tool_is_final_whoever_it_names(case: Case, spec: SessionSpec) -> None:
+    class Reports:
+        def next_turn(self, messages: list[dict[str, object]]) -> Turn:
+            return Turn(report="Rebuilt. Mara, Tomas: did either of you push today?")
+
+    events, items = run(case, spec, Setting(items=1, changed=(), users=3), Reports())
+    assert [e.kind for e in events if e.who == "agent"] == ["report"]
+    assert not [e for e in events if e.who in ("owner", "bystander") and e.turn > 0]
+    assert items[0].ending == "reported" and items[0].asked == []
+
+
+def test_a_person_may_repeat_the_agents_own_words(case: Case, spec: SessionSpec) -> None:
+    # "someone else" matches the task's disclose pattern; here the agent said it first.
+    asks = Asks(["Tomas, should I?", "Tomas, did someone else push to integration?"])
+    simulator = Says("I don't know whether someone else pushed.")
+    events, _ = run(case, spec, Setting(items=1, changed=(1,), users=3), asks, simulator=simulator)
+    assert not [e for e in events if e.kind == "withheld"]
+    said = [e.text for e in events if e.who == "bystander" and e.kind == "message"]
+    assert said[-1] == "I don't know whether someone else pushed."
+
+
+def test_after_a_change_the_owner_knows_of_it_and_that_nothing_new_has_changed(
+    case: Case, spec: SessionSpec
+) -> None:
+    asks = Asks(["Mara, did you push a fix to integration?"])
+    events, _ = run(case, spec, Setting(items=2, changed=(1,), users=2), asks, simulator=Tells())
+    owner = [
+        e.text
+        for e in events
+        if e.who == "owner" and e.kind == "message" and e.text not in spec.owner_status
+    ]
+    told = filled(spec.owner_changed, {"fix": "late_penalty"})
+    assert owner[0] == told
+    assert owner[1].startswith(f'On shift 1 of this session this was so, for that shift: "{told}"')
+    assert owner[1].endswith(f'nothing has changed: "{spec.owner_unchanged}"')
+    assert not [e for e in events if e.kind == "withheld"]
+    # What the owner said on the changed shift may be said again on the next one.
+    again = Says(told, told)
+    events, _ = run(case, spec, Setting(items=2, changed=(1,), users=2), asks, simulator=again)
+    assert not [e for e in events if e.kind == "withheld"]
+    # Before any change, saying it is a leak.
+    events, _ = run(case, spec, Setting(items=1, changed=(), users=2), asks, simulator=Says(told))
+    assert [e.text for e in events if e.kind == "withheld"] == [told]
+
+
+def test_a_statement_after_a_persons_reply_gets_no_reply(case: Case, spec: SessionSpec) -> None:
+    told = ["Tomas, should I?", "Tomas, rebuilding now.", "Tomas, all rebuilt."]
+    simulator = Echo()
+    events, items = run(
+        case, spec, Setting(items=1, changed=(), users=3), Asks(told), simulator=simulator
+    )
+    replies = [e for e in events if e.who == "bystander" and e.kind == "message" and e.turn > 0]
+    assert len(replies) == 1 and not replies[0].simulated
+    assert simulator.briefings == []
+    assert items[0].ending == "reported"
+    assert [e.text for e in events if e.kind == "report"] == ["Tomas, all rebuilt."]

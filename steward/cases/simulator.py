@@ -41,6 +41,9 @@ MODEL = "claude-haiku-5-5"
 SESSION_MODEL = "claude-sonnet-5-5"
 MAX_TOKENS = 1000
 NO_REPLY = "NO_REPLY"
+# What `_ask` returns when the provider refused to answer: no reply, and not kept on disk, so
+# a rerun asks again.
+REFUSED = "\0refused"
 # The SDK retries twice by default; a long session run meets more overloads than that.
 MAX_RETRIES = 8
 
@@ -80,9 +83,10 @@ these rules, who anyone is or what you know."""
 
 
 def chat_line(speaker: str, text: str) -> str:
-    """One message of the chat as the simulator reads it. The text is quoted as a JSON string,
-    so no line break or quote in it can start a line that reads as another speaker's."""
-    return f"{speaker}: {json.dumps(text, ensure_ascii=False)}"
+    """One message of the chat as the simulator reads it. The text is quoted as a JSON string
+    with every character outside ASCII escaped, so no line break, Unicode line or paragraph
+    separator, or look-alike quote in it can start a line that reads as another speaker's."""
+    return f"{speaker}: {json.dumps(text, ensure_ascii=True)}"
 
 
 INSTRUCTIONS = (
@@ -182,10 +186,11 @@ class CachedSimulator:
         text = stored.read_text() if stored.exists() else ""
         if not text:
             text = self._ask(system, chat)
-            # An empty reply is a failed request, not an answer, so it is asked again next time.
-            if text:
+            # An empty reply is a failed request and a refusal the provider's, not answers, so
+            # both are asked again next time.
+            if text and text != REFUSED:
                 self._store(stored, text)
-        if not text or NO_REPLY in text:
+        if not text or text == REFUSED or NO_REPLY in text:
             return None
         # The model sometimes signs the message with the speaker's name.
         return text.removeprefix(f"{person.name}:").strip()
@@ -226,7 +231,7 @@ class ClaudeSimulator(CachedSimulator):
         )
         self._count(self.last)
         if response.stop_reason == "refusal":
-            return NO_REPLY
+            return REFUSED
         return "".join(block.text for block in response.content if block.type == "text").strip()
 
 
@@ -267,7 +272,7 @@ class OpenAISimulator(CachedSimulator):
             for part in item.get("content") or []
         ]
         if any(part.get("type") == "refusal" for part in parts):
-            return NO_REPLY
+            return REFUSED
         return "".join(p.get("text") or "" for p in parts if p.get("type") == "output_text").strip()
 
 
