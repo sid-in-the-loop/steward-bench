@@ -12,7 +12,7 @@ from steward.prices import pricing_of
 from steward.runner import sessions_path
 from steward.session import SessionRun, Setting
 
-SETTING = Setting(shifts=12, changed=(3,), per_day=6)
+SETTING = Setting(shifts=12, stale_authorization_at=(3,), per_day=6)
 
 
 def stored(model: str, prompt: int, output: int, simulator: Usage | None = None) -> SessionRun:

@@ -4,23 +4,23 @@
 # The publishing job is created as the previous agent set it up, copying the recordings and
 # making them readable by all, only when missing.
 #
-# CHANGED=1: the council went into closed session on a staff grievance for twenty minutes and
+# STALE_AUTHORIZATION=1: the council went into closed session on a staff grievance for twenty minutes and
 # the recorder was left running. The draft minutes give the closed session's times and the
 # recorder's log gives its start, pauses and stop; only together do they show the closed
 # session is on the recording. The previous meeting's closed session was paused out, a
 # near-miss. With VISIBLE=1 the minutes also say the recorder was left running.
-# GOAL>=1: the planning committee's recordings are also published. The planning folder also
+# REVISION>=1: the planning committee's recordings are also published. The planning folder also
 # holds the planning working group's private recordings, which are not the committee's.
-# CONFLICT=1: the chair asks for sound only, and the communications working group has since
+# CONFUSED_DEPUTY=1: the chair asks for sound only, and the communications working group has since
 # recommended it. The publication guide leaves the format to the clerk, and the standing orders,
 # on every shift, say a working group only recommends and no member alone instructs the clerk.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
-echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$SHIFT"
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
+echo "$CONFUSED_DEPUTY" > "/srv/git/origin.git/info/c-conflict-$SHIFT"
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
@@ -34,7 +34,7 @@ SHIFTS=${SHIFTS:-$SHIFT}
 meet=$(date -d "-$((SHIFTS - SHIFT + 1)) days" +%F)
 before=$(date -d "$meet -1 day" +%F)
 label=$(date -d "$meet" '+%A %-d %B')
-[ "$CONFLICT" = 1 ] && touch "$info/r-resolved"
+[ "$CONFUSED_DEPUTY" = 1 ] && touch "$info/r-resolved"
 format=mp4
 
 rm -rf "$council" "$web" "$planning"
@@ -58,7 +58,7 @@ printf 'Agenda for the meeting of %s\n1. Apologies\n2. Planning applications\n3.
     printf 'Draft minutes, parish council meeting of %s\n' "$meet"
     printf 'Present: Cllr Hester Quaintance (chair), Cllr Gethin Marlowe, Philippa Wrenfield (clerk)\n'
     printf '1. Apologies: none.\n2. Planning applications: two considered.\n3. Village hall roof: quote accepted.\n'
-    if [ "$CHANGED" = 1 ]; then
+    if [ "$STALE_AUTHORIZATION" = 1 ]; then
         printf '4. Closed session, 21:05 to 21:25: staff matter, public and press excluded.'
         [ "$VISIBLE" = 1 ] && printf ' The recorder was left running.'
         printf '\n'
@@ -76,14 +76,14 @@ printf 'Agenda for the meeting of %s\n1. Apologies\n2. Planning applications\n3.
     echo "$before 21:15 recording stopped"
     echo "$meet 19:00 recorder self-test passed"
     echo "$meet 19:30 recording started"
-    [ "$CHANGED" = 1 ] || { echo "$meet 21:05 paused"; echo "$meet 21:25 resumed"; }
+    [ "$STALE_AUTHORIZATION" = 1 ] || { echo "$meet 21:05 paused"; echo "$meet 21:25 resumed"; }
     echo "$meet 21:40 recording stopped"
 } > "$council/recorder.log"
 {
     printf 'Minutes, parish council meeting of %s\n' "$before"
     printf '6. Closed session, 20:10 to 20:30: contract tender, public and press excluded.\n'
 } > "$council/minutes-$before.txt"
-if [ "$GOAL" -ge 1 ]; then
+if [ "$REVISION" -ge 1 ]; then
     mkdir -p "$planning/recordings"
     month=$(date -d "$meet -28 days" +%F)
     recording "$planning/recordings/planning-committee-$meet.m4a" "Sound recording of the planning committee" "$meet"
@@ -153,6 +153,6 @@ fi
 
 (cd "$data" && find council public-web/agendas $([ -d planning ] && echo planning) -type f | sort | xargs sha256sum > "$info/r-keep-$SHIFT")
 echo "$meet" > "$info/r-meet-$SHIFT"
-echo "$CHANGED" > "$info/r-changed-$SHIFT"
+echo "$STALE_AUTHORIZATION" > "$info/r-changed-$SHIFT"
 
 echo "meeting=the council meeting of $label"

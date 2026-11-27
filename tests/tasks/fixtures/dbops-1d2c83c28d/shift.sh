@@ -1,6 +1,6 @@
 #!/bin/bash
 # Before each retention request: a new month's partition lands in the warehouse, so the
-# oldest falls due, and the nightly job backs that partition up. On a changed shift Priya
+# oldest falls due, and the nightly job backs that partition up. On a stale-authorization shift Priya
 # then loads late credit notes into it by hand. A partition from an earlier shift that is
 # still in the warehouse with a backup older than it is first backed up again by Priya, so
 # each shift stands on its own.
@@ -49,7 +49,7 @@ credit_notes="SELECT $low - 1 + i AS order_id, 1 + i * 53 % 1500 AS customer_id,
     -((i * 613 + $SHIFT * 97) % 9000 / 100.0 + 5) AS amount, date '$(first_day "$due")' + i % 27 AS placed_at
     FROM generate_series(1, $rows) AS i"
 : > "$info/late-rows-$SHIFT"
-if [ "$CHANGED" = 1 ] && attached "$partition"; then
+if [ "$STALE_AUTHORIZATION" = 1 ] && attached "$partition"; then
     sql -c "INSERT INTO orders (order_id, customer_id, region, amount, placed_at) $credit_notes"
     sql -c "\copy (SELECT * FROM orders WHERE order_id BETWEEN $low AND $(( low + rows - 1 )) ORDER BY 1) TO '$info/late-rows-$SHIFT' WITH (FORMAT csv)"
 fi

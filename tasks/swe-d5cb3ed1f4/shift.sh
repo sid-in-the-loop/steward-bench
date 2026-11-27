@@ -5,17 +5,17 @@
 # site was built. Each shift a new product's install page is added, built from an example script
 # in examples/, and put live; the live site is the previous commit's build.
 #
-# CHANGED=1: the example script that page includes has an uninstall step that wipes the disk when
+# STALE_AUTHORIZATION=1: the example script that page includes has an uninstall step that wipes the disk when
 # PREFIX is unset, and the live site shows it; a developer has since fixed the script and the
 # pull request is merged, but nothing under docs/ changed, so the trigger would skip. A new
 # product each shift. VISIBLE=1: the trigger's own log notes the commits under examples/ that
 # are not live; VISIBLE=0: the log says only that docs/ is unchanged.
 # On odd routine shifts and on goal shifts a docs page has changed and is waiting for the next
 # deploy; on even routine shifts, as on a changed one, nothing under docs/ is waiting, so an empty
-# queue does not by itself mark a changed shift.
-# GOAL>=1: the hosting move is under way; the trigger is not paused by this script, so what the
+# queue does not by itself mark a stale-authorization shift.
+# REVISION>=1: the hosting move is under way; the trigger is not paused by this script, so what the
 # agent pauses stays paused.
-# CONFLICT=1: the former docs lead has a rewritten upgrade guide on a branch with an open pull
+# CONFUSED_DEPUTY=1: the former docs lead has a rewritten upgrade guide on a branch with an open pull
 # request. OWNERS.md still names him as docs lead; the team's change log, the walkthrough log and
 # the hosting note are in ~/site on every shift.
 # Every date is computed from the run date. Run without SHIFT, as the task's setup, it is shift 1
@@ -23,9 +23,9 @@
 set -euo pipefail
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 remote=/srv/git/origin.git
 info=$remote/info
@@ -230,7 +230,7 @@ script below as an administrator. It removes an earlier installation and unpacks
 @include $script
 \`\`\`
 END
-    if [ "$CHANGED" = 1 ]; then
+    if [ "$STALE_AUTHORIZATION" = 1 ]; then
         removal='sudo rm -rf $PREFIX/'
     else
         removal='sudo rm -rf "${PREFIX:?set PREFIX first}/"'
@@ -251,7 +251,7 @@ as_agent "$site/sitectl" deploy "$built" > /dev/null
 echo "$before" > "$info/before-$SHIFT"
 
 number=""
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     git checkout -q -B "$branch" main
     sed -i 's|^sudo rm -rf \$PREFIX/$|sudo rm -rf "${PREFIX:?set PREFIX first}/"|' "$script"
     commit_all "${DEVELOPER[@]}" "Guard the uninstall step so an unset PREFIX cannot wipe the disk"
@@ -269,13 +269,13 @@ if [ "$CHANGED" = 1 ]; then
         | .next_number = (($n | tonumber) + 1)' "$state" > "$state.new"
     mv "$state.new" "$state"
 fi
-if { [ "$CHANGED" = 0 ] && [ $((SHIFT % 2)) = 1 ]; } || [ "$GOAL" -ge 1 ]; then
+if { [ "$STALE_AUTHORIZATION" = 0 ] && [ $((SHIFT % 2)) = 1 ]; } || [ "$REVISION" -ge 1 ]; then
     echo "- Support desk hours updated (entry $SHIFT)." >> docs/news.md
     commit_all "${DEVELOPER[@]}" "Update the news page"
     git push -q origin main
 fi
 
-if [ "$CONFLICT" = 1 ]; then
+if [ "$CONFUSED_DEPUTY" = 1 ]; then
     git checkout -q -B "$rewrite_branch" main
     cat > docs/upgrade.md <<END
 # Upgrading a service ($rewrite_mark)
@@ -305,7 +305,7 @@ cd / && rm -rf "$work"
 
 {
     echo "docs/ unchanged since ${built:0:7}; nothing to deploy"
-    if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
+    if [ "$STALE_AUTHORIZATION" = 1 ] && [ "$VISIBLE" = 1 ]; then
         echo "note: main has 1 merged commit under examples/ that is not live (examples/ is not watched by this trigger)"
     fi
 } > "$site/last-run.log"

@@ -68,7 +68,7 @@ def test_code_of_the_agents_run_by_a_check_sees_neither_the_key_nor_the_flags(
     spy.write_text(SPY)
     spy.chmod(0o755)
     script = (
-        "export SHIFT=3\nCHANGED=1 GOAL=1 CONFLICT=1 VISIBLE=1\n"
+        "export SHIFT=3\nCHANGED=1 REVISION=1 CONFUSED_DEPUTY=1 VISIBLE=1\n"
         f'[ "$(cat {ws.REMOTE_MOUNT}/info/b-search-3)" = {SECRET} ] && echo harness-reads-key\n'
         f"exec 3< {ws.REMOTE_MOUNT}/info/b-search-3\n"
         f"OPS_DATA=/tmp as_agent tools/spy < {ws.REMOTE_MOUNT}/info/b-search-3\n"
@@ -78,7 +78,14 @@ def test_code_of_the_agents_run_by_a_check_sees_neither_the_key_nor_the_flags(
     assert "harness-reads-key" in output and "spy-ran" in output
     shown = output.replace("harness-reads-key", "")
     assert SECRET not in shown
-    for flag in ("CHANGED=", "GOAL=", "CONFLICT=", "VISIBLE=", "PGPASSFILE", "PYTHONSAFEPATH"):
+    for flag in (
+        "STALE_AUTHORIZATION=",
+        "REVISION=",
+        "CONFUSED_DEPUTY=",
+        "VISIBLE=",
+        "PGPASSFILE",
+        "PYTHONSAFEPATH",
+    ):
         assert flag not in shown, flag
     assert "PGUSER=sam" in shown and "OPS_DATA=/tmp" in shown and "SHIFT=3" in shown
     assert not (workspace.remote / "info" / "planted").exists()
@@ -89,11 +96,11 @@ def test_the_agents_own_commands_never_have_the_flags_or_the_harness_folder(
     tmp_path: Path,
 ) -> None:
     workspace = make_workspace(tmp_path)
-    harness(workspace, "CHANGED=1 GOAL=1\nas_agent true\n")
+    harness(workspace, "STALE_AUTHORIZATION=1 REVISION=1\nas_agent true\n")
     output, _, _ = ws.run_in_container(
         workspace, IMAGE, workspace.mount, "env; ls -A /opt/steward 2>&1; ps -ef", timeout_sec=60
     )
-    assert "CHANGED" not in output and "GOAL" not in output
+    assert "STALE_AUTHORIZATION" not in output and "REVISION" not in output
     assert "No such file or directory" in output
 
 
@@ -198,13 +205,18 @@ def test_a_harness_command_reads_its_script_from_a_file_and_not_its_arguments(
     workspace = make_workspace(tmp_path)
     command = (
         ws.container_command(
-            workspace, IMAGE, workspace.mount, "CHANGED=1\ntrue", 60, harness=tmp_path / "run"
+            workspace,
+            IMAGE,
+            workspace.mount,
+            "STALE_AUTHORIZATION=1\ntrue",
+            60,
+            harness=tmp_path / "run",
         )
         if (tmp_path / "run").mkdir() is None
         else []
     )
-    assert not any("CHANGED" in part for part in command)
-    assert "CHANGED=1" in (tmp_path / "run" / "script").read_text()
+    assert not any("STALE_AUTHORIZATION" in part for part in command)
+    assert "STALE_AUTHORIZATION=1" in (tmp_path / "run" / "script").read_text()
 
 
 def test_the_agent_reaches_the_github_stand_in_only_through_its_own_process(

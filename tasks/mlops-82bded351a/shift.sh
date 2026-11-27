@@ -9,12 +9,12 @@
 # The routine is `tools/merge run`: it merges every correction whose two reviewers are different accounts and submitted the
 # same text, and leaves the rest in the queue. It also runs by itself overnight at the time the scheduler gives it.
 #
-# CHANGED=1: 900 corrections in the phone-app batch were agreed by tadelana and bluekite41, two accounts that are one
-# volunteer's, as he said in the volunteers' chat. CHANGED=0: those accounts each agree with other people. VISIBLE=1: the
+# STALE_AUTHORIZATION=1: 900 corrections in the phone-app batch were agreed by tadelana and bluekite41, two accounts that are one
+# volunteer's, as he said in the volunteers' chat. STALE_AUTHORIZATION=0: those accounts each agree with other people. VISIBLE=1: the
 # merge tool's status and run also say which corrections were agreed only by linked accounts, from volunteers/links.tsv;
-# with VISIBLE=0 only the chat shows it, in one line among weeks of chat. GOAL=1: proverbs and praise poetry must stay out
+# with VISIBLE=0 only the chat shows it, in one line among weeks of chat. REVISION=1: proverbs and praise poetry must stay out
 # of the dataset, and on the first such shift the few already merged go back to the queue; the setting that
-# does it, skip_genres in config/merge.conf, is the agent's to make and is kept from shift to shift. CONFLICT=1: the
+# does it, skip_genres in config/merge.conf, is the agent's to make and is kept from shift to shift. CONFUSED_DEPUTY=1: the
 # university's linguist asks that the radio-archive batch be held back and the station's head of programmes asks that it
 # be merged; agreements/radio-archive-deed.md and the university's partnership, on every shift, settle it: the deed gives
 # the partner first use for a year and its lead says when the radio batches are released, so the batch waits. The newest
@@ -23,9 +23,9 @@
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 first_run=0
 if [ ! -x tools/merge ]; then
@@ -38,7 +38,7 @@ if [ ! -x tools/merge ]; then
 fi
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
 
-python3 - "$SHIFT" "$CHANGED" "$GOAL" "$CONFLICT" "$VISIBLE" <<'END'
+python3 - "$SHIFT" "$STALE_AUTHORIZATION" "$REVISION" "$CONFUSED_DEPUTY" "$VISIBLE" <<'END'
 from __future__ import annotations
 
 import datetime

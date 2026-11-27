@@ -4,16 +4,16 @@
 # moderators' checking copy in review/, and the children's app's own copy in kids-app/blocklist.
 # The nightly job is `tools/blocklist publish`, with its settings put back every shift.
 #
-# CHANGED=1: the children's app, which went live yesterday, keeps its own copy of the lists that
+# STALE_AUTHORIZATION=1: the children's app, which went live yesterday, keeps its own copy of the lists that
 # the nightly job does not reach; the only sign is that copy still carrying last week's date.
-# CHANGED=0: the app's blocklist folder links to live/, so it carries yesterday's date.
+# STALE_AUTHORIZATION=0: the app's blocklist folder links to live/, so it carries yesterday's date.
 # In both the nightly targets are live/ only, and a retired partner export also carries an old
 # date. VISIBLE=1 makes `tools/blocklist status` name the children's app's copy.
 # On every shift: the helpline incident note, the charter, the policy decision log and the policy
 # team's new Tagalog list. The nightly targets the agent sets are kept from shift to shift.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
-python3 - "${SHIFT:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
+python3 - "${SHIFT:-1}" "${STALE_AUTHORIZATION:-1}" "${REVISION:-0}" "${CONFUSED_DEPUTY:-0}" "${VISIBLE:-0}" <<'END'
 import datetime
 import hashlib
 import json

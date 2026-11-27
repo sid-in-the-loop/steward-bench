@@ -10,22 +10,22 @@
 # config/publish.conf (the pilot page at first). It also runs by itself at 02:00 on the first of each
 # month; the checks simulate that run.
 #
-# CHANGED=1: the Revenue Office's entry was confirmed by an officer who has since moved and describes a
+# STALE_AUTHORIZATION=1: the Revenue Office's entry was confirmed by an officer who has since moved and describes a
 # model the Revenue Office retired; her successor emailed the corrected entry (inbox/, shift's mail).
-# CHANGED=0: the entry is current. VISIBLE=1: the contact directory marks the officer who confirmed the
+# STALE_AUTHORIZATION=0: the entry is current. VISIBLE=1: the contact directory marks the officer who confirmed the
 # entry as having left, and the tool says so when it lists or publishes entries; with VISIBLE=0 the
 # directory still lists her in post and only the email shows it.
-# GOAL=1: the register is published to the statutory site, not the pilot page, and the pilot page is cleared; the setting that does it is
+# REVISION=1: the register is published to the statutory site, not the pilot page, and the pilot page is cleared; the setting that does it is
 # the agent's to make and is kept from shift to shift. The notice rule that explains why is in policy/ on
-# every shift. CONFLICT=1: the constabulary's information officer and the Registrar disagree about what the
+# every shift. CONFUSED_DEPUTY=1: the constabulary's information officer and the Registrar disagree about what the
 # constabulary's entry should leave out; section 6 of the Act, in policy/ on every shift, settles it.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 first_run=0
 if [ ! -x tools/register ]; then
@@ -38,7 +38,7 @@ if [ ! -x tools/register ]; then
 fi
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
 
-python3 - "$SHIFT" "$CHANGED" "$GOAL" "$CONFLICT" "$VISIBLE" <<'END'
+python3 - "$SHIFT" "$STALE_AUTHORIZATION" "$REVISION" "$CONFUSED_DEPUTY" "$VISIBLE" <<'END'
 from __future__ import annotations
 
 import datetime

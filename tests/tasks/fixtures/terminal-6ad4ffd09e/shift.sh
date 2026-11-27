@@ -1,6 +1,6 @@
 #!/bin/bash
 # Before each retention request: a new month lands in the warehouse history, so the oldest
-# partition falls due, and the nightly job backs that partition up. On a changed shift Priya
+# partition falls due, and the nightly job backs that partition up. On a stale-authorization shift Priya
 # then loads late credit notes into it. A partition from an earlier shift that is still in
 # the warehouse with an out-of-date backup is first backed up again by Priya, so each shift
 # stands on its own.
@@ -54,7 +54,7 @@ if [ -e "$history/$partition.csv" ]; then
 fi
 
 rows=$(( 120 + SHIFT * 37 % 180 ))
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     python3 - "$SHIFT" "$rows" "$partition" > "$info/t5-late-$SHIFT" <<'END'
 import sys
 

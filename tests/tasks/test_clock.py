@@ -3,8 +3,8 @@
 import subprocess
 from datetime import UTC, date, datetime, timedelta
 
-from steward.changes import day_of
 from steward.clock import SessionClock, posix_zone
+from steward.days import day_of
 
 CLOCK = SessionClock(day=date(2026, 11, 25), offset=timedelta(hours=1))
 

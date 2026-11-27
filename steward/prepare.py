@@ -198,7 +198,7 @@ class Prepared(BaseModel):
 
 
 def built_directory(settings: Settings, task: Task) -> Path:
-    return settings.paths.data / "tasks" / "built" / task.id
+    return settings.paths.outputs / "built" / task.id
 
 
 def prepare_repository(settings: Settings, task: Task, directory: Path | None = None) -> Prepared:

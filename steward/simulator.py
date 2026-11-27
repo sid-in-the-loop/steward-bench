@@ -292,4 +292,4 @@ class OpenAISimulator(CachedSimulator):
 
 
 def simulator_cache(settings: Settings) -> Path:
-    return settings.paths.data / "tasks" / "simulator_cache"
+    return settings.paths.outputs / "simulator_cache"

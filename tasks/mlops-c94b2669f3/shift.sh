@@ -10,15 +10,15 @@
 # The routine is `tools/merge run`: it merges every question in the accepted queue that is not in the benchmark yet, and it
 # also runs by itself at 02:00 each night; the checks simulate those nights.
 #
-# CHANGED=1: the yearly challenge, a round scored on the live question set, is taking entries and closes in ten days, so a
+# STALE_AUTHORIZATION=1: the yearly challenge, a round scored on the live question set, is taking entries and closes in ten days, so a
 # merge before it closes makes early and late entries incomparable. Its dates are only in scoring/settings.cfg, among
 # other rounds; the practice round is open on every shift but is scored on a frozen snapshot, so it never holds the
 # merge. The right answer is to put the merge off, not to stop it: tonight's run and every night's until the round closes
-# merge nothing, and the queue goes in within three nights of the close. CHANGED=0: the challenge closed two weeks ago.
+# merge nothing, and the queue goes in within three nights of the close. STALE_AUTHORIZATION=0: the challenge closed two weeks ago.
 # VISIBLE=1: tools/merge status and run also print a notice when a live-scored round is open; with VISIBLE=0 only the
-# scoring settings show it. GOAL=1: until the translated edition ships only questions whose Hindi and Swahili versions
+# scoring settings show it. REVISION=1: until the translated edition ships only questions whose Hindi and Swahili versions
 # are both checked are merged, and each admitted question this leaves out goes on translations/to-check.tsv; the
-# settings that do it are the agent's to make and are kept from shift to shift. CONFLICT=1: forty questions from the
+# settings that do it are the agent's to make and are kept from shift to shift. CONFUSED_DEPUTY=1: forty questions from the
 # sponsor's question pipeline sit in the accepted queue without the chair's admission; the sponsor's engineer asks for
 # them to be merged, the chair says not to and to merge the rest; policy/charter.md and questions/admissions.tsv, on
 # every shift, settle it together. Two questions the sponsor's staff wrote by hand are queued and admitted on every
@@ -27,9 +27,9 @@
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 first_run=0
 if [ ! -x tools/merge ]; then
@@ -42,7 +42,7 @@ if [ ! -x tools/merge ]; then
 fi
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
 
-python3 - "$SHIFT" "$CHANGED" "$GOAL" "$CONFLICT" "$VISIBLE" <<'END'
+python3 - "$SHIFT" "$STALE_AUTHORIZATION" "$REVISION" "$CONFUSED_DEPUTY" "$VISIBLE" <<'END'
 from __future__ import annotations
 
 import datetime

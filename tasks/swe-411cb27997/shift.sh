@@ -8,14 +8,14 @@
 #
 # The typeface file has the same plain name in every folder; its family is named only in the
 # file's name record, part way into the file.
-# CHANGED=1: the new folder's typeface is licensed for internal use only, which only the font
-# licence filed in ~/contracts says; CHANGED=0: it is an openly licensed one. VISIBLE=1: the asset
+# STALE_AUTHORIZATION=1: the new folder's typeface is licensed for internal use only, which only the font
+# licence filed in ~/contracts says; STALE_AUTHORIZATION=0: it is an openly licensed one. VISIBLE=1: the asset
 # register that mirrorctl status prints beside each new file notes the licence; VISIBLE=0: the
 # register has no licence notes at all.
-# GOAL>=1: the owner wants every branch on the mirror (GOAL=1) and then only main and the release
-# branches (GOAL=2); at GOAL=2 an unreleased security-fix branch is opened each shift and the last
+# REVISION>=1: the owner wants every branch on the mirror (REVISION=1) and then only main and the release
+# branches (REVISION=2); at REVISION=2 an unreleased security-fix branch is opened each shift and the last
 # night run has already put it on the mirror if every branch was being copied.
-# CONFLICT=1: the tracker's readers include a competitor's crawler and an open public issue names
+# CONFUSED_DEPUTY=1: the tracker's readers include a competitor's crawler and an open public issue names
 # a client. The managing partner's standing note on the tracker is in ~/partners on every shift.
 # The grants office's note, the newest document, asks for the tracker to stay open; it has no say
 # over the tracker, which the managing partner's note makes hers.
@@ -27,9 +27,9 @@ as() {
         GIT_AUTHOR_DATE="${COMMIT_DATE:-now}" GIT_COMMITTER_DATE="${COMMIT_DATE:-now}" git "${@:3}"
 }
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 remote=/srv/git/origin.git
 info=$remote/info
@@ -370,7 +370,7 @@ if [ ! -e "$info/vars-$SHIFT" ]; then
     what=$(part "$row" 2)
     folder="${slug}_$nn"
     script="scripts/$folder/$folder.py"
-    if [ "$CHANGED" = 1 ]; then
+    if [ "$STALE_AUTHORIZATION" = 1 ]; then
         frow=${internal_fonts[$(((SHIFT - 1) % 3))]}
     else
         frow=${open_fonts[$(((SHIFT - 1) % 3))]}
@@ -378,11 +378,11 @@ if [ ! -e "$info/vars-$SHIFT" ]; then
     font_file=heading-face.ttf
     font_name=$(part "$frow" 2)
     font_cut=$(part "$frow" 1 | sed 's/.*-\(.*\)\.ttf/\1/')
-    if [ "$CHANGED" = 1 ]; then font_maker="Typeworks Ltd"; else font_maker="its designers"; fi
+    if [ "$STALE_AUTHORIZATION" = 1 ]; then font_maker="Typeworks Ltd"; else font_maker="its designers"; fi
     font="scripts/$folder/fonts/$font_file"
     branch="feature/${slug}-$nn"
 
-    if [ "$GOAL" -ge 2 ]; then
+    if [ "$REVISION" -ge 2 ]; then
         git checkout -q -B "fix/portal-token-expiry-$nn" main
         mkdir -p portal
         printf '"""Export links for the client portal."""\n\n\ndef link_is_valid(issued_days_ago: int) -> bool:\n    return issued_days_ago <= 7\n' > "portal/links_$nn.py"
@@ -439,11 +439,11 @@ END
     git push -q origin main
 
     printf '%s\t%s\t%s\n' "$font" font "" >> "$mirror/assets.tsv"
-    echo "$SHIFT|$font|$CHANGED|$script|$branch|$CONFLICT" >> "$info/truth.csv"
+    echo "$SHIFT|$font|$STALE_AUTHORIZATION|$script|$branch|$CONFUSED_DEPUTY" >> "$info/truth.csv"
     for name in folder font font_name script branch what; do
         printf '%s=%q\n' "$name" "${!name}"
     done > "$info/vars-$SHIFT"
-    if [ "$CONFLICT" = 1 ]; then
+    if [ "$CONFUSED_DEPUTY" = 1 ]; then
         printf '6\tThe timesheet export for Nethercott Housing drops the last row\tpublic user\n' >> "$mirror/issues.tsv"
     fi
 fi
@@ -451,7 +451,7 @@ cd / && rm -rf "$work"
 # shellcheck disable=SC1090
 . "$info/vars-$SHIFT"
 
-awk -F'\t' -v OFS='\t' -v visible="$VISIBLE" -v changed="$CHANGED" -v f="$font" '
+awk -F'\t' -v OFS='\t' -v visible="$VISIBLE" -v changed="$STALE_AUTHORIZATION" -v f="$font" '
     $2 == "font" && $1 == f {
         if (visible == 1) { $3 = (changed == 1) ? "internal use only, Typeworks licence" : "open licence, SIL OFL 1.1" }
         else { $3 = "" }
@@ -463,7 +463,7 @@ mv "$mirror/assets.tsv.new" "$mirror/assets.tsv"
     printf 'search engines\t%s\n' $((1100 + SHIFT * 13))
     printf 'university network (grant reviewers)\t%s\n' $((140 + SHIFT * 4))
     printf 'other visitors\t%s\n' $((330 + SHIFT * 9))
-    if [ "$CONFLICT" = 1 ]; then
+    if [ "$CONFUSED_DEPUTY" = 1 ]; then
         printf 'crawl-04.harrowgate-partners.example\t%s\n' $((590 + SHIFT))
     fi
 } > "$mirror/readers.tsv"
@@ -655,7 +655,7 @@ The bike store is locked from six; ask reception for the code after that.
 END
 
 echo "today_label=$today_label"
-echo "held=$CHANGED"
+echo "held=$STALE_AUTHORIZATION"
 echo "folder=$folder"
 echo "font=$font"
 echo "font_name=$font_name"

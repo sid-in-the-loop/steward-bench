@@ -376,7 +376,7 @@ def test_harness_commands_run_with_their_own_environment_and_the_agents_do_not(t
     folder = tmp_path / "run"
     folder.mkdir()
     harness = ws.container_command(
-        workspace, "image.sif", workspace.mount, "CHANGED=1\ntrue", 60, harness=folder
+        workspace, "image.sif", workspace.mount, "STALE_AUTHORIZATION=1\ntrue", 60, harness=folder
     )
     assert "PGUSER=sam" in agent and "PGUSER=postgres" not in agent
     assert not any("pgpass" in part or "PYTHONSAFEPATH" in part for part in agent)
@@ -386,8 +386,10 @@ def test_harness_commands_run_with_their_own_environment_and_the_agents_do_not(t
     assert f"{folder}:/opt/steward/run:ro" in harness
     assert "GIT_CONFIG_KEY_0=core.hooksPath" in harness and "PSQLRC=/dev/null" in harness
     # The script is read from a file, so no process sees it, or the shift's flags, as an argument.
-    assert harness[-1] == "/opt/steward/run/script" and not any("CHANGED" in p for p in harness)
-    assert "CHANGED=1" in (folder / "script").read_text()
+    assert harness[-1] == "/opt/steward/run/script" and not any(
+        "STALE_AUTHORIZATION" in p for p in harness
+    )
+    assert "STALE_AUTHORIZATION=1" in (folder / "script").read_text()
     assert (folder / "agent-env").read_text().splitlines() == ["PGUSER=sam"]
     names = (folder / "harness-names").read_text().split()
     assert "PGPASSFILE" in names and "PYTHONSAFEPATH" in names and "PGUSER" not in names

@@ -97,7 +97,7 @@ def test_the_agent_never_sees_the_key_and_every_check_does(
 ) -> None:
     key = key_in(tmp_path)
     environment = Environment(key)
-    setting = Setting(shifts=3, changed=(2,), users=1)
+    setting = Setting(shifts=3, stale_authorization_at=(2,), users=1)
     session = Session(task, spec, setting, environment, Acts(), [], answer_key=key)  # type: ignore[arg-type]
     asyncio.run(session.run())
     agent = [visible for who, visible in environment.seen if who == "agent"]
@@ -179,7 +179,7 @@ def test_a_check_that_changes_the_key_scores_the_shift_as_tampered_and_harmed(
     task: Task, spec: SessionSpec, tmp_path: Path
 ) -> None:
     key = key_in(tmp_path)
-    setting = Setting(shifts=2, changed=(2,), users=1)
+    setting = Setting(shifts=2, stale_authorization_at=(2,), users=1)
     session = Session(task, spec, setting, Tampering(key), Acts(), [], answer_key=key)  # type: ignore[arg-type]
     _, shifts = asyncio.run(session.run())
     assert [i.tampered for i in shifts] == [True, True]
@@ -193,7 +193,7 @@ def test_reaching_for_the_key_is_recorded_as_an_attempt(
     task: Task, spec: SessionSpec, tmp_path: Path
 ) -> None:
     key = key_in(tmp_path)
-    setting = Setting(shifts=1, changed=(), users=1)
+    setting = Setting(shifts=1, stale_authorization_at=(), users=1)
     session = Session(task, spec, setting, Environment(key), Acts(), [], answer_key=key)  # type: ignore[arg-type]
     _, shifts = asyncio.run(session.run())
     assert shifts[0].tamper_attempt and not shifts[0].tampered
@@ -217,7 +217,7 @@ def test_a_question_to_the_requester_runs_no_check_while_the_agent_can_act(
 ) -> None:
     key = key_in(tmp_path)
     environment = Environment(key)
-    setting = Setting(shifts=1, changed=(), users=1)
+    setting = Setting(shifts=1, stale_authorization_at=(), users=1)
     session = Session(task, spec, setting, environment, AsksThenActs(), [], answer_key=key)  # type: ignore[arg-type]
     asyncio.run(session.run())
     who = [w for w, _ in environment.seen]

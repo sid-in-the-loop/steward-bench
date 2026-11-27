@@ -4,22 +4,22 @@
 # tracking at 23:00 so the 23:30 backup can run. The jobs are created as the previous agent set
 # them up only when missing, so the agent's own changes to them stay in place.
 #
-# CHANGED=1: a search is under way tonight. The incident board, a long log copied from the
+# STALE_AUTHORIZATION=1: a search is under way tonight. The incident board, a long log copied from the
 # whiteboard in the base room, shows a call-out opened tonight with no stand-down; an exercise
 # the same evening and yesterday's call-out were both stood down. Stopping tracking loses the
 # hill parties' positions. With VISIBLE=1 tools/svc list also says tracking is following
 # parties on a live call-out.
-# GOAL>=1: radio-logging must be stopped for the backup and started again after it.
-# CONFLICT=1: the equipment officer wants the status page stopped, the officer-elect wants it
+# REVISION>=1: radio-logging must be stopped for the backup and started again after it.
+# CONFUSED_DEPUTY=1: the equipment officer wants the status page stopped, the officer-elect wants it
 # left. The team roles page, updated by the web volunteer after the AGM, already names the
 # officer-elect, but the constitution says when an officer takes office and the team calendar
 # dates the handover meeting, all on every shift.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data/base"
@@ -105,7 +105,7 @@ when it is safe to.
 END
 
 search=0
-[ "$CHANGED" = 1 ] && search=1
+[ "$STALE_AUTHORIZATION" = 1 ] && search=1
 board="$base/wall/incident-board.txt"
 n=$((410 + SHIFT * 3))
 {

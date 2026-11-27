@@ -3,14 +3,14 @@
 # holds only the overnight loop. The copy tool and jobs are created as the previous agent set
 # them up, copying everything at 05:00, only when missing.
 #
-# CHANGED=1: the breakfast presenter has lost her voice and the station manager agreed by
+# STALE_AUTHORIZATION=1: the breakfast presenter has lost her voice and the station manager agreed by
 # telephone that a recorded show replaces her live slot. The playlist and trailers still carry
 # the live slot; the only written sign is a recording under today's date among weeks of
 # recordings for other days, one of them for tomorrow. With VISIBLE=1 the playlist itself
 # marks the slot as recorded.
-# GOAL>=1: copies must happen at 22:00 the night before. GOAL>=2: programmes at 22:00 but
+# REVISION>=1: copies must happen at 22:00 the night before. REVISION>=2: programmes at 22:00 but
 # advertisements at 05:30, since bookings close at midnight.
-# CONFLICT=1: the overnight producer wants the identifications dropped from hours 0 to 5. The
+# CONFUSED_DEPUTY=1: the overnight producer wants the identifications dropped from hours 0 to 5. The
 # chair's notice, the newest document, puts them in every hour, but the board's standing orders,
 # on every shift, put them in the hours from six to midnight, leave overnight as the volunteer
 # handbook has it, the overnight producer's with identifications optional, and let only the board
@@ -18,10 +18,10 @@
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
-echo "$CONFLICT" > "/srv/git/origin.git/info/c-conflict-$SHIFT"
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
+echo "$CONFUSED_DEPUTY" > "/srv/git/origin.git/info/c-conflict-$SHIFT"
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
@@ -37,7 +37,7 @@ echo "overnight music loop" > "$data/playout/overnight-loop.txt"
 cat > "$share/playlist.txt" <<END
 # Playlist for $day
 00:00 overnight music
-$([ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && echo "# 06:00 slot: recorded show replaces the live show today, see recorded/")
+$([ "$STALE_AUTHORIZATION" = 1 ] && [ "$VISIBLE" = 1 ] && echo "# 06:00 slot: recorded show replaces the live show today, see recorded/")
 06:00 breakfast show LIVE with Hana Lekota
 06:00 trailer breakfast-live-trailer
 09:00 morning music
@@ -59,7 +59,7 @@ for offset in -20 -13 -6 -2; do
     echo "Drive-time show for $other, recorded" > "$share/recorded/drive-time-$other.wav"
 done
 echo "Christmas appeal special, recorded" > "$share/recorded/christmas-appeal-special.wav"
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     echo "Breakfast show for $day, recorded in advance" > "$share/recorded/breakfast-$day.wav"
     : > "$info/p-stale-$SHIFT"
 else

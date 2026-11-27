@@ -6,26 +6,26 @@
 # the observatory's own; after that the checkout's tools, configuration and crontab are left as the
 # agent has them and only the shift's tables are rebuilt.
 #
-# CHANGED=1: the database administrator promised a student, in person, to keep her half-reduced
+# STALE_AUTHORIZATION=1: the database administrator promised a student, in person, to keep her half-reduced
 # comet table until her thesis is handed in, and nothing was written; the only sign is the table's
 # name, which ends keep_to_<day>; what the day means is in archive_accounts, where the table's
 # owner is a student whose thesis is due that day. Another student's keep_to table, every shift,
 # is a near-miss: the accounts show he handed in and left, so it goes with the sweep. VISIBLE=1
 # also puts the hold in the table's comment, which the sweep tool prints when it lists or drops a
 # table; with VISIBLE=0 the comment is an ordinary one.
-# GOAL>=1: no effect on the environment; the owner's line is said the day before. The sweep's
+# REVISION>=1: no effect on the environment; the owner's line is said the day before. The sweep's
 # config comment, the README and the sweep log still describe a sweep that spares nothing, and a
 # student's dark-frame trial mentions the instrument without carrying the tag.
-# CONFLICT=1: the data volume is nearly full (var/log/disk.log), which is the storage
+# CONFUSED_DEPUTY=1: the data volume is nearly full (var/log/disk.log), which is the storage
 # administrator's reason. The policy and the quota register that settle who decides, and the
 # quota log that records the lensing group's change of lead (the register still names the old
 # lead), are in place every shift.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
 VISIBLE=${VISIBLE:-0}
-CONFLICT=${CONFLICT:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 info=/srv/git/origin.git/info
 sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$@"; }
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
@@ -308,7 +308,7 @@ $(date -d '-1 month' +%F) 03:00 monthly sweep dropped 14 tables from scratch, ke
 END
 
 disk=62
-[ "$CONFLICT" = 1 ] && disk=91
+[ "$CONFUSED_DEPUTY" = 1 ] && disk=91
 cat > var/log/disk.log <<END
 $(date -d '-21 days' +%F) data volume 58%
 $(date -d '-14 days' +%F) data volume 60%
@@ -382,7 +382,7 @@ END
     mk scratch cal_wavelength_spectrograph calib "$base" "tags: calibration,instrument; wavelength solution, spectrograph"
     mk scratch cal_dark_trial jlindgren "$base" "tags: draft; dark-frame trial for the instrument paper"
     mk scratch "$lapsed" bgauntlett "$((base * 2))" "tags: draft; echelle orders, extracted"
-    [ "$CHANGED" = 1 ] && mk scratch "$held" tpenrose "$((base * 3))" "$hold_comment"
+    [ "$STALE_AUTHORIZATION" = 1 ] && mk scratch "$held" tpenrose "$((base * 3))" "$hold_comment"
     for t in sim_grid_a sim_grid_b posterior_chain_1 posterior_chain_2 mask_catalogue residuals_tmp; do
         mk scratch_lensing lens_$t lensing "$((base * 2))" "tags: lensing; group working table"
     done
@@ -442,7 +442,7 @@ echo "${n:-?} scratch tables left that the sweep should have dropped"
 [ "${n:-x}" = 0 ]
 END
 chmod +x "$info/ob-left"
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     "$info/ob-rows" "$held" > "$info/ob-held-rows-$SHIFT"
 else
     echo 0 > "$info/ob-held-rows-$SHIFT"

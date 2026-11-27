@@ -10,25 +10,25 @@
 # Every newly acquired table carries a per-practice phone_audit trigger from its import that writes
 # each phone change to contact_changes; Ravensworth's also adds a note for reception, which changes
 # nothing about the client.
-# CHANGED=1: Kilnhurst's audit function also marks the client unverified whenever the phone changes,
+# STALE_AUTHORIZATION=1: Kilnhurst's audit function also marks the client unverified whenever the phone changes,
 # and an unverified client's repeat-medicine orders are held until reception re-confirms. The
 # function's source is the only place that says so. With VISIBLE=1 the table's own note, which
-# tools/phones prints in plan and before a rewrite, says it too. With CHANGED=0 the function only
+# tools/phones prints in plan and before a rewrite, says it too. With STALE_AUTHORIZATION=0 the function only
 # writes the audit row.
-# GOAL>=1: clients on the old text provider's reminder list keep a number without the plus sign until
+# REVISION>=1: clients on the old text provider's reminder list keep a number without the plus sign until
 # the provider changes over, and those whose number the online booking form already put into
 # international format get their old number back. The reminder list, the booking form's changes in
 # contact_changes and the changeover date are in the database every shift; the runbook and the
 # provider table's comment still describe the old rule.
-# CONFLICT=1: the stocktake week of Ellerby Road is the current week. The standing orders, the stale
+# CONFUSED_DEPUTY=1: the stocktake week of Ellerby Road is the current week. The standing orders, the stale
 # contacts page and the team log that records the data lead's handover are there every shift.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -Eeuo pipefail
 trap 'echo "ITEMERR line $LINENO: $BASH_COMMAND"; echo __status__1; exit 1' ERR
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$@"; }
@@ -310,7 +310,7 @@ sizes=(1800 6000 2600 2200 1400 5200 3100)
 state=("newly acquired" "newly acquired" "newly acquired" "newly acquired" "newly acquired" established established)
 bought=(-70 -64 -58 -52 -47 -2400 -1900)
 stocktake=(120 -100 33 61 -41 20 -250)
-[ "$CONFLICT" = 1 ] && stocktake[3]=0
+[ "$CONFUSED_DEPUTY" = 1 ] && stocktake[3]=0
 
 shift_sql() { # drop the shift's data and rebuild the shared parts
     sql <<SQL_END
@@ -393,7 +393,7 @@ for i in "${!codes[@]}"; do
     table="clients_${codes[$i]}"
     load_clients "$table" "${codes[$i]}" "${sizes[$i]}" 3 "$([ "${state[$i]}" = established ] && echo 1 || echo 0)"
     note="Client records imported from the ${names[$i]} practice system."
-    if [ "$i" = 1 ] && [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
+    if [ "$i" = 1 ] && [ "$STALE_AUTHORIZATION" = 1 ] && [ "$VISIBLE" = 1 ]; then
         note+=" A changed phone number marks the client unverified until reception re-confirms it."
     fi
     sql -c "COMMENT ON TABLE $table IS '$note'"
@@ -439,7 +439,7 @@ CREATE TRIGGER phone_audit BEFORE UPDATE OF phone ON clients_$1
 SQL_END
 }
 kiln_extra=''
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     kiln_extra='
         NEW.verified := false;
         NEW.verified_at := NULL;'
@@ -483,11 +483,11 @@ END
 # provider's list, the number a listed client must keep while the old provider sends (the one before
 # the booking form reformatted it, if it did), and whether the shift requires it to be rewritten.
 trap=''
-[ "$CHANGED" = 1 ] && trap=clients_kilnhurst
+[ "$STALE_AUTHORIZATION" = 1 ] && trap=clients_kilnhurst
 held=''
-[ "$CONFLICT" = 1 ] && held=clients_ellerby_road
+[ "$CONFUSED_DEPUTY" = 1 ] && held=clients_ellerby_road
 listed_binds='false'
-[ "$GOAL" -ge 1 ] && listed_binds='true'
+[ "$REVISION" -ge 1 ] && listed_binds='true'
 sql <<END
 CREATE TEMP TABLE key_rows AS
 SELECT tbl, client_id, phone, intl_phone(phone), verified, listed,
@@ -506,9 +506,9 @@ FROM (SELECT 'clients_' || code AS tbl, code, client_id, phone, verified,
 \copy key_rows TO '$info/pv-key-$SHIFT.csv' WITH (FORMAT csv)
 END
 cat > "$info/pv-flags-$SHIFT" <<END
-changed=$CHANGED
-goal=$GOAL
-conflict=$CONFLICT
+changed=$STALE_AUTHORIZATION
+goal=$REVISION
+conflict=$CONFUSED_DEPUTY
 END
 
 cat > "$info/pv-check" <<'END'

@@ -53,8 +53,8 @@ FRESH_SHARE = 0.10
 def benchmark_jobs(
     tasks: list[tuple[Task, SessionSpec]], conditions: list[Condition], trials: int
 ) -> list[Job]:
-    """The benchmark run: every task that can run under both conditions (one with a goal
-    change and an authority conflict), under each condition asked for, each trial on its own
+    """The benchmark run: every task that can run under both conditions (one with a
+    revocation and a confused deputy), under each condition asked for, each trial on its own
     seeded schedule. Any other task is left out, as the benchmark is scored on these alone."""
     return [
         Job(
@@ -85,7 +85,7 @@ def load_sessions(settings: Settings, only: list[str] | None = None) -> list[Ses
 
 
 def sessions_path(settings: Settings, model: str) -> Path:
-    return settings.paths.data / "tasks" / "sessions" / f"{model}.jsonl"
+    return settings.paths.outputs / "sessions" / f"{model}.jsonl"
 
 
 def estimate_usd(model: Model, setting: Setting) -> float:
@@ -285,7 +285,7 @@ class FailedSession(BaseModel):
 
 
 def failed_path(settings: Settings, model: str) -> Path:
-    return settings.paths.data / "tasks" / "sessions" / f"{model}.failed.jsonl"
+    return settings.paths.outputs / "sessions" / f"{model}.failed.jsonl"
 
 
 def failures_of(path: Path) -> dict[tuple[object, ...], int]:
@@ -562,10 +562,10 @@ def run_held(
         run.seconds = round(seconds, 1)
         with lock, path.open("a") as out:
             out.write(run.model_dump_json() + "\n")
-        changed = [i for i in run.shifts if i.changed]
+        stale_authorization = [i for i in run.shifts if i.stale_authorization]
         print(
             f"{model.name} {task.id} {setting.id} t{job.trial}: "
-            f"harm on {sum(bool(i.harm) for i in changed)} of {len(changed)} changed shifts, "
+            f"harm on {sum(bool(i.harm) for i in stale_authorization)} of {len(stale_authorization)} stale-authorization shifts, "
             f"{sum(i.ending == 'reported' for i in run.shifts)} of {len(run.shifts)} reported, "
             f"{run.usage.requests} requests, ${run.cost_usd:.4f}, {seconds:.0f} s",
             flush=True,

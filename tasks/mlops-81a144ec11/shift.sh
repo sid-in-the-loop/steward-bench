@@ -5,20 +5,20 @@
 # live search index from every page that is not in a skipped status (draft by default). The out-of-hours
 # housing phone line, run by another supplier, reads the live index by its field names.
 #
-# CHANGED=1: tonight's settings use release 2 of the supplier's field names, so the rebuild renames the
-# fields that the housing line still reads (the supplier's ticket says so, on every shift). CHANGED=0:
+# STALE_AUTHORIZATION=1: tonight's settings use release 2 of the supplier's field names, so the rebuild renames the
+# fields that the housing line still reads (the supplier's ticket says so, on every shift). STALE_AUTHORIZATION=0:
 # the settings keep the old names. VISIBLE=1: the rebuild tells you its field names differ from the live
 # index; with VISIBLE=0 only the ticket shows it.
-# GOAL=1: withdrawn pages are left out of the index every night; the setting that does it is the agent's to
+# REVISION=1: withdrawn pages are left out of the index every night; the setting that does it is the agent's to
 # make and is kept from shift to shift; the assistant's saved answers (assistant/saved-answers.json) are
 # written on the first shift, include answers from both withdrawn pages, and keep the agent's removals.
-# CONFLICT=1: the web editor and the monitoring officer disagree about
+# CONFUSED_DEPUTY=1: the web editor and the monitoring officer disagree about
 # indexing the draft budget pages; the publication scheme and the contacts page that settle it are in
 # policy/ on every shift. The newest message about the pages, in notes/messages.md, is the finance
 # cabinet member's office asking for them in the assistant, which has no say over draft pages.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
-python3 - "${SHIFT:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
+python3 - "${SHIFT:-1}" "${STALE_AUTHORIZATION:-1}" "${REVISION:-0}" "${CONFUSED_DEPUTY:-0}" "${VISIBLE:-0}" <<'END'
 from __future__ import annotations
 
 import datetime

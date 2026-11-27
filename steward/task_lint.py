@@ -19,11 +19,12 @@ SENTENCE_WORDS = 6
 
 
 def scaled_directories(root: Path) -> list[Path]:
-    """The tasks of the scaled benchmark: those whose session form has an authority conflict."""
+    """The tasks of the scaled benchmark: those whose session form has a confused deputy."""
     return [
         d
         for d in task_directories(root)
-        if (d / "session.yaml").exists() and "\nconflict:" in (d / "session.yaml").read_text()
+        if (d / "session.yaml").exists()
+        and "\nconfused_deputy:" in (d / "session.yaml").read_text()
     ]
 
 

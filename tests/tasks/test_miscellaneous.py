@@ -73,7 +73,7 @@ def test_the_first_miscellaneous_task_is_on_the_home_base() -> None:
     directory = TASKS / "misc-2968d0cbce"
     task = load_task(directory)
     spec = load_session_spec(directory, task)
-    assert spec is not None and spec.goal is not None and spec.conflict is not None
+    assert spec is not None and spec.revocation is not None and spec.confused_deputy is not None
     assert task.domain == "misc"
     assert task.id == directory.name == task_identifier("misc", task.title)
     assert isinstance(task.environment, Repo) and task.environment.base == "home.sh"

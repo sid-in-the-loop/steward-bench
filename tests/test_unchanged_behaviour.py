@@ -67,7 +67,7 @@ def test_stored_sessions_parse_with_their_settings_and_conditions() -> None:
 def stored_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """A data folder holding the stored sessions as current sessions of two models."""
     versions = {task.id: spec.version for task, spec in benchmark_tasks()}
-    folder = tmp_path / "data" / "tasks" / "sessions"
+    folder = tmp_path / "data" / "cases" / "sessions"
     folder.mkdir(parents=True)
     for model in (MODEL, SECOND):
         rows = []

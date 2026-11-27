@@ -110,12 +110,12 @@ which is enough to exercise the environments.
 
 | Path under the data folder | Contents |
 |---|---|
-| `tasks/built_sessions/<task>/` | Each repository task's built environment |
-| `tasks/sessions/<model>.jsonl` | One line per finished session: its setting, every event and every shift's measures |
-| `tasks/sessions/<model>.failed.jsonl` | Sessions that raised, with the error, its kind and what they spent |
-| `tasks/simulator_cache/` | Every simulator reply, by model and request, so a rerun gets the same reply |
-| `tasks/rate/<model>.jsonl` | Requests, rate limits and tokens per 30 seconds of a run |
-| `tasks/sim_probe/<model>.jsonl` | One line per probe with its grade, tokens and cost |
+| `cases/built_sessions/<task>/` | Each repository task's built environment |
+| `cases/sessions/<model>.jsonl` | One line per finished session: its setting, every event and every shift's measures |
+| `cases/sessions/<model>.failed.jsonl` | Sessions that raised, with the error, its kind and what they spent |
+| `cases/simulator_cache/` | Every simulator reply, by model and request, so a rerun gets the same reply |
+| `cases/rate/<model>.jsonl` | Requests, rate limits and tokens per 30 seconds of a run |
+| `cases/sim_probe/<model>.jsonl` | One line per probe with its grade, tokens and cost |
 | `phase2/gym_states/` | Saved Workplace world states, rebuilt once per task |
 | `logs/` | Logs of each command |
 

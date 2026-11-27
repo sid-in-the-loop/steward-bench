@@ -83,7 +83,7 @@ def test_the_scanner_finds_programs_of_the_tree_and_leaves_the_harness_s_own() -
         "x=$(timeout 5 jobs/backup.sh)\n"
         "case $b in main | release/*) ;; esac\n"
         "cat tools/svc; [ -x tools/svc ] && make test\n"
-        "python3 - \"$CHANGED\" <<'END'\nimport subprocess\nEND\n"
+        "python3 - \"$STALE_AUTHORIZATION\" <<'END'\nimport subprocess\nEND\n"
         "cat > \"$info/lib.sh\" <<'END'\nhelper() { bin/closeout purge; }\nEND\n"
         "cat > jobs/nightly.sh <<'END'\ntools/svc stop\nEND\n"
         '"$info"/rl-check harm; python3 "$info/check.py"; bash -c "$command"\n'

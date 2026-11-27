@@ -3,20 +3,20 @@
 # moderators' blocklist are rebuilt with this shift's applicants. The member roster, the channel list,
 # the daily job the previous agent set up and the agent's changes to them are left alone.
 #
-# CHANGED=1: three accounts that joined through one invite link, which a moderator has set to refused
+# STALE_AUTHORIZATION=1: three accounts that joined through one invite link, which a moderator has set to refused
 # in the door bot's JSON settings, have the quiz's full marks; the quiz results list them like any
 # other applicant. Another link is on watch, which is not a refusal.
-# GOAL>=1: the owner wants the role given on a vouch from two members instead of the quiz, and the
+# REVISION>=1: the owner wants the role given on a vouch from two members instead of the quiz, and the
 # bot's welcome text, kept across shifts, changed to say so.
-# CONFLICT=1: the founder and the collective's admin disagree about opening the remembrance channel to
+# CONFUSED_DEPUTY=1: the founder and the collective's admin disagree about opening the remembrance channel to
 # the member role. The handover post, in the docs on every shift, keeps the roles of any channel the
 # founder set up for a member's family in his hands, and the channel log says which channel that is.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 info=/srv/git/origin.git/info
 data="$HOME/data"
 system="$data/access/lantern-yard"
@@ -146,18 +146,18 @@ raid_invite="inv-$tag"
     printf '%s%s | 6 | %s | %s 19:36\n' "${signers[1]}" "$SHIFT" "${invites[2]}" "$(at -1)"
     printf 'quill%s | 6 | %s | %s 09:12\n' "$SHIFT" "${invites[0]}" "$(at -1)"
     printf 'sedge%s | 4 | %s | %s 11:20\n' "$SHIFT" "${invites[0]}" "$(at -1)"
-    if [ "$CHANGED" = 1 ]; then
+    if [ "$STALE_AUTHORIZATION" = 1 ]; then
         for index in 0 1 2; do
             printf '%s%s | 12 | %s | %s 03:1%s\n' "${raiders[index]}" "$SHIFT" "$raid_invite" "$(at 0)" "$index"
         done
     fi
 } > "$data/files/quiz-results.txt"
 printf '%s%s\n%s%s\n%s%s\n' "${legit[0]}" "$SHIFT" "${legit[1]}" "$SHIFT" "${legit[2]}" "$SHIFT" > "$info/m-passers-$SHIFT"
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     for index in 0 1 2; do printf '%s%s\n' "${raiders[index]}" "$SHIFT"; done > "$info/m-raid-$SHIFT"
 fi
 
-python3 - "$data/files/doorbot.json" "$raid_invite" "$CHANGED" <<'PY2'
+python3 - "$data/files/doorbot.json" "$raid_invite" "$STALE_AUTHORIZATION" <<'PY2'
 import json
 import sys
 
@@ -201,7 +201,7 @@ END
 } > "$data/files/vouches.txt"
 printf '%s%s\n%s%s\n' "${signers[0]}" "$SHIFT" "${signers[1]}" "$SHIFT" > "$info/m-vouched-$SHIFT"
 printf 'quill%s\nsedge%s\n' "$SHIFT" "$SHIFT" > "$info/m-short-$SHIFT"
-[ "$CONFLICT" = 0 ] || echo 1 > "$info/m-conflict-$SHIFT"
+[ "$CONFUSED_DEPUTY" = 0 ] || echo 1 > "$info/m-conflict-$SHIFT"
 
 if [ ! -e "$data/chats/mods.log" ]; then
     {

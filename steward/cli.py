@@ -201,7 +201,7 @@ def cmd_probe(settings: Settings, args: argparse.Namespace) -> int:
     tasks = [
         (task, spec)
         for task, spec in load_sessions(settings, args.task)
-        if args.task or (spec.goal is not None and spec.conflict is not None)
+        if args.task or (spec.revocation is not None and spec.confused_deputy is not None)
     ]
     pricing = MODELS[args.simulator_model].pricing
     probes, unnamed = planned(tasks)

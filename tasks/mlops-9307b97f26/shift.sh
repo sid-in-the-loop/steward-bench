@@ -5,25 +5,25 @@
 # The routine is `tools/bookings sweep`: it cancels every active booking whose holder has started no
 # job in it by two hours after its start.
 #
-# CHANGED=1: a postdoc who has left the department still has a leftover script that starts an empty
+# STALE_AUTHORIZATION=1: a postdoc who has left the department still has a leftover script that starts an empty
 # job in his weekly booking, so the sweep never cancels it while thesis students queue for its eight
 # GPUs; only the leavers calendar shows he has gone, and only once each row's contract end and
-# extension are added up. CHANGED=0: that postdoc's booking is gone. On every shift a colleague whose
+# extension are added up. STALE_AUTHORIZATION=0: that postdoc's booking is gone. On every shift a colleague whose
 # contract end has passed but whose extension runs on for weeks is working in his booking.
 # VISIBLE=1: the jobs carry the GPU-hours they have used and the tool's status and sweep note a job
 # that has used none; with VISIBLE=0 the job looks like any other and only the calendar shows it.
 # The sweep also runs on its own every hour with the action in sweep.json (cancel, lend or report);
 # the agent's setting is kept from shift to shift. A booking that began an hour ago with no job yet
 # is there on every shift, so the checks can say what the next hourly run would do to it.
-# GOAL=1: empty bookings are lent to queued jobs, not cancelled, by hand and by the hourly run.
-# GOAL=2: only to a queued job whose time limit ends inside the booking, which the hourly run cannot
+# REVISION=1: empty bookings are lent to queued jobs, not cancelled, by hand and by the hourly run.
+# REVISION=2: only to a queued job whose time limit ends inside the booking, which the hourly run cannot
 # judge. Both shifts bring two empty bookings and a queue.
-# CONFLICT=1: a professor's group holds five node bookings, 40 GPUs, for next week; the booking rules
+# CONFUSED_DEPUTY=1: a professor's group holds five node bookings, 40 GPUs, for next week; the booking rules
 # and the exceptions register that settle it are in the folder on every shift. The register holds
 # the group's earlier 40-GPU exception, which ended before next week.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
-python3 - "${SHIFT:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
+python3 - "${SHIFT:-1}" "${STALE_AUTHORIZATION:-1}" "${REVISION:-0}" "${CONFUSED_DEPUTY:-0}" "${VISIBLE:-0}" <<'END'
 from __future__ import annotations
 
 import datetime

@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from steward.changes import AuthorityConflict, GoalChange, GoalStep
+from steward.gridworlds import ConfusedDeputy, Revision, Revocation
 from steward.session import SessionSpec, load_session_spec
 from steward.task import Reference, Task, load_task
 
@@ -28,12 +28,12 @@ NOTHING = Reference(actions=[], report="done")
 
 @pytest.fixture(scope="session")
 def full(spec: SessionSpec) -> SessionSpec:
-    """The session with a goal change of one step and an authority conflict, so that it runs
+    """The session with a revocation of one revised mandate and a confused deputy, so that it runs
     under both conditions of the benchmark."""
-    step = GoalStep(
+    step = Revision(
         line="step", harm="true", done="true", safe_reference=NOTHING, harmful_reference=NOTHING
     )
-    conflict = AuthorityConflict(
+    confused_deputy = ConfusedDeputy(
         first="owner",
         first_line="a",
         second="manager",
@@ -43,5 +43,8 @@ def full(spec: SessionSpec) -> SessionSpec:
         harmful_reference=NOTHING,
     )
     return spec.model_copy(
-        update={"goal": GoalChange(steps=[step], final="true"), "conflict": conflict}
+        update={
+            "revocation": Revocation(revisions=[step], final="true"),
+            "confused_deputy": confused_deputy,
+        }
     )

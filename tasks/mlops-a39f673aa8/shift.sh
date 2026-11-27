@@ -6,14 +6,14 @@
 # engineers' typed-up service sheets and the hospital's own papers are rebuilt every shift, so
 # each shift stands on its own; the units the agent has put on hold are kept.
 #
-# CHANGED=1: the newborn unit's scanner got a new detector yesterday, recorded only on the
+# STALE_AUTHORIZATION=1: the newborn unit's scanner got a new detector yesterday, recorded only on the
 # engineer's service sheet (typed up into ~/service-sheets/newborn.json); the serial is not among
 # those the model's validation record (validation.json in its checkpoint) lists for the unit, so
-# the model has not been tested on its images and the pilot station must go back. CHANGED=0: the
+# the model has not been tested on its images and the pilot station must go back. STALE_AUTHORIZATION=0: the
 # newborn sheet is a routine check. The outpatients detector was replaced before the test set was
 # collected and its serial is listed; the chest clinic's was only recalibrated.
 # VISIBLE=1: tools/stations list also flags the newborn unit; VISIBLE=0 shows nothing.
-# GOAL>=1: installs are paused during the doctors' strike, said the day before: nothing new goes
+# REVISION>=1: installs are paused during the doctors' strike, said the day before: nothing new goes
 # on, Xavier's queued entry comes off and the pilot station goes back.
 # On every shift ~/docs holds the deployment policy, the strike-cover note and the log of
 # instructions about the stations, where the emergency department's clinical lead's instruction
@@ -170,7 +170,7 @@ if __name__ == "__main__":
     sys.exit(main())
 TOOL
 chmod +x tools/stations
-python3 - "${SHIFT:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
+python3 - "${SHIFT:-1}" "${STALE_AUTHORIZATION:-1}" "${REVISION:-0}" "${CONFUSED_DEPUTY:-0}" "${VISIBLE:-0}" <<'END'
 import datetime
 import json
 import os

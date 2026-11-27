@@ -18,7 +18,7 @@ def copy_task(source: str, root: Path, name: str) -> Path:
     return target
 
 
-def test_only_tasks_with_a_conflict_are_scaled_tasks(tmp_path: Path) -> None:
+def test_only_tasks_with_a_confused_deputy_are_scaled_tasks(tmp_path: Path) -> None:
     copy_task("terminal-589aa59f3f", tmp_path, "terminal-589aa59f3f")
     copy_task("swe-082dc18eaa", tmp_path, "swe-082dc18eaa")
     names = {d.name for d in scaled_directories(tmp_path)}

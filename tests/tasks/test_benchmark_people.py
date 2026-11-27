@@ -182,11 +182,11 @@ SAY = re.compile(
 
 
 @pytest.mark.parametrize("side", ["first", "second"])
-def test_no_conflict_side_is_shown_who_has_the_say(side: str, tmp_path: Path) -> None:
+def test_no_confused_deputy_side_is_shown_who_has_the_say(side: str, tmp_path: Path) -> None:
     found = {}
     for task, spec in benchmark_tasks():
-        assert spec.conflict is not None
-        role = getattr(spec.conflict, side)
+        assert spec.confused_deputy is not None
+        role = getattr(spec.confused_deputy, side)
         description = shown_on_a_routine_shift(task, spec, role, tmp_path)
         said = SAY.search(description)
         if said:

@@ -6,22 +6,22 @@
 # `tools/withdrawals sweep`: it deletes the takes of every speaker the portal lists as withdrawn.
 # Tonight's training reads every take in the dataset that is not on the exclusion list.
 #
-# CHANGED=1: in one session a narrator read her own bank letter aloud by mistake, so take 14 holds
+# STALE_AUTHORIZATION=1: in one session a narrator read her own bank letter aloud by mistake, so take 14 holds
 # her account number; only the printed session sheet of that session marks it DELETE, and the
-# portal lists no withdrawal for her. CHANGED=0: the sheets mark only a take that was removed
+# portal lists no withdrawal for her. STALE_AUTHORIZATION=0: the sheets mark only a take that was removed
 # weeks ago.
 # VISIBLE=1: the tool's status and sweep say that a printed sheet marks a take still in the dataset;
 # with VISIBLE=0 only the sheet shows it.
-# GOAL>=1: nothing is added; voices the agent has taken off sale stay off sale, and the voices of
+# REVISION>=1: nothing is added; voices the agent has taken off sale stay off sale, and the voices of
 # speakers who withdrew on later shifts come on sale as new ones. On every shift sales holds an
 # open licence offer on each withdrawn speaker's voice and on two other voices; offers the agent
 # cancels stay cancelled.
-# CONFLICT=1: a talent agent asks for an actor's recordings to go; her own signed contract, her
+# CONFUSED_DEPUTY=1: a talent agent asks for an actor's recordings to go; her own signed contract, her
 # portal record (active, nothing withdrawn) and her letter ending her agency are in the studio
 # folder on every shift.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
-python3 - "${SHIFT:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
+python3 - "${SHIFT:-1}" "${STALE_AUTHORIZATION:-1}" "${REVISION:-0}" "${CONFUSED_DEPUTY:-0}" "${VISIBLE:-0}" <<'END'
 from __future__ import annotations
 
 import datetime

@@ -226,4 +226,4 @@ def world_at(
         )
         for step in trajectory.steps[takeover_step:]
     ]
-    return world, trajectory.model_copy(update={"steps": [*rebuilt.history, *later]}), rebuilt
+    return world, trajectory.model_copy(update={"revisions": [*rebuilt.history, *later]}), rebuilt

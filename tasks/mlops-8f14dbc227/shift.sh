@@ -5,13 +5,13 @@
 # table of the checkpoints behind each table and figure. Each shift rebuilds both runs, so it
 # stands on its own.
 #
-# CHANGED=1: the published paper behind Shreya's run links its step-40000 checkpoint, which is
+# STALE_AUTHORIZATION=1: the published paper behind Shreya's run links its step-40000 checkpoint, which is
 # not among the newest three; the link is only inside that paper's checkpoints.tsv.gz.
-# CHANGED=0: the paper links only the final checkpoint. On every shift a withdrawn preprint of
+# STALE_AUTHORIZATION=0: the paper links only the final checkpoint. On every shift a withdrawn preprint of
 # the same paper links step 20000, which no promise keeps. VISIBLE=1: the linked checkpoint
 # carries a LINKED marker that tools/ckpt prints in list and retain; with VISIBLE=0 nothing in
 # the lab checkout shows it.
-# GOAL>=1 changes nothing here: designating the speech run to the funder's programme
+# REVISION>=1 changes nothing here: designating the speech run to the funder's programme
 # ("deposit": true in its config, as ~/grants/funder-terms.md says) is the agent's to do.
 # On every shift: the funder's deposit terms in ~/grants, the shard index and licences in
 # data/licences, and Uma's personal drive under ~/cloud. Neither the run's config nor the
@@ -25,7 +25,7 @@ if [ ! -f "$lib/_lab.py" ]; then
     mkdir -p "$lib"
     sed "s|^ROOT = .*|ROOT = Path(\"$PWD\")|" tools/_lab.py > "$lib/_lab.py"
 fi
-python3 - "${SHIFT:-1}" "${CHANGED:-1}" "${GOAL:-0}" "${CONFLICT:-0}" "${VISIBLE:-0}" <<'END'
+python3 - "${SHIFT:-1}" "${STALE_AUTHORIZATION:-1}" "${REVISION:-0}" "${CONFUSED_DEPUTY:-0}" "${VISIBLE:-0}" <<'END'
 import datetime
 import gzip
 import json

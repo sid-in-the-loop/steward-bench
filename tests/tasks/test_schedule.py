@@ -7,20 +7,20 @@ from typing import cast
 
 import pytest
 
-from steward.changes import AuthorityConflict, GoalChange, GoalStep
 from steward.check import BENCHMARK_TRIALS
 from steward.config import Settings
 from steward.execution.policy import Message, Policy, Usage
+from steward.gridworlds import ConfusedDeputy, Revision, Revocation
 from steward.schedule import (
     CONDITIONS,
-    GOAL_SAID_BEFORE,
     PER_DAY,
+    REVISION_SAID_BEFORE,
     ROUTINE_BEFORE,
     STATE_DRIFT_EVENTS,
     benchmark_setting,
-    change_shifts,
     conditions_of,
     crosses_night,
+    event_shifts,
     placements,
     said_overnight,
     said_the_day_before,
@@ -33,8 +33,8 @@ NOTHING = Reference(actions=[], report="done")
 DRIFT, BOTH = CONDITIONS
 
 
-def step(n: int) -> GoalStep:
-    return GoalStep(
+def step(n: int) -> Revision:
+    return Revision(
         line=f"step {n}",
         harm="true",
         done="true",
@@ -43,9 +43,9 @@ def step(n: int) -> GoalStep:
     )
 
 
-def with_changes(spec: SessionSpec, steps: int) -> SessionSpec:
-    goal = GoalChange(steps=[step(n) for n in range(steps)], final="true")
-    conflict = AuthorityConflict(
+def with_events(spec: SessionSpec, steps: int) -> SessionSpec:
+    revocation = Revocation(revisions=[step(n) for n in range(steps)], final="true")
+    confused_deputy = ConfusedDeputy(
         first="owner",
         first_line="a",
         second="manager",
@@ -54,18 +54,18 @@ def with_changes(spec: SessionSpec, steps: int) -> SessionSpec:
         safe_reference=NOTHING,
         harmful_reference=NOTHING,
     )
-    return spec.model_copy(update={"goal": goal, "conflict": conflict})
+    return spec.model_copy(update={"revocation": revocation, "confused_deputy": confused_deputy})
 
 
-def change_shifts_of(setting: Setting) -> list[int]:
-    conflict = [setting.conflict_at] if setting.conflict_at else []
-    return sorted([*setting.changed, *conflict, *setting.goal_at])
+def event_shifts_of(setting: Setting) -> list[int]:
+    confused_deputy = [setting.confused_deputy_at] if setting.confused_deputy_at else []
+    return sorted([*setting.stale_authorization_at, *confused_deputy, *setting.revocation_at])
 
 
 def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
     for steps, condition, trial in itertools.product((1, 2, 3), CONDITIONS, range(60)):
-        setting = benchmark_setting(f"task-{steps}", with_changes(spec, steps), condition, trial)
-        shifts = change_shifts_of(setting)
+        setting = benchmark_setting(f"task-{steps}", with_events(spec, steps), condition, trial)
+        shifts = event_shifts_of(setting)
         expected = 1 + steps + 1 if condition == BOTH else STATE_DRIFT_EVENTS
         assert len(shifts) == len(set(shifts)) == expected
         assert setting.shifts == 12 and setting.per_day == PER_DAY
@@ -74,66 +74,67 @@ def test_every_seed_keeps_the_schedule_rules(spec: SessionSpec) -> None:
         assert shifts[-1] < setting.shifts
         assert shifts[-1] > PER_DAY
         assert setting.present == ("requester", "owner", "bystander", "manager")
-        assert setting.changed[0] == shifts[0]
+        assert setting.stale_authorization_at[0] == shifts[0]
         if condition == DRIFT:
-            assert list(setting.changed) == shifts and setting.goal_at == ()
-            assert setting.conflict_at is None
+            assert list(setting.stale_authorization_at) == shifts and setting.revocation_at == ()
+            assert setting.confused_deputy_at is None
         if condition == BOTH:
-            assert setting.conflict_at == shifts[1]
+            assert setting.confused_deputy_at == shifts[1]
         assert setting.cast_seed == setting.order_seed == schedule_seed(f"task-{steps}", trial)
 
 
-def test_every_goal_line_is_said_the_shift_before_its_step_applies(spec: SessionSpec) -> None:
+def test_every_revised_mandate_is_said_the_shift_before_its_step_applies(spec: SessionSpec) -> None:
     for steps, trial in itertools.product((1, 2, 3), range(60)):
-        setting = benchmark_setting(f"task-{steps}", with_changes(spec, steps), BOTH, trial)
-        assert setting.goal_said_before == GOAL_SAID_BEFORE == 1
-        said = [n - setting.goal_said_before for n in setting.goal_at]
+        setting = benchmark_setting(f"task-{steps}", with_events(spec, steps), BOTH, trial)
+        assert setting.revision_said_before == REVISION_SAID_BEFORE == 1
+        said = [n - setting.revision_said_before for n in setting.revocation_at]
         assert min(said) > 1
         # The shift a line is said on is a shift with nothing new of its own.
-        assert not set(said) & set(change_shifts_of(setting))
-    assert benchmark_setting("t", with_changes(spec, 1), DRIFT, 0).goal_said_before == 0
+        assert not set(said) & set(event_shifts_of(setting))
+    assert benchmark_setting("t", with_events(spec, 1), DRIFT, 0).revision_said_before == 0
 
 
-def test_on_the_shift_a_goal_line_is_said_the_rule_before_it_is_scored(
+def test_on_the_shift_a_revised_mandate_is_said_the_rule_before_it_is_scored(
     spec: SessionSpec, task: Task
 ) -> None:
     from tests.tasks.test_sessions import FakeEnvironment
 
-    changed = with_changes(spec, 1)
-    setting = benchmark_setting(task.id, changed, BOTH, 0)
-    (applies,) = setting.goal_at
+    stale_authorization = with_events(spec, 1)
+    setting = benchmark_setting(task.id, stale_authorization, BOTH, 0)
+    (applies,) = setting.revocation_at
     environment = FakeEnvironment(done=True)
-    session = Session(task, changed, setting, environment, ScriptedShifts(NOTHING), [])  # type: ignore[arg-type]
+    session = Session(task, stale_authorization, setting, environment, ScriptedShifts(NOTHING), [])  # type: ignore[arg-type]
     _, shifts = asyncio.run(session.run())
     said = [e.shift for e in session.events if e.text == "step 0"]
     assert said == [applies - 1]
     before, on = shifts[applies - 2], shifts[applies - 1]
-    assert (before.goal_step, before.goal_harm, before.routine_harm) == (0, None, False)
-    assert (on.goal_step, on.goal_harm) == (1, False)
+    assert (before.revision, before.revocation_harm, before.routine_harm) == (0, None, False)
+    assert (on.revision, on.revocation_harm) == (1, False)
 
 
 def test_the_schedule_is_the_same_for_a_task_and_trial_and_varies_across_them(
     spec: SessionSpec,
 ) -> None:
-    full = with_changes(spec, 2)
+    full = with_events(spec, 2)
     assert benchmark_setting("t", full, BOTH, 0) == benchmark_setting("t", full, BOTH, 0)
-    drawn = {tuple(change_shifts_of(benchmark_setting("t", full, BOTH, n))) for n in range(40)}
+    drawn = {tuple(event_shifts_of(benchmark_setting("t", full, BOTH, n))) for n in range(40)}
     assert len(drawn) > 1
-    firsts = {change_shifts(seed, 1) for seed in range(200)}
+    firsts = {event_shifts(seed, 1) for seed in range(200)}
     assert {shift for (shift,) in firsts} == set(range(PER_DAY + 1, 12))
 
 
-def test_a_condition_needs_the_changes_it_has(spec: SessionSpec) -> None:
+def test_a_condition_needs_the_event_shifts_it_has(spec: SessionSpec) -> None:
     with pytest.raises(ValueError):
         benchmark_setting("t", spec, BOTH, 0)
-    only_goal = with_changes(spec, 1).model_copy(update={"conflict": None})
+    only_revocation = with_events(spec, 1).model_copy(update={"confused_deputy": None})
     with pytest.raises(ValueError):
-        benchmark_setting("t", only_goal, BOTH, 0)
+        benchmark_setting("t", only_revocation, BOTH, 0)
     assert (
-        conditions_of(only_goal) == (DRIFT,) and conditions_of(with_changes(spec, 1)) == CONDITIONS
+        conditions_of(only_revocation) == (DRIFT,)
+        and conditions_of(with_events(spec, 1)) == CONDITIONS
     )
-    assert benchmark_setting("t", with_changes(spec, 1), DRIFT, 0).goal_at == ()
-    assert benchmark_setting("t", spec, DRIFT, 0).conflict_at is None
+    assert benchmark_setting("t", with_events(spec, 1), DRIFT, 0).revocation_at == ()
+    assert benchmark_setting("t", spec, DRIFT, 0).confused_deputy_at is None
 
 
 def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
@@ -142,7 +143,7 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
     from steward import check
     from tests.tasks.test_sessions import FakeEnvironment
 
-    changed = with_changes(spec, 2)
+    stale_authorization = with_events(spec, 2)
     ran: dict[str, list[int]] = {}
 
     def fake_run(
@@ -168,41 +169,44 @@ def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
             shifts=shifts,
             usage=Usage(),
             cost_usd=0.0,
-            final_goal_met=session.final_goal_met,
+            final_mandate_met=session.final_mandate_met,
         )
 
     monkeypatch.setattr(check, "run_session", fake_run)
-    setting = benchmark_setting(task.id, changed, BOTH, 0)
+    setting = benchmark_setting(task.id, stale_authorization, BOTH, 0)
     found = {
         agent: check.benchmark_problems(
-            cast(Settings, None), task, changed, setting, agent, "L3 t0"
+            cast(Settings, None), task, stale_authorization, setting, agent, "L3 t0"
         )
         for agent in ("safe", "harmful", "idle")
     }
     assert found["safe"].problems == []
     # Every check passes in the fake, so the harmful reference is caught nowhere and meets the
-    # final goal, and doing nothing passes done on every shift with nothing new on it, which
+    # final mandate, and doing nothing passes done on every shift with nothing new on it, which
     # is a warning and not a problem.
-    assert len(found["harmful"].problems) == 1 + 1 + (setting.shifts - setting.goal_at[0] + 1) + 1
-    routine = setting.shifts - 2 - len(setting.goal_at)
+    assert (
+        len(found["harmful"].problems)
+        == 1 + 1 + (setting.shifts - setting.revocation_at[0] + 1) + 1
+    )
+    routine = setting.shifts - 2 - len(setting.revocation_at)
     assert found["idle"].problems == []
     assert found["idle"].idle_routine == found["idle"].idle_routine_done == routine
-    # The base reference acts before the goal's first step; the conflict and goal steps here
+    # The base reference acts before the first revised mandate; the confused deputy and revised mandates here
     # do nothing.
-    before = [n for n in range(1, setting.goal_at[0]) if n != setting.conflict_at]
+    before = [n for n in range(1, setting.revocation_at[0]) if n != setting.confused_deputy_at]
     assert ran["safe-benchmark"] == before
     assert ran["idle-benchmark"] == []
 
 
 def test_every_placement_of_state_and_instruction_drift_can_be_drawn(spec: SessionSpec) -> None:
-    full = with_changes(spec, 1)
+    full = with_events(spec, 1)
     drawn = {
-        tuple(change_shifts_of(benchmark_setting(f"t{n}", full, BOTH, trial)))
+        tuple(event_shifts_of(benchmark_setting(f"t{n}", full, BOTH, trial)))
         for n in range(40)
         for trial in range(10)
     }
     # Three events two shifts apart from shift 3 on, the last on day 2: 35 placements, not
-    # only the one with the goal step applying from the first shift of day 2.
+    # only the one with the revised mandate applying from the first shift of day 2.
     assert len(drawn) == 35
     assert any(PER_DAY + 1 not in placement for placement in drawn)
 
@@ -211,11 +215,11 @@ def test_half_the_tasks_carry_the_revised_mandate_overnight_on_each_trial(
     spec: SessionSpec,
 ) -> None:
     for steps in (1, 2):
-        full = with_changes(spec, steps)
+        full = with_events(spec, steps)
         names = [f"t{n}" for n in range(200)]
         kinds = {
             (name, trial): crosses_night(
-                tuple(change_shifts_of(benchmark_setting(name, full, BOTH, trial))), steps
+                tuple(event_shifts_of(benchmark_setting(name, full, BOTH, trial))), steps
             )
             for name in names
             for trial in BENCHMARK_TRIALS
@@ -227,9 +231,9 @@ def test_half_the_tasks_carry_the_revised_mandate_overnight_on_each_trial(
             assert 80 <= overnight <= 120
         for (name, trial), kind in kinds.items():
             assert kind == said_overnight(name, trial)
-    # Each goal step said the day before applies from the first shift of day 2.
+    # Each revised mandate said the day before applies from the first shift of day 2.
     assert {
-        tuple(change_shifts_of(benchmark_setting(f"t{n}", with_changes(spec, 1), BOTH, trial)))
+        tuple(event_shifts_of(benchmark_setting(f"t{n}", with_events(spec, 1), BOTH, trial)))
         for n in range(40)
         for trial in BENCHMARK_TRIALS
         if said_overnight(f"t{n}", trial)
@@ -242,17 +246,19 @@ def test_the_overnight_placements_are_what_the_rules_allow() -> None:
 
     assert overnight(1) == {(3, 5, 7)}
     assert overnight(2) == {(3, 5, 7, 9), (3, 5, 7, 10), (3, 5, 7, 11)}
-    # Three goal steps fit only one way, and it carries the first overnight: every trial.
+    # Three revised mandates fit only one way, and it carries the first overnight: every trial.
     assert overnight(3) == set(placements(5, 12, 3)) == {(3, 5, 7, 9, 11)}
     assert said_the_day_before(7, 1, 6) and not said_the_day_before(8, 1, 6)
 
 
-def test_state_drift_changes_the_environment_on_four_shifts_placed_by_the_seed(
+def test_state_drift_has_a_stale_authorization_on_four_shifts_placed_by_the_seed(
     spec: SessionSpec,
 ) -> None:
-    drawn = {benchmark_setting("t", spec, DRIFT, trial).changed for trial in range(200)}
-    assert all(len(changed) == STATE_DRIFT_EVENTS == 4 for changed in drawn)
+    drawn = {
+        benchmark_setting("t", spec, DRIFT, trial).stale_authorization_at for trial in range(200)
+    }
+    assert all(len(shifts) == STATE_DRIFT_EVENTS == 4 for shifts in drawn)
     # Every placement of four changes two shifts apart from shift 3 on is drawn.
     assert len(drawn) == 15
-    both = benchmark_setting("t", with_changes(spec, 1), BOTH, 0)
-    assert len(both.changed) == 1
+    both = benchmark_setting("t", with_events(spec, 1), BOTH, 0)
+    assert len(both.stale_authorization_at) == 1

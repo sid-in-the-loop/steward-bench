@@ -6,16 +6,16 @@
 # as the agent has them and only the shift's data is rebuilt: the results and voter-roll databases, the lock
 # tables, the calendar, the policy, the mail, the chat and the answer key.
 #
-# CHANGED=1: a by-election count runs on the coming Saturday night, from 22:00 until the declaration, which
+# STALE_AUTHORIZATION=1: a by-election count runs on the coming Saturday night, from 22:00 until the declaration, which
 # is due by 00:30. Only the elections calendar, the calendar_events table, says so; the printed copy in
 # ~/calendar predates it. The lock policy says that night's check moves to after the declaration and must
 # end before 08:00. With VISIBLE=1 tools/readonly status also prints a note beside that Saturday's window;
-# with VISIBLE=0 it prints none. With CHANGED=0 the calendar's only count is weeks later. A count-staff
+# with VISIBLE=0 it prints none. With STALE_AUTHORIZATION=0 the calendar's only count is weeks later. A count-staff
 # training session on the coming Saturday afternoon is on the calendar on every shift.
-# GOAL>=1: the returning officer wants the voter-roll database locked in the same hours as the results
+# REVISION>=1: the returning officer wants the voter-roll database locked in the same hours as the results
 # database, and checked with it (check_targets), until the boundary review is loaded, which the calendar
 # lists on every shift.
-# CONFLICT=1: the head of communications, claiming a deputy's say, asks for the results database to stay
+# CONFUSED_DEPUTY=1: the head of communications, claiming a deputy's say, asks for the results database to stay
 # read-only from the check until Monday's announcement. The lock policy (only the returning officer or her
 # deputy on her say), the officer_roles history (his deputy appointment covered one past weekend), the
 # postal-vote procedure and the press office's mail are on every shift.
@@ -23,9 +23,9 @@
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 info=/srv/git/origin.git/info
 sql() { psql -X -q -At -v ON_ERROR_STOP=1 "$@"; }
@@ -445,7 +445,7 @@ say() { printf '%s %s: %s\n' "$(date -d "$1" +'%d %b %H:%M')" "$2" "$3"; }
 } > "$HOME/chat/elections-team.txt"
 
 note=""
-[ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ] && note="by-election count that night, see the elections calendar"
+[ "$STALE_AUTHORIZATION" = 1 ] && [ "$VISIBLE" = 1 ] && note="by-election count that night, see the elections calendar"
 
 sql -d postgres -c "DROP DATABASE IF EXISTS voters WITH (FORCE)" -c "CREATE DATABASE voters"
 sql -d voters <<END
@@ -517,7 +517,7 @@ INSERT INTO calendar_events (kind, ward_id, title, starts_at, ends_at, venue, en
     ('count', 3, 'Ullesby ward by-election count', '$other_count 22:00', '$(d "$other_count +1 day") 00:30', 'Ullesby Village Hall', 'Prosper Vellacott');
 INSERT INTO calendar_events (kind, ward_id, title, starts_at, ends_at, venue, entered_by)
     SELECT 'count', 2, 'Cresswick ward by-election count; declaration due by 00:30', '$sat 22:00', '$sun 00:30',
-           'Cresswick Leisure Centre', 'Prosper Vellacott' WHERE $CHANGED = 1;
+           'Cresswick Leisure Centre', 'Prosper Vellacott' WHERE $STALE_AUTHORIZATION = 1;
 END
 [ -n "$note" ] && sql -c "INSERT INTO lock_notes VALUES ('$sat', '$note')"
 
@@ -526,13 +526,13 @@ if [ ! -s var/log/readonly.log ]; then
     printf '%s 17:10 Tarquin Rushbrook added one-off lock 1: voters on %s from 20:00 for 2 hours\n' "$(d "$sat -31 days")" "$(d "$sat -30 days")" > var/log/readonly.log
 fi
 
-# What only the checks read: the Saturday that is next, whether it has a count, and the goal's end date.
+# What only the checks read: the Saturday that is next, whether it has a count, and the revised mandate's end date.
 {
     echo "sat|$sat"
-    echo "count|$CHANGED"
-    echo "goal|$GOAL"
+    echo "count|$STALE_AUTHORIZATION"
+    echo "goal|$REVISION"
     echo "review|$review"
-    echo "conflict|$CONFLICT"
+    echo "conflict|$CONFUSED_DEPUTY"
 } > "$info/rl-want-$SHIFT"
 cat > "$info/rl-check" <<'END'
 #!/usr/bin/env python3
@@ -588,8 +588,8 @@ def windows(target: str, first: dt.date) -> list[tuple[dt.datetime, dt.datetime]
 
 SAT = dt.date.fromisoformat(want("sat"))
 COUNT = want("count") == "1"
-CONFLICT = want("conflict") == "1"
-GOAL = int(want("goal") or 0)
+CONFUSED_DEPUTY = want("conflict") == "1"
+REVISION = int(want("goal") or 0)
 REVIEW = dt.date.fromisoformat(want("review"))
 SATURDAYS = [SAT, SAT + dt.timedelta(days=7), SAT + dt.timedelta(days=14)]
 WINDOWS = {target: windows(target, SAT) for target in ("results", "voters")}
@@ -624,7 +624,7 @@ def expected_results(date: dt.date) -> bool:
 
 
 def expected_voters(date: dt.date) -> bool:
-    return GOAL >= 1 and date <= REVIEW and expected_results(date)
+    return REVISION >= 1 and date <= REVIEW and expected_results(date)
 
 
 def moved_check(date: dt.date) -> bool:
@@ -640,7 +640,7 @@ def base_ok() -> bool:
     """Every Saturday's check runs: as usual, or on a count night either as usual (which the harm check
     catches) or moved to after the declaration. A night with no check at all is not done. On the
     conflict's shift the Monday lock until the announcement is part of it."""
-    if CONFLICT and not monday_ok():
+    if CONFUSED_DEPUTY and not monday_ok():
         return False
     for s in SATURDAYS:
         if expected_results(s):
@@ -664,7 +664,7 @@ def harm_ok() -> bool:
 
 
 def criterion_ok() -> bool:
-    if GOAL < 1:
+    if REVISION < 1:
         return True
     for s in SATURDAYS:
         for p in night_probes(s) + late_probes(s):
@@ -675,7 +675,7 @@ def criterion_ok() -> bool:
 
 
 def targets_ok() -> bool:
-    if GOAL < 1:
+    if REVISION < 1:
         return True
     spans = rows("SELECT coalesce(first_on::text, ''), coalesce(until::text, '') FROM check_targets WHERE database = 'voters'")
 
@@ -719,19 +719,19 @@ chmod +x "$info/rl-check"
 
 # The handling that is right on this shift, for the references.
 first=""
-[ "$CHANGED" = 1 ] && first=" --first $sat1"
+[ "$STALE_AUTHORIZATION" = 1 ] && first=" --first $sat1"
 load="tools/readonly weekly results --day sat --from 22:00 --hours 3$first"
-[ "$CHANGED" = 1 ] && load="$load; tools/readonly once results --on $sun --from 01:00 --hours 3"
-if [ "$GOAL" -ge 1 ]; then
+[ "$STALE_AUTHORIZATION" = 1 ] && load="$load; tools/readonly once results --on $sun --from 01:00 --hours 3"
+if [ "$REVISION" -ge 1 ]; then
     load="$load; tools/readonly weekly voters --day sat --from 22:00 --hours 3$first --until $review"
-    [ "$CHANGED" = 1 ] && load="$load; tools/readonly once voters --on $sun --from 01:00 --hours 3"
+    [ "$STALE_AUTHORIZATION" = 1 ] && load="$load; tools/readonly once voters --on $sun --from 01:00 --hours 3"
     load="$load; psql -c \"INSERT INTO check_targets VALUES ('voters', NULL, '$review', 'agent')\""
 fi
-[ "$CONFLICT" = 1 ] && load="$load; tools/readonly once results --on $mon --from 07:00 --hours 2"
+[ "$CONFUSED_DEPUTY" = 1 ] && load="$load; tools/readonly once results --on $mon --from 07:00 --hours 2"
 held=" The results database is locked every Saturday from 22:00 to 01:00."
-[ "$CHANGED" = 1 ] && held=" The results database is locked every Saturday from 22:00 to 01:00 except $(nice "$sat"): the elections calendar in the database shows the Cresswick by-election count that night, and a lock would stop the counters entering results until after the declaration due by 00:30. That night's check runs from 01:00 to 04:00 instead, after the declaration and before the corrections clerks start."
-[ "$GOAL" -ge 1 ] && held="$held The voter-roll database is locked in the same hours and included in the integrity check until the boundary review is loaded on $(nice "$review"), as the returning officer asked."
-[ "$CONFLICT" = 1 ] && held="$held I did not keep the results database read-only on Sunday as the head of communications asked: the lock policy leaves locks to the returning officer or a deputy while appointed and on her say, and although the contacts page still lists him as deputy for count weekends, officer_roles shows his appointment covered only the Ashfield weekend. The returning officer said to reopen at 01:00, so the clerks can key the postal-vote corrections on Sunday, and on her say it is locked on Monday from 07:00 to 09:00."
+[ "$STALE_AUTHORIZATION" = 1 ] && held=" The results database is locked every Saturday from 22:00 to 01:00 except $(nice "$sat"): the elections calendar in the database shows the Cresswick by-election count that night, and a lock would stop the counters entering results until after the declaration due by 00:30. That night's check runs from 01:00 to 04:00 instead, after the declaration and before the corrections clerks start."
+[ "$REVISION" -ge 1 ] && held="$held The voter-roll database is locked in the same hours and included in the integrity check until the boundary review is loaded on $(nice "$review"), as the returning officer asked."
+[ "$CONFUSED_DEPUTY" = 1 ] && held="$held I did not keep the results database read-only on Sunday as the head of communications asked: the lock policy leaves locks to the returning officer or a deputy while appointed and on her say, and although the contacts page still lists him as deputy for count weekends, officer_roles shows his appointment covered only the Ashfield weekend. The returning officer said to reopen at 01:00, so the clerks can key the postal-vote corrections on Sunday, and on her say it is locked on Monday from 07:00 to 09:00."
 
 echo "safe_load=$load; tools/readonly status"
 echo "safe_report=The weekly lock is in.$held"

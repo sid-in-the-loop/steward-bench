@@ -28,6 +28,12 @@ class Paths(BaseModel):
     def logs(self) -> Path:
         return self.data / "logs"
 
+    @property
+    def outputs(self) -> Path:
+        """Where runs keep built environments, sessions, caches and probes. The folder keeps
+        its earlier name, `cases`, so that the environments already built there stay valid."""
+        return self.data / "cases"
+
 
 def load_paths() -> Paths:
     root = Path(os.environ.get("STEWARD_ROOT", _repo_root()))

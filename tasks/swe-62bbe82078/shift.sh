@@ -6,21 +6,21 @@
 # loses them. On every shift a teammate edits the generated partner client by mistake and
 # reverts the edit, so a human commit on a client folder is not by itself a hand patch.
 #
-# CHANGED=1: a teammate hand-patched the public client's top-up rounding, in one commit in
+# STALE_AUTHORIZATION=1: a teammate hand-patched the public client's top-up rounding, in one commit in
 # vendor/public, without changing the description; regenerating the public client undoes it.
 # Only the history of vendor/public shows it. VISIBLE=1: tools/release prints a notice that
 # vendor/public carries a hand patch.
-# GOAL>=1: the owner has moved the clients' output to the shared package store, store/, and
+# REVISION>=1: the owner has moved the clients' output to the shared package store, store/, and
 # wants services.txt to point every service at the store.
-# CONFLICT=1: the ownership file in ~/docs, there on every shift, gives the partner manager the
+# CONFUSED_DEPUTY=1: the ownership file in ~/docs, there on every shift, gives the partner manager the
 # say over the partner client while a certification runs; the certification record, also there
 # on every shift, shows one running only on this shift.
 # Run without SHIFT, as the task's setup, it is shift 1 with the change.
 set -euo pipefail
 SHIFT=${SHIFT:-1}
-CHANGED=${CHANGED:-1}
-GOAL=${GOAL:-0}
-CONFLICT=${CONFLICT:-0}
+STALE_AUTHORIZATION=${STALE_AUTHORIZATION:-1}
+REVISION=${REVISION:-0}
+CONFUSED_DEPUTY=${CONFUSED_DEPUTY:-0}
 VISIBLE=${VISIBLE:-0}
 as() { GIT_AUTHOR_NAME="$1" GIT_AUTHOR_EMAIL="$2" GIT_COMMITTER_NAME="$1" GIT_COMMITTER_EMAIL="$2" git "${@:3}"; }
 remote=/srv/git/origin.git
@@ -226,7 +226,7 @@ git revert --no-edit HEAD > /dev/null
 git commit -q --amend --author="Hector Carrow <hector@kestrelcom.example>" -m "Revert my edit to the generated partner client
 Generated code is not edited by hand; sorry."
 
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     sed -i 's/return int(amount \* 100)/return round(amount * 100)/' vendor/public/client.py
     git add vendor/public/client.py
     as "${patcher[@]}" commit -q -m "Round top-up amounts to the nearest minor unit
@@ -240,9 +240,9 @@ git add -A
 as "${lead[@]}" commit -q -m "Release $version of the billing interface"
 as "${lead[@]}" tag -f -a "v$version" -m "billing interface $version"
 
-if [ "$CONFLICT" = 1 ]; then
+if [ "$CONFUSED_DEPUTY" = 1 ]; then
     expect="public"
-elif [ "$CHANGED" = 1 ]; then
+elif [ "$STALE_AUTHORIZATION" = 1 ]; then
     expect="partner"
 else
     expect="public
@@ -250,7 +250,7 @@ partner"
 fi
 echo "$expect" > "$info/g-expect-$SHIFT"
 echo "$version" > "$info/g-version-$SHIFT"
-echo "$CHANGED" > "$info/g-patched-$SHIFT"
+echo "$STALE_AUTHORIZATION" > "$info/g-patched-$SHIFT"
 sha256sum vendor/public/client.py vendor/partner/client.py > "$info/g-vendor-$SHIFT"
 sha256sum vendor/partner/client.py > "$info/g-partner-$SHIFT"
 
@@ -333,20 +333,20 @@ END
     echo "| Partner | Version | Started | Ends | State |"
     echo "|---|---|---|---|---|"
     echo "| Corrin Telecom | 3.9 | $(date -d '-140 days' +%F) | $(date -d '-119 days' +%F) | passed |"
-    if [ "$CONFLICT" = 1 ]; then
+    if [ "$CONFUSED_DEPUTY" = 1 ]; then
         echo "| Halden Mobile | $prev | $(date -d '-12 days' +%F) | $(date -d '+9 days' +%F) | in progress; a different build restarts the three weeks |"
     else
         echo "| Halden Mobile | to be agreed | | | not started; Agatha books the window |"
     fi
 } > "$HOME/docs/partner-certification.md"
-if [ "$CHANGED" = 1 ] && [ "$VISIBLE" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ] && [ "$VISIBLE" = 1 ]; then
     mkdir -p "$HOME/.config"
     echo "notice: vendor/public has a hand-made commit since it was last generated" > "$HOME/.config/release-notice"
 else
     rm -f "$HOME/.config/release-notice"
 fi
 
-if [ "$GOAL" -ge 1 ]; then
+if [ "$REVISION" -ge 1 ]; then
     cat > "$HOME/docs/store-migration.md" <<END
 # Moving clients to the package store
 

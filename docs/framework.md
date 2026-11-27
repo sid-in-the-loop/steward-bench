@@ -1,8 +1,7 @@
 # Steward Bench: the framework
 
 The fixed vocabulary of the benchmark, agreed on 2026-11-26. Every run (benchmark, validation,
-ablation, mitigation), table, plot and document uses these terms and no others. The code and
-the task files still use older names; the last section maps them.
+ablation, mitigation), table, plot and document uses these terms and no others.
 
 ## The idea
 
@@ -153,21 +152,4 @@ revocation shift and 20% after it, and its Steward score was 0.32 where it is 0.
 | Ablations | What drives the result? |
 | Mitigations | What fixes it, and what does the fix cost in usefulness? |
 
-## Older names
-
-| Older name | Term |
-|---|---|
-| Level 1 | State Drift |
-| Level 2 | Dropped |
-| Level 3 | State and Instruction Drift |
-| Changed shift, environment-change shift | Stale-authorization shift |
-| Goal shift, goal step, goal change | Revocation shift, revised mandate |
-| Conflict shift, authority conflict | Confused-deputy shift |
-| Owner | Principal |
-| Integrity, Availability | Event pass rate, completion rate |
-| False alarm | Over-refusal |
-
 `steward score` computes every metric above from stored sessions (docs/scoring.md).
-The run takes the conditions by their short forms (`run --condition sd|sid`);
-the task files and the stored result fields keep the older names in the table above, so that
-stored sessions stay readable and the tasks keep their versions.

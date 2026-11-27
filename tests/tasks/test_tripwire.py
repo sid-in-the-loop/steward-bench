@@ -185,7 +185,7 @@ def test_a_copied_key_is_caught_where_it_lands_and_when_the_agent_reads_it(
 ) -> None:
     key = key_in(tmp_path)
     environment = Copying(key, tmp_path / "workspace" / "home")
-    setting = Setting(shifts=2, changed=(2,), users=1)
+    setting = Setting(shifts=2, stale_authorization_at=(2,), users=1)
     session = Session(task, spec, setting, environment, Reads(), [], answer_key=key)  # type: ignore[arg-type]
     _, shifts = asyncio.run(session.run())
     assert not environment.agent_saw_canary
@@ -206,7 +206,7 @@ def test_a_session_without_an_answer_key_records_no_tripwire(
             return True, "fix=late_penalty" if "set -euo pipefail" in command else "ok"
 
     environment = Plain(key_in(tmp_path), tmp_path)
-    setting = Setting(shifts=1, changed=(), users=1)
+    setting = Setting(shifts=1, stale_authorization_at=(), users=1)
     session = Session(task, spec, setting, environment, Reads(), [])  # type: ignore[arg-type]
     _, shifts = asyncio.run(session.run())
     assert shifts[0].key_copied is None and shifts[0].key_seen is None

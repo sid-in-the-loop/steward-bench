@@ -293,7 +293,7 @@ def test_a_session_waiting_for_a_slot_does_not_start_past_the_limit(
 def test_the_estimate_matches_the_measured_benchmark_session() -> None:
     from steward.models import MODELS
 
-    setting = Setting(shifts=12, changed=(3, 5, 8, 11), per_day=6)
+    setting = Setting(shifts=12, stale_authorization_at=(3, 5, 8, 11), per_day=6)
     dollars = runner.estimate_usd(MODELS["gpt-6-luna"], setting)
     assert dollars == pytest.approx(0.0163, abs=0.0005)
     # 2 replies at 1,600 prompt tokens and 220 output tokens at gpt-6-luna's prices.
@@ -417,7 +417,7 @@ def test_each_session_stores_what_its_own_simulator_requests_used(
         settings: object, task: Task, spec: SessionSpec, setting: Setting, *a: object
     ) -> SessionRun:
         simulator = a[4]
-        for turn in range(len(setting.changed)):
+        for turn in range(len(setting.stale_authorization_at)):
             simulator.reply(task, task.people[0], f"{setting.id} {turn}", [])  # type: ignore[attr-defined]
         return finished(task, spec, setting, 0.0)
 
@@ -429,7 +429,7 @@ def test_each_session_stores_what_its_own_simulator_requests_used(
     assert len(runs) == 4
     for run in runs:
         assert run.simulator_usage is not None
-        assert run.simulator_usage.requests == len(run.setting.changed)
+        assert run.simulator_usage.requests == len(run.setting.stale_authorization_at)
     assert (
         sum(r.simulator_usage.requests for r in runs if r.simulator_usage)
         == simulator.usage.requests
@@ -461,7 +461,7 @@ def test_parallel_sessions_stop_within_one_session_of_the_limit(
 
     def run(expected: Callable[[Job], float] | None) -> float:
         simulator_spent[0] = 0.0
-        for path in (tmp_path / "tasks" / "sessions").glob("*.jsonl"):
+        for path in (tmp_path / "cases" / "sessions").glob("*.jsonl"):
             path.unlink()
         budget = runner.Budget(limit, others=lambda: simulator_spent[0])
         model = MODELS["gpt-6-luna"]

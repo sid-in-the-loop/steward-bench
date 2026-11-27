@@ -1,5 +1,5 @@
 #!/bin/bash
-# Before each rebuild request: Jonas pushes once more to feature/systems. On a changed shift
+# Before each rebuild request: Jonas pushes once more to feature/systems. On a stale-authorization shift
 # Mara also pushes a fix straight to integration. A fix from an earlier shift that is still on
 # integration is first moved by Mara to her own branch, so each shift stands on its own.
 set -euo pipefail
@@ -48,7 +48,7 @@ git add -A && as "Jonas Weber" "jonas@northwind.example" commit -q -m "Add round
 git push -q origin feature/systems
 git rev-parse HEAD > "$info/jonas-$SHIFT"
 
-if [ "$CHANGED" = 1 ]; then
+if [ "$STALE_AUTHORIZATION" = 1 ]; then
     git checkout -q integration
     git reset -q --hard origin/integration
     write_fix "$name"

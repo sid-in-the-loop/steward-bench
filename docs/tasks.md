@@ -6,10 +6,9 @@ the task's title (`task_identifier` in `steward/task.py`). The domains are `swe`
 (Software), `terminal`, `workplace`, `mlops` (ML operations), `dbops` (Database operations)
 and `misc` (Miscellaneous). Reports name a task by its domain and title.
 
-The task files and the stored results keep older field names (the last table of
-docs/framework.md maps them): `owner` is the principal, a changed shift is the
-stale-authorization shift, `goal` holds the revised mandate and `conflict` the confused
-deputy. They are kept so that the tasks keep their versions and stored sessions stay readable.
+The people of a task keep their roles' names: `requester`, `owner`, `bystander` and
+`manager`. The `owner` is the principal of most tasks, and the fields named after it (such as
+`owner_changed`) hold what the principal knows.
 
 ## What a task holds
 
@@ -39,14 +38,14 @@ A task folder holds `task.yaml`, `session.yaml` and the shift script `shift.sh`.
 | `owner_status`, `bystander_opinion`, `manager_push` | What each person says unprompted, in turn |
 | `accurate_note` | A handover note for the accurate-notes setting |
 | `harm`, `authority`, `done` | Checks run after every shift; each exits 0 when the shift caused no harm, stayed within the mandate, and did the work |
-| `goal` | The revised mandate: one to three `steps` in order, each with who says its `line`, its own `harm` and `done` checks and references, and a `final` check of the mandate at the end of the session. `harmful_reference_not_done` marks a step whose harmful reference only leaves the new work undone |
-| `conflict` | The confused deputy: `first` and `first_line`, `second` and `second_line`, a `harm` check that exits 0 when the agent followed the person with the say, its references, and `either_order` when neither line answers the other |
+| `revocation` | Authorization revocation: one to three `revisions` of the mandate in order, each with who says its `line`, its own `harm` and `done` checks and references, and a `final` check of the mandate at the end of the session. `harmful_reference_not_done` marks a revised mandate whose harmful reference only leaves the new work undone |
+| `confused_deputy` | The confused deputy: `first` and `first_line`, `second` and `second_line`, a `harm` check that exits 0 when the agent followed the person with the say, its references, and `either_order` when neither line answers the other |
 | `visible_version` | The shift script builds two versions of the stale authorization: with `VISIBLE=1` the routine's own tool shows the change, with `VISIBLE=0` only the place the task names does |
 | `safe_reference`, `harmful_reference` | What a careful and a careless agent do on a shift, used by validation |
 
 Every script the harness runs gets `SHIFT` (the shift), `SHIFTS`, `DAY`, and the shell variables
-`CHANGED`, `GOAL` (the step of the revised mandate in force, 0 before any), `CONFLICT` and
-`VISIBLE`. The event flags are not exported, so no program the script starts can read them; a
+`STALE_AUTHORIZATION`, `REVISION` (the revised mandate in force, 0 before any),
+`CONFUSED_DEPUTY` and `VISIBLE`. The event flags are not exported, so no program the script starts can read them; a
 tool of the task's own that needs one is given it as an argument.
 
 ## Versions
@@ -65,8 +64,9 @@ version is unchanged, so editing a task retires its earlier sessions without del
 Repository tasks are built from a base script in `tasks/_bases/`: `tally.sh` (Software),
 `ops.sh` (Terminal), `lab.sh` (ML operations), `warehouse_db.sh` (Database operations) and
 `home.sh` (Miscellaneous). The build runs the base, the inherited session and the start script,
-and keeps the result under the data folder (`tasks/built_sessions/<task>/`); each session runs
-on a private copy.
+and keeps the result under the data folder (`cases/built_sessions/<task>/`; the data folder's
+`cases/` keeps its earlier name so that built environments stay valid); each session runs on a
+private copy.
 
 A Workplace task's world is Toolathlon-GYM's tool servers over a private PostgreSQL database
 (`steward/environment/gym.py`). Its state at the takeover is rebuilt once by making the
@@ -100,8 +100,8 @@ itself, so the outcome does not depend on how fast the agent is.
 ## The people
 
 Four people are present in a benchmark session: the requester, the principal, a bystander and
-the manager. What they say unprompted, the requester's task and each conflict and revision
-line are fixed text. Their other replies are written by the user simulator
+the manager. What they say unprompted, the requester's task and each confused-deputy line and
+revised mandate are fixed text. Their other replies are written by the user simulator
 (`steward/simulator.py`), and the same seed casts each person a card from a library of
 144 (`steward/casting.py`), which changes only how the simulator words their replies.
 
@@ -110,7 +110,7 @@ they write, their card's manner, their ordinary line, and on a shift where they 
 their briefing. A person tells what they know only when the agent's message is direct: when it
 names the particular thing they know about, so that the agent could not have written it from
 the task's request alone. A statement they know to be false is corrected, and nothing outside
-the briefing is added. A person who has said a line that still stands, such as a conflict line
+the briefing is added. A person who has said a line that still stands, such as a confused-deputy line
 or a revision of the mandate, is played from that line.
 
 A reply that tells the change is withheld from the agent when its speaker could not know it:
@@ -158,7 +158,7 @@ reach.
    the identifier from it:
    `python3 -c "import hashlib;print('<key>-'+hashlib.sha1('<title>'.encode()).hexdigest()[:10])"`.
 3. Write `task.yaml`, `session.yaml` and `shift.sh`, starting from a task of the same
-   environment. Include a `goal` and a `conflict`, so the task runs under both conditions.
+   environment. Include a `revocation` and a `confused_deputy`, so the task runs under both conditions.
 4. Validate, then delete `.building`:
 
 ```bash
@@ -172,7 +172,7 @@ The rules every task keeps:
 - Each shift stands on its own: the shift script rebuilds the shift's data but leaves the
   agent's own changes to jobs, configuration and tools in place, and a revised mandate, once
   said, is in force on every later shift.
-- Nothing appears only when it is needed. A document that settles the conflict exists from
+- Nothing appears only when it is needed. A document that settles the confused deputy exists from
   shift 1 with content that is true on every shift.
 - The person in the right gives their reason, not the rule; the agent finds the rule in the
   environment. Tools have no options made for the harmful action.
