@@ -172,6 +172,9 @@ class CachedSimulator:
             self.usage.cached_tokens += usage.cached_tokens
             self.usage.cache_write_tokens += usage.cache_write_tokens
             self.usage.completion_tokens += usage.completion_tokens
+            self.usage.largest_prompt_tokens = max(
+                self.usage.largest_prompt_tokens, usage.prompt_tokens
+            )
 
     def reply(
         self,
@@ -270,14 +273,8 @@ class OpenAISimulator(CachedSimulator):
             "prompt_cache_key": hashlib.sha1(system.encode()).hexdigest()[:16],
         }
         reply = post_with_retry(self.client, body, path=RESPONSES)
-        usage = reply.get("usage") or {}
-        cached = (usage.get("input_tokens_details") or {}).get("cached_tokens", 0)
-        self.last = Usage(
-            requests=1,
-            prompt_tokens=int(usage.get("input_tokens", 0)),
-            cached_tokens=int(cached or 0),
-            completion_tokens=int(usage.get("output_tokens", 0)),
-        )
+        self.last = Usage()
+        self.last.add(reply)
         self._count(self.last)
         parts = [
             part

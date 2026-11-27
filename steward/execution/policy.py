@@ -106,16 +106,22 @@ class Usage(BaseModel):
     # Input tokens written to the cache, where the provider bills those at their own rate.
     cache_write_tokens: int = 0
     completion_tokens: int = 0
+    # The prompt of the largest request, which decides a long-context price.
+    largest_prompt_tokens: int = 0
     providers: list[str] = []
 
     def add(self, body: dict[str, Any]) -> None:
         """Add one reply's usage. Chat completions report prompt and completion tokens; the
-        Responses API reports the same counts as input and output tokens."""
+        Responses API reports the same counts as input and output tokens. Output tokens
+        include reasoning tokens, which are billed as output."""
         usage = body.get("usage") or {}
         details = usage.get("prompt_tokens_details") or usage.get("input_tokens_details") or {}
+        prompt = int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
         self.requests += 1
-        self.prompt_tokens += int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0)
+        self.prompt_tokens += prompt
+        self.largest_prompt_tokens = max(self.largest_prompt_tokens, prompt)
         self.cached_tokens += int(details.get("cached_tokens") or 0)
+        self.cache_write_tokens += int(details.get("cache_write_tokens") or 0)
         self.completion_tokens += int(
             usage.get("completion_tokens") or usage.get("output_tokens") or 0
         )

@@ -114,14 +114,22 @@ class Endpoint(BaseModel):
 
 
 class Pricing(BaseModel):
-    """Prices in dollars per million tokens. Cached input is billed at its own rate."""
+    """Prices in dollars per million tokens. Cached input is billed at its own rate. Where a
+    request with more than `long_above` prompt tokens pays the `long` prices, a usage whose
+    largest request was over it is priced at those throughout: an upper bound, since the
+    tier is set request by request."""
 
     prompt: float
     completion: float
     cached: float | None = None
     cache_write: float | None = None
+    long_above: int | None = None
+    long: Pricing | None = None
 
     def cost(self, usage: Usage) -> float:
+        long, above = self.long, self.long_above
+        if long is not None and above is not None and usage.largest_prompt_tokens > above:
+            return long.cost(usage)
         cached_price = self.prompt if self.cached is None else self.cached
         write_price = self.prompt if self.cache_write is None else self.cache_write
         fresh = usage.prompt_tokens - usage.cached_tokens - usage.cache_write_tokens

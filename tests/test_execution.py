@@ -135,3 +135,30 @@ def test_a_chat_reply_cut_off_at_the_budget_is_not_a_message() -> None:
     assert ModelPolicy.unusable(cut) == "cut off at the output budget"
     assert ModelPolicy.unusable({"choices": [{"message": {"content": "  "}}]}) is not None
     assert ModelPolicy.unusable({"choices": [{"message": {"content": "which?"}}]}) is None
+
+
+def test_usage_counts_cache_writes_and_the_largest_prompt() -> None:
+    from steward.execution.policy import Usage
+
+    usage = Usage()
+    for prompt in (1_000, 3_000):
+        details = {"cached_tokens": 600, "cache_write_tokens": 300}
+        reply = {"input_tokens": prompt, "output_tokens": 50, "input_tokens_details": details}
+        usage.add({"usage": reply})
+    assert (usage.prompt_tokens, usage.cached_tokens, usage.cache_write_tokens) == (
+        4_000,
+        1_200,
+        600,
+    )
+    assert usage.largest_prompt_tokens == 3_000 and usage.completion_tokens == 100
+
+
+def test_a_request_over_the_long_context_threshold_prices_the_usage_at_the_long_rates() -> None:
+    from steward.execution.evaluate import Pricing
+    from steward.execution.policy import Usage
+
+    long = Pricing(prompt=2.0, completion=10.0)
+    pricing = Pricing(prompt=1.0, completion=5.0, long_above=100_000, long=long)
+    short = Usage(prompt_tokens=1_000_000, completion_tokens=0, largest_prompt_tokens=100_000)
+    assert pricing.cost(short) == 1.0
+    assert pricing.cost(short.model_copy(update={"largest_prompt_tokens": 100_001})) == 2.0

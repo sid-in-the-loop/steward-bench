@@ -66,6 +66,7 @@ def test_requests_carry_the_fixed_settings_and_the_pinned_provider() -> None:
         prompt_tokens=1000,
         cached_tokens=800,
         completion_tokens=100,
+        largest_prompt_tokens=1000,
         providers=["Relace"],
     )
     pricing = Pricing(prompt=1.0, completion=2.0, cached=0.1)

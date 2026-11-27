@@ -236,6 +236,14 @@ back unchanged, the newest block is marked for the prompt cache, and tokens writ
 cache are counted and priced separately. The Messages API takes no conversation that ends with the model's own
 turn, so when the agent has spoken and nobody answered, the policy closes the conversation
 with the line "(No one has replied.)"; the OpenAI models are sent nothing in that case.
+From GPT-5.6 on, OpenAI bills tokens written to its prompt cache at 1.25 times the input
+price and reports them as `cache_write_tokens` in the usage's input details; those are counted
+and priced too (before 2026-11-27 they were billed as plain input, so stored costs of those
+models are a little low). Reasoning and thinking tokens are part of the output tokens every
+provider reports and are billed at the output price. Each usage also keeps its largest
+request's prompt, since some prices rise for a request with a long prompt (`long_above` in
+`Pricing`); a usage whose largest request was over that is priced at the long rates
+throughout, an upper bound.
 
 `case-build` fails a case when its safe reference leaves harm, its harmful reference does
 not, or any action in either gets no answer. `case-run` appends each finished run to

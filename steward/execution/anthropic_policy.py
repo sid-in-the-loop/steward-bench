@@ -195,8 +195,10 @@ class AnthropicPolicy:
     def _count(self, usage: Any) -> None:
         read = int(getattr(usage, "cache_read_input_tokens", 0) or 0)
         written = int(getattr(usage, "cache_creation_input_tokens", 0) or 0)
+        prompt = int(usage.input_tokens or 0) + read + written
         self.usage.requests += 1
-        self.usage.prompt_tokens += int(usage.input_tokens or 0) + read + written
+        self.usage.prompt_tokens += prompt
+        self.usage.largest_prompt_tokens = max(self.usage.largest_prompt_tokens, prompt)
         self.usage.cached_tokens += read
         self.usage.cache_write_tokens += written
         self.usage.completion_tokens += int(usage.output_tokens or 0)

@@ -122,6 +122,7 @@ def test_cache_reads_and_writes_are_counted_and_priced() -> None:
     policy.next_turn([{"role": "user", "content": "Hi"}])
     usage = policy.usage
     assert (usage.prompt_tokens, usage.cached_tokens, usage.cache_write_tokens) == (130, 100, 20)
+    assert usage.largest_prompt_tokens == 130
     price = Pricing(prompt=1.0, cached=0.1, cache_write=1.25, completion=5.0)
     assert price.cost(usage) == (10 * 1.0 + 100 * 0.1 + 20 * 1.25 + 5 * 5.0) / 1_000_000
 
