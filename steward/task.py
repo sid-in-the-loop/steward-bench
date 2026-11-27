@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 from steward.config import Settings
 from steward.execution.record import Action
@@ -64,58 +64,19 @@ class HistoryStep(Strict):
     meanwhile: str | None = None
 
 
-class During(Strict):
-    """Something another person does while the agent is working: a script run in the
-    environment, once. With `after_actions` it runs when the agent has taken that many
-    actions; with `before_change` it runs just before the agent's first action that matches
-    the task's change pattern, so the timing is the same however fast the agent works. The
-    agent is not told."""
-
-    after_actions: int | None = Field(default=None, ge=1)
-    before_change: bool = False
-    script: str
-
-    @model_validator(mode="after")
-    def one_trigger(self) -> During:
-        if (self.after_actions is None) == (not self.before_change):
-            raise ValueError("give exactly one of after_actions and before_change")
-        return self
-
-
 class Person(Strict):
     name: str
     role: Role
     description: str
 
 
-class Lines(Strict):
-    """The fixed text each person says. Every model reads the same words."""
-
-    task: str
-    team_note: str
-    requester_correct: str
-    requester_away: str
-    requester_casual: str
-    requester_outdated: str
-    requester_push: list[str]
-    owner_answer: str
-    owner_wait: str
-    bystander_approval: str
-
-
 class Measures(Strict):
-    """How the measures are read. `look` and `change` are patterns over the agent's actions.
-    `authority` and `harm` are commands run in the environment after the run; each exits 0
-    when the agent stayed within its authority, or caused no harm. `disclose` is a pattern
-    the final report must match. `done`, when given, exits 0 once what the requester asked
-    for has been achieved; a requester who pushes stops pushing then."""
+    """How the agent's work is read. `look` and `change` are patterns over the agent's
+    actions; `disclose` is a pattern the final report must match."""
 
     look: str
     change: str
-    authority: str
-    harm: str
     disclose: str
-    done: str | None = None
 
 
 class Reference(Strict):
@@ -146,41 +107,26 @@ class Task(Strict):
     id: str
     domain: Domain
     title: str
-    # A group of tasks that tell one story in several forms.
-    family: str | None = None
     environment: Repo | World = Field(discriminator="kind")
     people: list[Person]
-    situation: str
-    harmful_action: str
-    safe_path: str
-    # What is true afterwards when the harm check fails, in one sentence. Empty for a twin.
-    harm_statement: str = ""
     history: list[HistoryStep] = []
-    setup: str
-    during: During | None = None
-    lines: Lines
     measures: Measures
     # Set when the task is loaded: a short hash of everything a run depends on.
     version: str = ""
-    safe_reference: Reference
-    # A harmless twin of a task, where the inherited belief is still true, has none.
-    harmful_reference: Reference | None = None
 
     def person(self, role: Role) -> Person:
         return next(p for p in self.people if p.role == role)
 
 
 # What a run of a task depends on. A change to any of these makes earlier runs out of date;
-# a change to its title or description does not.
-RUN_FIELDS = {"environment", "people", "history", "setup", "during", "lines", "measures"}
+# a change to its title does not.
+RUN_FIELDS = {"environment", "people", "history", "measures"}
 GH_STAND_IN = Path(__file__).parent / "environment" / "shims" / "gh"
 
 
 def load_task(directory: Path) -> Task:
-    """Read `task.yaml`; `setup` names a script beside it, which is read in."""
-    raw = yaml.safe_load((directory / "task.yaml").read_text())
-    raw["setup"] = (directory / raw["setup"]).read_text()
-    task = Task.model_validate(raw)
+    """Read `task.yaml`."""
+    task = Task.model_validate(yaml.safe_load((directory / "task.yaml").read_text()))
     # A task without a database is hashed as it was before tasks could have one, so its
     # stored runs stay current.
     without = isinstance(task.environment, Repo) and task.environment.database is None

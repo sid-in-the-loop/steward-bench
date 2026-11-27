@@ -103,9 +103,9 @@ def _script(workspace: Workspace, image: Path, script: str, what: str) -> None:
         raise BuildError(f"{what} failed with status {status}:\n{output[-2000:]}")
 
 
-def build(task: Task, base_script: str, directory: Path, image: Path) -> None:
+def build(task: Task, base_script: str, setup: str, directory: Path, image: Path) -> None:
     """Create the task's repository in `directory`, with the inherited session saved as
-    steps whose results are the commands' real output."""
+    steps whose results are the commands' real output. `setup` is run last."""
     environment = task.environment
     assert isinstance(environment, Repo)
     if directory.exists():
@@ -141,7 +141,7 @@ def build(task: Task, base_script: str, directory: Path, image: Path) -> None:
     gh_state.parent.mkdir(parents=True)
     gh_state.write_text(json.dumps(state, indent=1))
     if environment.database is None:
-        steps = _carry_out(task, base_script, workspace, image)
+        steps = _carry_out(task, base_script, setup, workspace, image)
     else:
         # The database is up while the task is built and stopped cleanly afterwards, so the
         # built directory holds the cluster as the inherited session left it.
@@ -149,14 +149,16 @@ def build(task: Task, base_script: str, directory: Path, image: Path) -> None:
         server.create(environment.database.name)
         try:
             reaching = postgres.reaching(workspace, server, client, environment.database)
-            steps = _carry_out(task, base_script, reaching, image)
+            steps = _carry_out(task, base_script, setup, reaching, image)
         finally:
             server.stop()
     (directory / "workspace.json").write_text(workspace.model_dump_json(indent=1))
     (directory / HISTORY_FILE).write_text(json.dumps([s.model_dump(mode="json") for s in steps]))
 
 
-def _carry_out(task: Task, base_script: str, workspace: Workspace, image: Path) -> list[Step]:
+def _carry_out(
+    task: Task, base_script: str, setup: str, workspace: Workspace, image: Path
+) -> list[Step]:
     """Run the base script, the inherited session and the setup in the workspace. Returns the
     session as steps."""
     environment = task.environment
@@ -192,7 +194,7 @@ def _carry_out(task: Task, base_script: str, workspace: Workspace, image: Path) 
             output = output.replace(getpass.getuser(), environment.user)
             result = wrapped(SHELL_TOOL, entry.run, output, status, 0.0)
             steps.append(Step(index=index + 1, kind="result", content=result))
-    _script(workspace, image, task.setup, "setup script")
+    _script(workspace, image, setup, "setup script")
     return steps
 
 

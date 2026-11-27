@@ -317,4 +317,4 @@ def build_session(settings: Settings, task: Task, spec: SessionSpec) -> None:
         return
     base = (tasks_root(settings) / "_bases" / task.environment.base).read_text()
     directory = built_session_directory(settings, task)
-    sandbox.build(session_task(task, spec), base, directory, workspace_image(settings))
+    sandbox.build(session_task(task, spec), base, spec.start, directory, workspace_image(settings))

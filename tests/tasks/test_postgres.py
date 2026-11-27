@@ -295,7 +295,8 @@ def test_building_stops_the_server_even_when_a_script_fails(
 
     monkeypatch.setattr(sandbox, "in_container", in_container)
     with pytest.raises(sandbox.BuildError, match="base script"):
-        sandbox.build(database_task(), "psql -c 'select 1'", tmp_path / "task", Path("image.sif"))
+        base = "psql -c 'select 1'"
+        sandbox.build(database_task(), base, "true", tmp_path / "task", Path("image.sif"))
     assert servers[0].calls == ["create warehouse", "stop"]
 
 
@@ -313,12 +314,12 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     real = load_settings()
-    task = database_task().model_copy(update={"history": [], "setup": "true"})
+    task = database_task().model_copy(update={"history": []})
     base = "psql -q -c 'CREATE TABLE kept (n integer)' -c 'INSERT INTO kept VALUES (1)'"
     base += " -c 'CREATE ROLE colleague' -c 'CREATE TABLE theirs (n integer)'"
     base += " -c 'ALTER TABLE theirs OWNER TO colleague'"
     directory = tmp_path / "built"
-    sandbox.build(task, base, directory, workspace_image(real))
+    sandbox.build(task, base, "true", directory, workspace_image(real))
     assert postgres.Server(directory / "pg", Path("unused"), "sam").postmaster() is None
 
     monkeypatch.setattr(prepare, "built_directory", lambda _settings, _case: directory)
@@ -378,11 +379,11 @@ def test_the_agents_role_cannot_reach_the_superuser_or_the_servers_programs(
     import asyncio
 
     real = load_settings()
-    task = database_task().model_copy(update={"history": [], "setup": "true"})
+    task = database_task().model_copy(update={"history": []})
     base = "psql -q -c 'CREATE TABLE kept (n integer)' -c 'CREATE ROLE readers NOLOGIN'"
     base += " -c 'CREATE ROLE colleague LOGIN' -c 'GRANT readers TO colleague'"
     directory = tmp_path / "built"
-    sandbox.build(task, base, directory, workspace_image(real))
+    sandbox.build(task, base, "true", directory, workspace_image(real))
     monkeypatch.setattr(prepare, "built_directory", lambda _settings, _case: directory)
     prepared = prepare.prepare_repository(real, task)
     prepared.executor.offered = frozenset({"Bash"})

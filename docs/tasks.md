@@ -14,21 +14,21 @@ The people of a task keep their roles' names: `requester`, `owner`, `bystander` 
 
 A task folder holds `task.yaml`, `session.yaml` and the shift script `shift.sh`.
 
-`task.yaml` describes the environment and the people.
+`task.yaml` describes the environment, the people and the inherited session.
 
 | Field | Meaning |
 |---|---|
+| `id`, `domain`, `title` | The task's identifier, its domain, and the one sentence the identifier is derived from |
 | `environment` | `repo`: a small repository built from a script in `tasks/_bases`, with a `database` if the task needs one. `world`: a Workplace world rebuilt from a recorded session kept in `tasks/_worlds` (`trajectory_id`, `takeover_step`) |
 | `people` | The requester (the user of the session), the principal (`owner`) and a bystander, each with a name and a description |
 | `history` | The inherited session. In a repository task each `run` step is executed and its real output recorded |
-| `setup`, `lines`, `measures` | The setup script, fixed lines and patterns; `measures.change`, `look` and `disclose` are read in sessions |
-| `safe_reference`, `harmful_reference` | Scripted runs with known outcomes |
+| `measures` | Three patterns: `look` and `change` are patterns over the agent's actions, and `disclose` is a pattern the final report must match |
 
 `session.yaml` holds what a session needs.
 
 | Field | Meaning |
 |---|---|
-| `start` | Run once when the environment is built, in place of the task's setup |
+| `start` | Run once when the environment is built |
 | `shift` | The shift script, run before every shift. It rebuilds the shift's state so that each shift stands on its own and prints `name=value` lines last, which fill `{name}` in the texts and the reference actions |
 | `task` | What the requester says to hand over a shift |
 | `manager` | The fourth person, a non-principal |
@@ -41,7 +41,7 @@ A task folder holds `task.yaml`, `session.yaml` and the shift script `shift.sh`.
 | `revocation` | Authorization revocation: one to three `revisions` of the mandate in order, each with who says its `line`, its own `harm` and `done` checks and references, and a `final` check of the mandate at the end of the session. `harmful_reference_not_done` marks a revised mandate whose harmful reference only leaves the new work undone |
 | `confused_deputy` | The confused deputy: `first` and `first_line`, `second` and `second_line`, a `harm` check that exits 0 when the agent followed the person with the say, its references, and `either_order` when neither line answers the other |
 | `visible_version` | The shift script builds two versions of the stale authorization: with `VISIBLE=1` the routine's own tool shows the change, with `VISIBLE=0` only the place the task names does |
-| `safe_reference`, `harmful_reference` | What a careful and a careless agent do on a shift, used by validation |
+| `safe_reference`, `harmful_reference` | What a careful and a careless agent do on a shift, used by validation. In a `world` task every tool these, the revised mandates' and the confused deputy's references call must be offered, or the session does not start |
 
 Every script the harness runs gets `SHIFT` (the shift), `SHIFTS`, `DAY`, and the shell variables
 `STALE_AUTHORIZATION`, `REVISION` (the revised mandate in force, 0 before any),
@@ -53,7 +53,7 @@ tool of the task's own that needs one is given it as an argument.
 Each task has a version: a short hash of `TASK_PROTOCOL`, the version of its `task.yaml` and
 every field of `session.yaml` that can change a session, with `owner_thing` left out
 (`load_session_spec` in `steward/session.py`). The version of `task.yaml` covers its
-environment, people, history, setup, lines and measures, the base script, and the `gh` stand-in
+environment, people, history and measures, the base script, and the `gh` stand-in
 where the task uses it. Fields added after sessions were first stored are left out at their
 defaults, so those sessions kept their versions. A stored session counts only while its task's
 version is unchanged, so editing a task retires its earlier sessions without deleting them.

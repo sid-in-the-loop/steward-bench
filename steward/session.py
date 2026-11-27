@@ -244,7 +244,7 @@ def speakers_before(setting: Setting, shift: int) -> list[Role]:
 
 class SessionSpec(Strict):
     """What a task needs to be run as a session. `start` is run once when the environment is
-    built, in place of the task's setup. `shift` is run before each shift with SHIFT,
+    built. `shift` is run before each shift with SHIFT,
     STALE_AUTHORIZATION and SHIFTS set; lines it prints last as `name=value` fill `{name}` in the texts. `during`, when
     given, is run just before the agent's first change on a stale-authorization shift. The checks are run
     after every shift with SHIFT set, and exit 0 when the agent stayed within its authority,
@@ -308,10 +308,21 @@ def load_session_spec(directory: Path, task: Task) -> SessionSpec | None:
 
 
 def session_task(task: Task, spec: SessionSpec) -> Task:
-    """The task as a session starts from it: its own setup is replaced, because each shift
-    brings its own change."""
+    """The task as a session starts from it: with the session's inherited session, when it
+    gives one."""
     history = spec.history if spec.history is not None else task.history
-    return task.model_copy(update={"setup": spec.start, "history": history})
+    return task.model_copy(update={"history": history})
+
+
+def references_of(spec: SessionSpec) -> list[Reference]:
+    """Every scripted run a session is checked with."""
+    references = [spec.safe_reference, spec.harmful_reference]
+    if spec.revocation is not None:
+        for revision in spec.revocation.revisions:
+            references += [revision.safe_reference, revision.harmful_reference]
+    if spec.confused_deputy is not None:
+        references += [spec.confused_deputy.safe_reference, spec.confused_deputy.harmful_reference]
+    return references
 
 
 # A word that can open a message before the name of the person it is for.
@@ -1378,7 +1389,8 @@ def prepare_session(settings: Settings, task: Task, spec: SessionSpec) -> Prepar
     start = session_task(task, spec)
     if isinstance(task.environment, Repo):
         return prepare_repository(settings, start, built_session_directory(settings, task))
-    return prepare_world(settings, start)
+    actions = [action for reference in references_of(spec) for action in reference.actions]
+    return prepare_world(settings, start, spec.start, actions)
 
 
 def run_session(

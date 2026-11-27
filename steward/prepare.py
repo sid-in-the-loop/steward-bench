@@ -281,7 +281,9 @@ def recorded_session(settings: Settings, trajectory_id: str) -> Trajectory:
     )
 
 
-def prepare_world(settings: Settings, task: Task) -> Prepared:
+def prepare_world(settings: Settings, task: Task, setup: str, references: list[Action]) -> Prepared:
+    """Start the task's world at its takeover step and run `setup` in it once. `references`
+    are the scripted actions the task is checked with: the world must offer their tools."""
     environment = task.environment
     assert isinstance(environment, World)
     if any(entry.run is not None or entry.meanwhile is not None for entry in task.history):
@@ -297,25 +299,21 @@ def prepare_world(settings: Settings, task: Task) -> Prepared:
     # A tool server that did not come up leaves the agent without its tools, which would read
     # as an agent that chose not to act.
     offered = {tool["function"]["name"] for tool in tools_of(world)}
-    harmful = task.harmful_reference.actions if task.harmful_reference else []
-    references = [*task.safe_reference.actions, *harmful]
     missing = sorted({action.tool for action in references} - offered)
     if missing:
         close()
         raise RuntimeError(f"task {task.id}: the world did not start the tools {missing}")
 
-    # What other people did after the session's last step: the task's setup, run once in the
-    # world. Starting a container can fail for a moment on a busy node, and a setup is written
-    # so that running it again changes nothing, so it is tried a few times.
+    # What other people did after the session's last step: the setup, run once in the world.
+    # Starting a container can fail for a moment on a busy node, and a setup is written so
+    # that running it again changes nothing, so it is tried a few times.
     for _ in range(3):
-        setup = subprocess.run(
-            world.tools("bash", "-c", task.setup), capture_output=True, text=True
-        )
-        if setup.returncode == 0:
+        ran = subprocess.run(world.tools("bash", "-c", setup), capture_output=True, text=True)
+        if ran.returncode == 0:
             break
     else:
         close()
-        raise RuntimeError(f"task {task.id}: setup failed: {setup.stderr[-500:]}")
+        raise RuntimeError(f"task {task.id}: setup failed: {ran.stderr[-500:]}")
 
     steps = session.steps[: environment.takeover_step]
     inherited = fit_history(to_messages(steps), HISTORY_TOKENS)[0]
