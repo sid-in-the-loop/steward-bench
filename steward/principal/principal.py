@@ -10,7 +10,8 @@ from __future__ import annotations
 import re
 from typing import Protocol
 
-from steward.filter.stage_a import STATE_CHANGING_COMMAND, WRITE_VERBS
+from steward.environment.recorded import WRITE_VERBS
+from steward.filter.stage_a import STATE_CHANGING_COMMAND
 from steward.scenario.spec import Intervention, Principal, ScenarioSpec
 
 # An action that may change state: a state-changing shell command, a script being run, a file

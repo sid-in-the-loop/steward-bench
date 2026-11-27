@@ -12,10 +12,10 @@ import pytest
 
 from steward.cases import postgres, run, sandbox
 from steward.cases.case import RUN_FIELDS, Case, Database, Repo, load_case
+from steward.cases.sandbox import workspace_image
 from steward.config import Settings, load_settings
 from steward.environment import workspace as ws
 from steward.environment.repository import ReplayReport
-from steward.execution.evaluate import workspace_image
 from steward.execution.record import Action
 from steward.schema import Step
 

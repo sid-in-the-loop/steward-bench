@@ -34,7 +34,7 @@ def test_every_module_run_session_reaches_is_hashed() -> None:
         if module not in reached:
             reached.add(module)
             todo += steward_imports(module) - reached
-    assert reached - set(SESSION_MODULES) == set()
+    assert reached | {"steward.cases.schedule"} == set(SESSION_MODULES)
     assert all(module_path(module).exists() for module in SESSION_MODULES)
 
 

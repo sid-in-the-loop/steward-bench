@@ -1,6 +1,7 @@
 from types import SimpleNamespace
 from typing import Any
 
+from steward.cases.prices import Pricing
 from steward.execution.anthropic_policy import (
     MAX_TOKENS,
     NO_REPLY,
@@ -9,7 +10,6 @@ from steward.execution.anthropic_policy import (
     AnthropicPolicy,
     claude_tools,
 )
-from steward.execution.evaluate import Pricing
 from steward.execution.history import REPORT_TOOL
 from steward.execution.policy import Message
 

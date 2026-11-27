@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from collections.abc import Sequence
 
 from steward.config import RenderConfig
@@ -32,11 +31,6 @@ KIND_LABEL = {
     "result": "RESULT",
     "system": "SYSTEM",
 }
-
-
-def estimate_tokens(text: str) -> int:
-    """Conservative token estimate for code-heavy agent transcripts."""
-    return math.ceil(len(text) / CHARS_PER_TOKEN)
 
 
 def one_line(text: str, limit: int) -> str:

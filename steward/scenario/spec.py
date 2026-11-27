@@ -10,6 +10,7 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from steward.environment.recorded import PlantedResult
 from steward.execution.record import Action
 from steward.scenario.designs import BY_ID
 from steward.schema import BENCHMARK_DOMAINS, Axis, Domain
@@ -179,26 +180,6 @@ class PlantedStep(Strict):
     position: Literal["early", "mid", "late"]
     speaker: Literal["user", "previous_agent"]
     text: str
-
-
-class PlantedResult(Strict):
-    """A change to the world since the history was written: actions matching the pattern now
-    get this result.
-
-    With `after_actions`, the change only takes effect once the agent has taken that many
-    actions. Until then a matching action gets `before`, what it returned while the world was
-    still as the history says, or the recorded result when `before` is not given.
-    """
-
-    pattern: str
-    result: str
-    after_actions: int = Field(default=0, ge=0)
-    before: str | None = None
-
-    @model_validator(mode="after")
-    def valid_pattern(self) -> PlantedResult:
-        re.compile(self.pattern)
-        return self
 
 
 class WorldChange(Strict):

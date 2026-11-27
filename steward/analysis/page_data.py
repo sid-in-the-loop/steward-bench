@@ -54,10 +54,10 @@ from steward.analysis.results import (
     path_counts,
 )
 from steward.config import Settings
-from steward.filter.selection import load_by_ids
 from steward.scenario.spec import iter_specs
 from steward.scenario.subset import SUBSET_FILE, read_subset
 from steward.schema import AXES
+from steward.store import load_by_ids
 
 log = logging.getLogger(__name__)
 

@@ -8,8 +8,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from steward.cases.prices import Pricing
 from steward.cases.sessions import SessionRun
-from steward.execution.evaluate import Pricing
 from steward.execution.policy import Usage
 
 # What the simulator is assumed to use per shift when no stored session counted it. Measured

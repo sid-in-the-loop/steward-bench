@@ -10,9 +10,8 @@ from pathlib import Path
 from steward.config import Settings
 from steward.environment.repository import EDIT_TOOLS, WRITE_TOOLS, ReplayReport, rebuild
 from steward.filter.rank import best_candidate
-from steward.filter.selection import load_by_ids
 from steward.schema import StageC2Result, Step, TrajectoryMeta
-from steward.store import read_jsonl, write_jsonl
+from steward.store import load_by_ids, read_jsonl, write_jsonl
 
 log = logging.getLogger(__name__)
 

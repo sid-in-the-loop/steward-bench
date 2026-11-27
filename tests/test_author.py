@@ -192,7 +192,8 @@ def test_a_model_run_is_scored_and_long_histories_are_trimmed() -> None:
 
     import httpx
 
-    from steward.execution.evaluate import Condition, fit_history, run_scenario
+    from steward.execution.evaluate import Condition, run_scenario
+    from steward.execution.history import fit_history
 
     spec, session = build(draft())
     replies = iter(

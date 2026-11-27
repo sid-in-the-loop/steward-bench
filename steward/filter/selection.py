@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from collections.abc import Callable, Iterator, Sequence
-
-from steward.config import Settings
-from steward.schema import Trajectory
-from steward.store import iter_trajectories
+from collections.abc import Callable, Sequence
 
 
 def select_with_floor[T](
@@ -53,16 +49,3 @@ def with_full_domains[T](
         if domain_of(item) in domains:
             picked.setdefault(id(item), item)
     return sorted(picked.values(), key=sort_key)
-
-
-def source_of(trajectory_id: str) -> str:
-    return trajectory_id.split(":", 1)[0]
-
-
-def load_by_ids(settings: Settings, trajectory_ids: Sequence[str]) -> Iterator[Trajectory]:
-    """Stream the requested trajectories, grouped by source."""
-    wanted: dict[str, set[str]] = defaultdict(set)
-    for trajectory_id in trajectory_ids:
-        wanted[source_of(trajectory_id)].add(trajectory_id)
-    for source in sorted(wanted):
-        yield from iter_trajectories(settings.paths.normalized, source, only=wanted[source])

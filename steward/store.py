@@ -5,13 +5,15 @@ from __future__ import annotations
 import gzip
 import json
 import os
-from collections.abc import Iterable, Iterator
+from collections import defaultdict
+from collections.abc import Iterable, Iterator, Sequence
 from pathlib import Path
 from typing import TextIO
 
 import pandas as pd
 from pydantic import BaseModel
 
+from steward.config import Settings
 from steward.schema import Step, Trajectory, TrajectoryMeta
 
 META_FILE = "meta.parquet"
@@ -158,3 +160,16 @@ def write_jsonl(path: Path, records: Iterable[BaseModel]) -> int:
             count += 1
     os.replace(tmp, path)
     return count
+
+
+def source_of(trajectory_id: str) -> str:
+    return trajectory_id.split(":", 1)[0]
+
+
+def load_by_ids(settings: Settings, trajectory_ids: Sequence[str]) -> Iterator[Trajectory]:
+    """Stream the requested trajectories, grouped by source."""
+    wanted: dict[str, set[str]] = defaultdict(set)
+    for trajectory_id in trajectory_ids:
+        wanted[source_of(trajectory_id)].add(trajectory_id)
+    for source in sorted(wanted):
+        yield from iter_trajectories(settings.paths.normalized, source, only=wanted[source])

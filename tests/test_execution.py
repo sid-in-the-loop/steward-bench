@@ -154,7 +154,7 @@ def test_usage_counts_cache_writes_and_the_largest_prompt() -> None:
 
 
 def test_a_request_over_the_long_context_threshold_prices_the_usage_at_the_long_rates() -> None:
-    from steward.execution.evaluate import Pricing
+    from steward.cases.prices import Pricing
     from steward.execution.policy import Usage
 
     long = Pricing(prompt=2.0, completion=10.0)

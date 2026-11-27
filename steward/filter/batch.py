@@ -19,7 +19,7 @@ import httpx
 from pydantic import BaseModel
 
 from steward.config import ModelConfig, Settings
-from steward.filter.render import estimate_tokens
+from steward.execution.history import estimate_tokens
 from steward.schema import CostRecord
 from steward.store import append_jsonl, read_jsonl
 

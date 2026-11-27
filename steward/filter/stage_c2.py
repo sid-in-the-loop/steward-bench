@@ -26,7 +26,6 @@ from pydantic import BaseModel, ValidationError
 from steward.config import Settings
 from steward.filter.rank import task_key
 from steward.filter.redact import redact, redact_strings
-from steward.filter.selection import load_by_ids
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.filter.stage_b import read_results as read_stage_b
 from steward.filter.stage_c1 import render_for_scoring
@@ -37,7 +36,7 @@ from steward.schema import (
     StageC2Output,
     StageC2Result,
 )
-from steward.store import append_jsonl, read_jsonl, read_meta, write_jsonl
+from steward.store import append_jsonl, load_by_ids, read_jsonl, read_meta, write_jsonl
 
 log = logging.getLogger(__name__)
 

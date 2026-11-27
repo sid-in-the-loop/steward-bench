@@ -10,10 +10,9 @@ from pathlib import Path
 
 from steward.environment import workspace as ws
 from steward.environment.fidelity import ReplayLog, similarity
-from steward.environment.recorded import RecordedToolExecutor
+from steward.environment.recorded import PlantedResult, RecordedToolExecutor
 from steward.environment.repository import ReplayReport
 from steward.execution.record import Action
-from steward.scenario.spec import PlantedResult
 from steward.schema import Step
 
 

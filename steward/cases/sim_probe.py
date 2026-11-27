@@ -53,6 +53,7 @@ from pydantic import BaseModel
 
 from steward.cases.case import Case, Reference, Role
 from steward.cases.changes import goal_step
+from steward.cases.prices import Pricing
 from steward.cases.schedule import Condition, benchmark_setting, conditions_of
 from steward.cases.sessions import (
     REVEAL_WORDS,
@@ -66,7 +67,6 @@ from steward.cases.sessions import (
 )
 from steward.cases.simulator import CachedSimulator, SimulatorFailedError
 from steward.config import Settings
-from steward.execution.evaluate import Pricing
 from steward.execution.policy import Usage
 
 Probe = Literal["P1", "P2", "P3", "P4", "P5"]

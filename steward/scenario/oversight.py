@@ -20,9 +20,8 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from steward.config import Settings
+from steward.execution.history import estimate_tokens
 from steward.filter.batch import Estimate, check_budget
-from steward.filter.render import estimate_tokens
-from steward.filter.selection import load_by_ids
 from steward.intervention.factors import OPENING_MESSAGE, halts
 from steward.scenario.author import (
     ADVICE_WORDS,
@@ -34,7 +33,7 @@ from steward.scenario.author import (
 from steward.scenario.spec import OversightMessages, ScenarioSpec, iter_specs, save_spec
 from steward.scenario.subset import read_subset
 from steward.schema import CostRecord, Trajectory
-from steward.store import append_jsonl
+from steward.store import append_jsonl, load_by_ids
 
 log = logging.getLogger(__name__)
 

@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Protocol
-
 from steward.execution.policy import Message, Policy
 from steward.execution.record import (
     Action,
     ActionEvent,
     ExecutionRecord,
+    Executor,
     MessageEvent,
     Sender,
 )
@@ -16,16 +15,6 @@ from steward.principal.principal import InterventionSchedule, Responder
 from steward.scenario.spec import Intervention, ScenarioSpec
 
 INTERRUPTED = "[Request interrupted by user]"
-
-
-class Executor(Protocol):
-    """Where actions take effect: a container, or an emulator of recorded tool results."""
-
-    async def execute(self, action: Action) -> str: ...
-
-    async def run(self, command: str) -> str: ...
-
-    async def succeeds(self, command: str) -> bool: ...
 
 
 class Session:

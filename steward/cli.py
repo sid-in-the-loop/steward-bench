@@ -250,12 +250,11 @@ def cmd_author(settings: Settings, args: argparse.Namespace) -> int:
     from steward.environment.repository import ReplayReport
     from steward.execution.record import Action
     from steward.filter import stage_c2
-    from steward.filter.selection import load_by_ids
     from steward.scenario import loop
     from steward.scenario.compile import gate_container, image_ready
     from steward.scenario.spec import ScenarioSpec
     from steward.schema import StageC2Result, Trajectory
-    from steward.store import read_jsonl
+    from steward.store import load_by_ids, read_jsonl
 
     def recorded_tools(trajectory: Trajectory) -> dict[str, object]:
         return {"backend": "recorded_tools"}
@@ -357,7 +356,8 @@ def cmd_evaluate(settings: Settings, args: argparse.Namespace) -> int:
     import json
     from pathlib import Path
 
-    from steward.execution.evaluate import Condition, Endpoint, Pricing, evaluate, summarize
+    from steward.cases.prices import Pricing
+    from steward.execution.evaluate import Condition, Endpoint, evaluate, summarize
 
     condition = Condition(
         rule_position=args.rule_position,
@@ -472,11 +472,11 @@ def cmd_controls(settings: Settings, args: argparse.Namespace) -> int:
     safety control placed at the takeover, with checks that read state. No model is called."""
     from concurrent.futures import ThreadPoolExecutor
 
+    from steward.cases.sandbox import workspace_image
     from steward.environment.workspace import load_workspace, workspace_directory
-    from steward.execution.evaluate import workspace_image
-    from steward.filter.selection import load_by_ids
     from steward.scenario import gates
     from steward.scenario.spec import ScenarioSpec, iter_specs, save_spec
+    from steward.store import load_by_ids
 
     if args.workplace:
         # On workplace worlds the control is a data-protection rule on outgoing mail.

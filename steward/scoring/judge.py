@@ -25,15 +25,15 @@ from pydantic import BaseModel, ValidationError, field_validator
 
 from steward.config import Settings
 from steward.execution.evaluate import RunResult, read_results
+from steward.execution.history import estimate_tokens
 from steward.execution.policy import RequestFailedError, Usage, post_with_retry
 from steward.filter.batch import CostGuardError
-from steward.filter.render import estimate_tokens, one_line
-from steward.filter.selection import load_by_ids
+from steward.filter.render import one_line
 from steward.scenario.author import HISTORY_LINES, parse_reply, step_line
 from steward.scenario.designs import BY_ID
 from steward.scenario.spec import ScenarioSpec, iter_specs
 from steward.schema import CostRecord, Trajectory
-from steward.store import append_jsonl, read_jsonl
+from steward.store import append_jsonl, load_by_ids, read_jsonl
 
 log = logging.getLogger(__name__)
 

@@ -18,9 +18,9 @@ from steward.cases.case import Case, Repo, case_directories, load_case
 from steward.cases.conditions import CONDITIONS, Condition, ConditionId, Timing
 from steward.cases.prices import pricing_of
 from steward.cases.run import Model, Run, Variant, built_directory, model_policy, run_case
+from steward.cases.sandbox import workspace_image
 from steward.cases.simulator import ClaudeSimulator
 from steward.config import Settings
-from steward.execution.evaluate import workspace_image
 from steward.execution.policy import Message, Policy, ScriptedPolicy
 
 # The models with an endpoint set up here, at their prices in PRICES. claude-sonnet-5-5 plays

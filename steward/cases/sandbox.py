@@ -14,6 +14,7 @@ from pathlib import Path
 
 from steward.cases import postgres
 from steward.cases.case import Case, Repo
+from steward.config import Settings
 from steward.environment.repository import ReplayReport
 from steward.environment.workspace import (
     GH_STATE,
@@ -61,6 +62,10 @@ BUILDING = {"PYTHONSAFEPATH": ""}
 
 class BuildError(RuntimeError):
     pass
+
+
+def workspace_image(settings: Settings) -> Path:
+    return settings.paths.data / "apptainer" / "workspace.sif"
 
 
 def in_container(

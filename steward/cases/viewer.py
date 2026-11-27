@@ -12,8 +12,8 @@ from steward.cases.commands import MODELS, current_runs, load_cases
 from steward.cases.conditions import CONDITIONS
 from steward.cases.run import built_directory
 from steward.config import Settings
-from steward.filter.selection import load_by_ids
 from steward.schema import Step
+from steward.store import load_by_ids
 
 TEMPLATE = Path(__file__).with_name("viewer.html")
 TEXT_LIMIT = 900

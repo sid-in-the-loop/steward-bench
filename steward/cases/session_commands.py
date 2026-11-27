@@ -24,6 +24,7 @@ from steward.cases.commands import cases_root, load_cases, wait_for_room
 from steward.cases.levels import Bank, Voice
 from steward.cases.rate_log import log_while, rate_log
 from steward.cases.run import Model, model_policy
+from steward.cases.sandbox import workspace_image
 from steward.cases.schedule import (
     Condition,
     benchmark_setting,
@@ -47,7 +48,6 @@ from steward.cases.sessions import (
 from steward.cases.simulator import Simulator, SimulatorFailedError
 from steward.cases.throttle import Deadline, Throttle
 from steward.config import Settings
-from steward.execution.evaluate import workspace_image
 from steward.execution.policy import Message, Policy, Usage, remember_drops
 
 # What a session is assumed to use when estimating cost: requests per item, tokens the

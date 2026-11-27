@@ -10,10 +10,10 @@ from pydantic import ValidationError
 from steward.config import REAL_USER_DOMAINS_BY_RULE, Settings
 from steward.filter import batch
 from steward.filter.render import triage_summary
-from steward.filter.selection import load_by_ids, select_with_floor, with_full_domains
+from steward.filter.selection import select_with_floor, with_full_domains
 from steward.filter.stage_a import read_results as read_stage_a
 from steward.schema import BENCHMARK_DOMAINS, Domain, StageAResult, StageBOutput, StageBResult
-from steward.store import read_jsonl, write_jsonl
+from steward.store import load_by_ids, read_jsonl, write_jsonl
 
 log = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel
 
@@ -62,3 +62,13 @@ class ExecutionRecord(BaseModel):
     final_report: str | None = None
     turns: int = 0
     ending: Ending = "finished"
+
+
+class Executor(Protocol):
+    """Where actions take effect: a container, or an emulator of recorded tool results."""
+
+    async def execute(self, action: Action) -> str: ...
+
+    async def run(self, command: str) -> str: ...
+
+    async def succeeds(self, command: str) -> bool: ...

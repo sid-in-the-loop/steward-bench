@@ -5,7 +5,8 @@ import json
 import httpx
 import pytest
 
-from steward.execution.evaluate import Condition, Endpoint, Pricing, RunResult, evaluate
+from steward.cases.prices import Pricing
+from steward.execution.evaluate import Condition, Endpoint, RunResult, evaluate
 from steward.execution.evaluate import read_results as read_runs
 from steward.filter.batch import CostGuardError
 from steward.schema import CostRecord

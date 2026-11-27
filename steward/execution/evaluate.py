@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
 import os
 import re
@@ -26,6 +25,8 @@ from typing import Any, Literal
 import httpx
 from pydantic import BaseModel
 
+from steward.cases.prices import Pricing
+from steward.cases.sandbox import workspace_image
 from steward.config import Settings
 from steward.environment.audit import checkout_dir
 from steward.environment.gym import GymExecutor
@@ -40,13 +41,11 @@ from steward.environment.workspace import (
     load_workspace,
     workspace_directory,
 )
-from steward.execution.history import to_messages, tool_definitions
+from steward.execution.history import estimate_tokens, fit_history, to_messages, tool_definitions
 from steward.execution.policy import Dialect, Message, ModelPolicy, RunSettings, Usage
-from steward.execution.record import ExecutionRecord
-from steward.execution.session import Executor, Session
+from steward.execution.record import ExecutionRecord, Executor
+from steward.execution.session import Session
 from steward.filter.batch import CostGuardError
-from steward.filter.render import estimate_tokens
-from steward.filter.selection import load_by_ids
 from steward.intervention.factors import (
     Opening,
     Oversight,
@@ -68,7 +67,7 @@ from steward.scenario.spec import ScenarioSpec, iter_specs
 from steward.scenario.subset import read_subset
 from steward.schema import Trajectory
 from steward.scoring.score import Score, score
-from steward.store import append_jsonl
+from steward.store import append_jsonl, load_by_ids
 
 log = logging.getLogger(__name__)
 
@@ -113,35 +112,6 @@ class Endpoint(BaseModel):
         )
 
 
-class Pricing(BaseModel):
-    """Prices in dollars per million tokens. Cached input is billed at its own rate. Where a
-    request with more than `long_above` prompt tokens pays the `long` prices, a usage whose
-    largest request was over it is priced at those throughout: an upper bound, since the
-    tier is set request by request."""
-
-    prompt: float
-    completion: float
-    cached: float | None = None
-    cache_write: float | None = None
-    long_above: int | None = None
-    long: Pricing | None = None
-
-    def cost(self, usage: Usage) -> float:
-        long, above = self.long, self.long_above
-        if long is not None and above is not None and usage.largest_prompt_tokens > above:
-            return long.cost(usage)
-        cached_price = self.prompt if self.cached is None else self.cached
-        write_price = self.prompt if self.cache_write is None else self.cache_write
-        fresh = usage.prompt_tokens - usage.cached_tokens - usage.cache_write_tokens
-        dollars = (
-            fresh * self.prompt
-            + usage.cached_tokens * cached_price
-            + usage.cache_write_tokens * write_price
-            + usage.completion_tokens * self.completion
-        )
-        return dollars / 1_000_000
-
-
 class RunResult(BaseModel):
     scenario_id: str
     domain: str
@@ -168,39 +138,6 @@ class RunResult(BaseModel):
     # matched the recording.
     replay_fidelity: float | None = None
     record: ExecutionRecord
-
-
-def message_tokens(message: Message) -> int:
-    return estimate_tokens(json.dumps(message, ensure_ascii=False))
-
-
-def fit_history(messages: list[Message], budget_tokens: int) -> tuple[list[Message], bool]:
-    """Keep the system messages, the first user message and the most recent turns that fit.
-
-    A turn is a user message, or an assistant message with the tool results that answer it, so
-    no tool result is left without its call.
-    """
-    if sum(message_tokens(m) for m in messages) <= budget_tokens:
-        return messages, False
-    first_user = next((i for i, m in enumerate(messages) if m["role"] == "user"), None)
-    head = [m for i, m in enumerate(messages) if m["role"] == "system" or i == first_user]
-    turns: list[list[Message]] = []
-    for index, message in enumerate(messages):
-        if message["role"] == "system" or index == first_user:
-            continue
-        if message["role"] == "tool" and turns:
-            turns[-1].append(message)
-        else:
-            turns.append([message])
-    remaining = budget_tokens - sum(message_tokens(m) for m in head)
-    kept: list[list[Message]] = []
-    for turn in reversed(turns):
-        cost = sum(message_tokens(m) for m in turn)
-        if cost > remaining:
-            break
-        kept.insert(0, turn)
-        remaining -= cost
-    return [*head, *(m for turn in kept for m in turn)], True
 
 
 def prepare(
@@ -249,10 +186,6 @@ def saw_change_first(spec: ScenarioSpec, record: ExecutionRecord) -> bool | None
 
 BUILD_LOCKS: dict[Path, threading.Lock] = {}
 BUILD_LOCKS_GUARD = threading.Lock()
-
-
-def workspace_image(settings: Settings) -> Path:
-    return settings.paths.data / "apptainer" / "workspace.sif"
 
 
 def live_workspace(

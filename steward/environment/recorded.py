@@ -14,13 +14,41 @@ import re
 from collections.abc import Sequence
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from steward.execution.record import Action
-from steward.filter.stage_a import MCP_WRITE_OPERATION
-from steward.scenario.spec import PlantedResult
 from steward.schema import Step
 
 NO_RECORDED_RESULT = "No results."
 WRITE_ACKNOWLEDGED = '{"status": "success"}'
+WRITE_VERBS = (
+    "write|create|update|delete|remove|send|post|patch|put|move|upload|insert|add|"
+    "set|enroll|append|rename|edit|format|merge|push|commit|submit|cancel|drop|apply|deploy|"
+    "reply|forward|archive|publish|invite|transfer"
+)
+MCP_WRITE_OPERATION = re.compile(rf"-(.*[_-])?({WRITE_VERBS})([_-]|$)", re.IGNORECASE)
+
+
+class PlantedResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    """A change to the world since the history was written: actions matching the pattern now
+    get this result.
+
+    With `after_actions`, the change only takes effect once the agent has taken that many
+    actions. Until then a matching action gets `before`, what it returned while the world was
+    still as the history says, or the recorded result when `before` is not given.
+    """
+
+    pattern: str
+    result: str
+    after_actions: int = Field(default=0, ge=0)
+    before: str | None = None
+
+    @model_validator(mode="after")
+    def valid_pattern(self) -> PlantedResult:
+        re.compile(self.pattern)
+        return self
 
 
 def call_key(tool: str, arguments: dict[str, Any] | None) -> str:

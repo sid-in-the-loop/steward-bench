@@ -5,8 +5,9 @@ import json
 import httpx
 import pytest
 
+from steward.cases.prices import Pricing
 from steward.execution import evaluate as evaluation
-from steward.execution.evaluate import Condition, Endpoint, Pricing, evaluate, read_results
+from steward.execution.evaluate import Condition, Endpoint, evaluate, read_results
 from steward.execution.policy import (
     RATE_LIMIT_ATTEMPTS,
     RETRY_MAX_SECONDS,

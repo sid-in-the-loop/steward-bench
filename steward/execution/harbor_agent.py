@@ -16,10 +16,10 @@ from steward.environment.shell import ContainerExecutor, recorded_host, replay
 from steward.execution.policy import Policy, ScriptedPolicy
 from steward.execution.record import ExecutionRecord
 from steward.execution.session import Session
-from steward.filter.selection import load_by_ids
 from steward.principal.principal import ScriptedResponder
 from steward.scenario.spec import ReferenceExecution, load_spec
 from steward.schema import Trajectory
+from steward.store import load_by_ids
 
 RECORD_FILE = "execution.json"
 RESULT_FILE = "run.json"

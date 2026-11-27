@@ -10,13 +10,13 @@ from pathlib import Path
 import pytest
 
 from steward.cases.case import Case, Person, case_directories, load_case
+from steward.cases.prices import Pricing
 from steward.cases.schedule import benchmark_setting, conditions_of, has_instruction_drift
 from steward.cases.score import condition_of
 from steward.cases.sessions import HARNESS, Session, SessionRun, SessionSpec, load_session_spec
 from steward.cases.sim_probe import probed, run_probe
 from steward.cases.simulator import CachedSimulator
 from steward.cli import main
-from steward.execution.evaluate import Pricing
 from steward.execution.history import tool_definitions
 from steward.execution.policy import Message, Turn
 from steward.execution.record import Action

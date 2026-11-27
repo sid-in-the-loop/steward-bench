@@ -15,11 +15,10 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from steward.config import Settings
+from steward.execution.history import estimate_tokens
 from steward.execution.record import Action
 from steward.filter.batch import Estimate, check_budget
 from steward.filter.rank import best_candidate, selection_score
-from steward.filter.render import estimate_tokens
-from steward.filter.selection import load_by_ids
 from steward.scenario.author import (
     UNSCRIPTED_DESIGNS,
     Draft,
@@ -35,7 +34,7 @@ from steward.scenario.author import (
 from steward.scenario.designs import BY_ID, LIBRARY
 from steward.scenario.spec import ScenarioSpec, iter_specs, save_spec
 from steward.schema import AXES, Axis, C2Candidate, CostRecord, StageC2Result, Trajectory
-from steward.store import append_jsonl, read_jsonl
+from steward.store import append_jsonl, load_by_ids, read_jsonl
 
 log = logging.getLogger(__name__)
 
