@@ -12,12 +12,13 @@ from steward.cases.sessions import SessionRun
 from steward.execution.evaluate import Pricing
 from steward.execution.policy import Usage
 
-# What the simulator is assumed to use per shift when no stored session counted it, from
-# gpt-6-luna playing the people on 2026-11-26: 64 requests in 12 shifts at about 13,600
-# prompt tokens each, none cached, and 150 output tokens a reply.
-SIMULATOR_REQUESTS = 64 / 12
-SIMULATOR_PROMPT = 13_600
-SIMULATOR_OUTPUT = 150
+# What the simulator is assumed to use per shift when no stored session counted it. Measured
+# on 2026-11-26 with gpt-6-luna playing the people: 2 replies in 12 shifts (1.8 over 634
+# gpt-6-luna sessions, 2.2 over 19 gpt-6.2-sol sessions) at about 1,600 prompt tokens, none
+# cached, and 220 output tokens a reply.
+SIMULATOR_REQUESTS = 2 / 12
+SIMULATOR_PROMPT = 1_600
+SIMULATOR_OUTPUT = 220
 
 
 class Profile(BaseModel):

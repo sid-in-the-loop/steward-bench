@@ -733,9 +733,8 @@ models' averages, and the line says which. Beside it the simulator's cost is pri
 stored sessions whose people it played, which keep what its requests used
 (`simulator_usage`; none in sessions stored before 2026-11-27: one simulator serves every
 session at once, so each session's guard sums the usage of the replies made on its own
-thread), otherwise from gpt-6-luna playing the people on 2026-11-26: 64 requests a 12-shift
-session at about 13,600 prompt tokens each, none cached, and 150 output tokens assumed a
-reply. With no stored session of any model the tested model falls back to the fixed
+thread), otherwise from gpt-6-luna playing the people on 2026-11-26: 2 replies a 12-shift
+session at about 1,600 prompt tokens each, none cached, and 220 output tokens a reply. With no stored session of any model the tested model falls back to the fixed
 assumption the experiments use. The simulator's requests, tokens and cost are printed at the
 end.
 

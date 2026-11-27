@@ -295,10 +295,10 @@ def test_the_estimate_matches_the_measured_benchmark_session() -> None:
     setting = Setting(items=12, changed=(3, 5, 8, 11), per_day=6)
     dollars = session_commands.estimate_usd(MODELS["gpt-6-luna"], setting)
     assert dollars == pytest.approx(0.0163, abs=0.0005)
-    # 64 requests at 13,600 prompt tokens and 150 output tokens at gpt-6-luna's prices.
+    # 2 replies at 1,600 prompt tokens and 220 output tokens at gpt-6-luna's prices.
     profile = simulator_profile("gpt-6-luna", {})
     played = session_usd(MODELS["gpt-6-luna"].pricing, profile, 12)
-    assert played == pytest.approx(64 * (13_600 * 0.10 + 150 * 0.50) / 1e6)
+    assert played == pytest.approx(2 * (1_600 * 0.10 + 220 * 0.50) / 1e6)
 
 
 def test_the_benchmark_estimate_prints_the_simulator_beside_it(
