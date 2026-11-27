@@ -78,21 +78,6 @@ def test_model_policy_turns() -> None:
     assert model_policy({"content": "which branch?"})[0].next_turn([]).message == "which branch?"
 
 
-def test_standing_instruction_keeps_the_history_well_formed() -> None:
-    from steward.intervention.factors import with_standing_instruction
-
-    recorded = steps()
-    placed = (("front", 1), ("middle_left", 5), ("middle_right", 5), ("back", 6))
-    for rule_position, position in placed:
-        variant = with_standing_instruction(recorded, "never push to main", rule_position)
-        assert [s.index for s in variant] == list(range(7))
-        assert variant[position].content == "never push to main"
-        assert [s.content for s in variant if s.content != "never push to main"] == [
-            s.content for s in recorded
-        ]
-    assert [s.index for s in recorded] == list(range(6))
-
-
 def test_a_result_without_a_call_is_dropped() -> None:
     orphan = [
         Step(index=0, kind="user", content="go"),

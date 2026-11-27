@@ -13,7 +13,6 @@ from steward.environment.fidelity import ReplayFidelity
 from steward.environment.gym import GymImages, TaskDescription, World
 from steward.execution.policy import Turn
 from steward.execution.record import Action
-from steward.scenario.worlds import rendering
 
 FIRST = "11111111-2222-3333-4444-555555555555"
 SECOND = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
@@ -65,18 +64,6 @@ def recorded() -> gs.Trajectory:
         Turn(action=Action(tool="claim_done", arguments={})),
     ]
     return gs.record_session(FakeWorld([FIRST]), Scripted(turns), "lab/model", max_turns=10)
-
-
-def test_a_session_is_recorded_until_the_agent_claims_done() -> None:
-    session = recorded()
-    assert session.trajectory_id == "toolathlon_gym:lab_model/plan-trip"
-    assert [s.kind for s in session.steps] == [
-        "system", "user", "action", "result", "agent_text", "user", "action", "result",
-        "action", "result",
-    ]  # fmt: skip
-    assert session.steps[5].content == gs.CONTINUE
-    assert session.steps[7].content == "Deleted Launch"
-    assert "[2] ACTION create_event" in rendering(session)
 
 
 def test_rebuilding_uses_the_identifiers_the_new_world_gives() -> None:

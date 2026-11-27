@@ -2,16 +2,12 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
 
 from steward.config import Paths, Settings
 from steward.schema import Step, Trajectory
-
-REPO_ROOT = Path(__file__).resolve().parent.parent
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 @pytest.fixture(autouse=True)
@@ -25,9 +21,7 @@ def no_known_drops() -> None:
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
     root = tmp_path / "repo"
-    (root / "prompts").mkdir(parents=True)
-    for prompt in (REPO_ROOT / "prompts").glob("*.md"):
-        shutil.copy(prompt, root / "prompts" / prompt.name)
+    root.mkdir()
     return Settings(paths=Paths(root=root, data=tmp_path / "data"))
 
 
