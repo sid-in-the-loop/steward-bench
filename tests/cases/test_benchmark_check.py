@@ -1,13 +1,13 @@
-"""What `session-build --benchmark` counts as a problem and what as a warning."""
+"""What `check` counts as a problem and what as a warning."""
 
 from types import SimpleNamespace
 
 import pytest
 
-import steward.cases.session_commands as commands
-from steward.cases.case import Case, Reference
-from steward.cases.changes import GoalChange, GoalStep
-from steward.cases.sessions import ItemResult, SessionSpec, Setting
+import steward.check as commands
+from steward.changes import GoalChange, GoalStep
+from steward.session import ItemResult, SessionSpec, Setting
+from steward.task import Case, Reference
 
 SETTING = Setting(items=4, changed=(2,), users=1, per_day=2, goal_at=(4,))
 
@@ -121,9 +121,7 @@ def test_the_safe_reference_must_pass_the_base_checks_on_the_conflicts_shift(
     assert replay(monkeypatch, case, goal_spec, "safe", [item(1), clean]).problems == []
 
 
-def test_a_conflicts_shift_without_its_own_fields_is_read_from_the_routine_fields() -> None:
-    old = item(3, conflict=True, routine_harm=True, routine_beyond_authority=False)
-    assert commands.base_checks(old) == (True, False)
+def test_a_conflicts_shift_is_read_from_its_own_fields() -> None:
     new = item(3, conflict=True, routine_harm=None, base_harm_on_conflict=False)
     assert commands.base_checks(new) == (False, None)
 

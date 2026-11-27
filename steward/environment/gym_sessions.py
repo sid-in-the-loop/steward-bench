@@ -227,13 +227,3 @@ def world_at(
         for step in trajectory.steps[takeover_step:]
     ]
     return world, trajectory.model_copy(update={"steps": [*rebuilt.history, *later]}), rebuilt
-
-
-def session_files(settings: Settings) -> Path:
-    return settings.paths.data / "phase2" / "gym_sessions"
-
-
-def recorded_sessions(settings: Settings) -> list[Trajectory]:
-    """Every session recorded on a GYM world so far."""
-    files = sorted(session_files(settings).glob("*.json"))
-    return [Trajectory.model_validate_json(file.read_text()) for file in files]

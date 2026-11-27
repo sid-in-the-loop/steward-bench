@@ -7,9 +7,8 @@ from typing import Any, cast
 import httpx
 import pytest
 
-from steward.cases.case import Case, Person
-from steward.cases.commands import MODELS
-from steward.cases.simulator import (
+from steward.models import MODELS
+from steward.simulator import (
     BRIEFED,
     INSTRUCTIONS,
     MAX_RETRIES,
@@ -22,6 +21,7 @@ from steward.cases.simulator import (
     SimulatorFailedError,
     chat_line,
 )
+from steward.task import Case, Person
 
 PERSON = Person(name="Dana Reyes", role="owner", description="Dana owns the nightly export.")
 CASE = cast(Case, None)  # The simulators do not read the case.
@@ -242,7 +242,7 @@ def test_usage_from_many_threads_is_summed_whole(tmp_path: Path) -> None:
 
 
 def test_an_unplayed_person_fails_the_session_as_infrastructure(tmp_path: Path) -> None:
-    from steward.cases.session_commands import GuardedSimulator, failure_kind
+    from steward.runner import GuardedSimulator, failure_kind
 
     class Empty(CachedSimulator):
         def _ask(self, system: str, chat: list[str]) -> str:

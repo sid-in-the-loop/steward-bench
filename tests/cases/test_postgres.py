@@ -10,16 +10,16 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases import postgres, run, sandbox
-from steward.cases.case import RUN_FIELDS, Case, Database, Repo, load_case
+from steward import postgres, prepare, sandbox
 from steward.config import Settings, load_settings
 from steward.environment import workspace as ws
 from steward.environment.repository import ReplayReport
-from steward.execution.evaluate import workspace_image
 from steward.execution.record import Action
+from steward.sandbox import workspace_image
 from steward.schema import Step
+from steward.task import RUN_FIELDS, Case, Database, Repo, load_case
 
-ROOT = Path(__file__).parents[2] / "cases"
+ROOT = Path(__file__).parent / "tasks"
 RETENTION = "dbops-1d2c83c28d"
 
 
@@ -252,7 +252,7 @@ def test_a_run_starts_its_own_server_and_closing_stops_it(
         return "", 0, cwd
 
     monkeypatch.setattr(sandbox, "in_container", in_container)
-    prepared = run.prepare_repository(settings, database_case(on_start="open-session"))
+    prepared = prepare.prepare_repository(settings, database_case(on_start="open-session"))
     server = servers[0]
     scratch = server.directory.parents[1]
     assert server.calls == ["start"] and ran == ["open-session"]
@@ -269,7 +269,7 @@ def test_a_server_is_stopped_when_on_start_fails(
     servers = fake_server_for(monkeypatch)
     monkeypatch.setattr(sandbox, "in_container", lambda *_, **__: ("no such role", 1, "/"))
     with pytest.raises(RuntimeError, match="no such role"):
-        run.prepare_repository(settings, database_case(on_start="open-session"))
+        prepare.prepare_repository(settings, database_case(on_start="open-session"))
     assert servers[0].calls[-1] == "stop"
     assert not servers[0].directory.parents[1].exists()
 
@@ -279,7 +279,7 @@ def test_a_case_without_a_database_starts_no_server(
 ) -> None:
     built(tmp_path, monkeypatch)
     servers = fake_server_for(monkeypatch)
-    prepared = run.prepare_repository(settings, load_case(ROOT / "terminal-6ad4ffd09e"))
+    prepared = prepare.prepare_repository(settings, load_case(ROOT / "terminal-6ad4ffd09e"))
     prepared.close()
     assert servers == []
 
@@ -321,8 +321,8 @@ def test_a_real_server_keeps_its_state_across_commands_and_is_gone_after_the_run
     sandbox.build(case, base, directory, workspace_image(real))
     assert postgres.Server(directory / "pg", Path("unused"), "sam").postmaster() is None
 
-    monkeypatch.setattr(run, "built_directory", lambda _settings, _case: directory)
-    prepared = run.prepare_repository(real, case)
+    monkeypatch.setattr(prepare, "built_directory", lambda _settings, _case: directory)
+    prepared = prepare.prepare_repository(real, case)
     # The case has no inherited session, so no tool was offered to call.
     prepared.executor.offered = frozenset({"Bash"})
     try:
@@ -383,8 +383,8 @@ def test_the_agents_role_cannot_reach_the_superuser_or_the_servers_programs(
     base += " -c 'CREATE ROLE colleague LOGIN' -c 'GRANT readers TO colleague'"
     directory = tmp_path / "built"
     sandbox.build(case, base, directory, workspace_image(real))
-    monkeypatch.setattr(run, "built_directory", lambda _settings, _case: directory)
-    prepared = run.prepare_repository(real, case)
+    monkeypatch.setattr(prepare, "built_directory", lambda _settings, _case: directory)
+    prepared = prepare.prepare_repository(real, case)
     prepared.executor.offered = frozenset({"Bash"})
 
     def agent(command: str) -> str:

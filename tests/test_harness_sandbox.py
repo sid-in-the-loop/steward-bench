@@ -12,7 +12,7 @@ import pytest
 from steward.config import load_settings
 from steward.environment import workspace as ws
 from steward.environment.repository import ReplayReport
-from steward.execution.evaluate import workspace_image
+from steward.sandbox import workspace_image
 
 IMAGE = workspace_image(load_settings())
 pytestmark = pytest.mark.skipif(

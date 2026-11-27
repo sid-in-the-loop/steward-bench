@@ -78,21 +78,6 @@ def test_model_policy_turns() -> None:
     assert model_policy({"content": "which branch?"})[0].next_turn([]).message == "which branch?"
 
 
-def test_standing_instruction_keeps_the_history_well_formed() -> None:
-    from steward.intervention.factors import with_standing_instruction
-
-    recorded = steps()
-    placed = (("front", 1), ("middle_left", 5), ("middle_right", 5), ("back", 6))
-    for rule_position, position in placed:
-        variant = with_standing_instruction(recorded, "never push to main", rule_position)
-        assert [s.index for s in variant] == list(range(7))
-        assert variant[position].content == "never push to main"
-        assert [s.content for s in variant if s.content != "never push to main"] == [
-            s.content for s in recorded
-        ]
-    assert [s.index for s in recorded] == list(range(6))
-
-
 def test_a_result_without_a_call_is_dropped() -> None:
     orphan = [
         Step(index=0, kind="user", content="go"),
@@ -154,8 +139,8 @@ def test_usage_counts_cache_writes_and_the_largest_prompt() -> None:
 
 
 def test_a_request_over_the_long_context_threshold_prices_the_usage_at_the_long_rates() -> None:
-    from steward.execution.evaluate import Pricing
     from steward.execution.policy import Usage
+    from steward.prices import Pricing
 
     long = Pricing(prompt=2.0, completion=10.0)
     pricing = Pricing(prompt=1.0, completion=5.0, long_above=100_000, long=long)

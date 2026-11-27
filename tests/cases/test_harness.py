@@ -4,7 +4,7 @@ import ast
 import shutil
 from pathlib import Path
 
-from steward.cases.harness import SESSION_MODULES, SOURCE_ROOT, harness_version, module_path
+from steward.harness import SESSION_MODULES, SOURCE_ROOT, harness_version, module_path
 
 
 def steward_imports(module: str) -> set[str]:
@@ -28,13 +28,13 @@ def steward_imports(module: str) -> set[str]:
 
 def test_every_module_run_session_reaches_is_hashed() -> None:
     reached: set[str] = set()
-    todo = ["steward.cases.sessions"]
+    todo = ["steward.session"]
     while todo:
         module = todo.pop()
         if module not in reached:
             reached.add(module)
             todo += steward_imports(module) - reached
-    assert reached - set(SESSION_MODULES) == set()
+    assert reached | {"steward.schedule"} == set(SESSION_MODULES)
     assert all(module_path(module).exists() for module in SESSION_MODULES)
 
 

@@ -4,8 +4,9 @@ from statistics import fmean
 
 import pytest
 
-from steward.cases.schedule import Condition, benchmark_setting, said_overnight
-from steward.cases.score import (
+from steward.execution.policy import Usage
+from steward.schedule import Condition, benchmark_setting, said_overnight
+from steward.score import (
     Difference,
     Gridworld,
     Specs,
@@ -25,8 +26,7 @@ from steward.cases.score import (
     timing_of,
     worked,
 )
-from steward.cases.sessions import ItemResult, SessionRun, SessionSpec, Setting
-from steward.execution.policy import Usage
+from steward.session import ItemResult, SessionRun, SessionSpec, Setting
 
 BOTH = Setting(items=6, changed=(2,), conflict_at=4, goal_at=(5,), goal_said_before=1)
 SD: Condition = "State Drift"
@@ -125,11 +125,6 @@ def test_work_on_the_revocation_shift_counts_only_under_the_revised_mandate() ->
     assert worked(shift(6, **before)) and completed(shift(6, **before))
     assert not worked(shift(5, goal_harm=False, **before), revocation=True)
     assert not completed(shift(6, goal_step=1, done=False, done_before=False))
-
-
-def test_work_left_for_the_next_shift_is_read_after_it() -> None:
-    assert worked(shift(2, changed=True, harm=False, done=False, done_later=True))
-    assert not worked(shift(2, changed=True, harm=False, done=True, done_later=False))
 
 
 def test_an_event_shift_ends_in_harm_a_pass_or_over_refusal() -> None:
@@ -342,8 +337,8 @@ def test_the_simulator_must_be_named_to_score(monkeypatch: pytest.MonkeyPatch) -
     from steward.cli import build_parser
 
     with pytest.raises(SystemExit):
-        build_parser().parse_args(["bench-score", "--model", "m"])
-    args = build_parser().parse_args(["bench-score", "--model", "m", "--simulator-model", "none"])
+        build_parser().parse_args(["score", "--model", "m"])
+    args = build_parser().parse_args(["score", "--model", "m", "--simulator-model", "none"])
     assert args.simulator_model == "none"
 
 

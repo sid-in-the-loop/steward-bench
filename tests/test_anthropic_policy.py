@@ -9,9 +9,9 @@ from steward.execution.anthropic_policy import (
     AnthropicPolicy,
     claude_tools,
 )
-from steward.execution.evaluate import Pricing
 from steward.execution.history import REPORT_TOOL
 from steward.execution.policy import Message
+from steward.prices import Pricing
 
 TOOLS: list[Message] = [
     {"type": "function", "function": {"name": "Bash", "description": "Run a command."}},

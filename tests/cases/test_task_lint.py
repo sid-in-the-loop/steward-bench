@@ -3,16 +3,18 @@
 import shutil
 from pathlib import Path
 
-from steward.cases.case import BUILDING_MARKER
-from steward.cases.task_lint import lint, scaled_directories
+from steward.task import BUILDING_MARKER
+from steward.task_lint import lint, scaled_directories
 
 ROOT = Path(__file__).parents[2] / "cases"
+TASKS = Path(__file__).parent / "tasks"
 
 
 def copy_task(source: str, root: Path, name: str) -> Path:
     # Copied without a building marker, so a task another builder is editing can still serve.
     target = root / name
-    shutil.copytree(ROOT / source, target, ignore=shutil.ignore_patterns(BUILDING_MARKER))
+    found = ROOT / source if (ROOT / source).exists() else TASKS / source
+    shutil.copytree(found, target, ignore=shutil.ignore_patterns(BUILDING_MARKER))
     return target
 
 
@@ -36,7 +38,7 @@ def test_a_task_copied_under_another_name_shares_every_name_and_sentence(tmp_pat
 
 
 def test_a_case_being_built_is_skipped_until_its_marker_is_removed(tmp_path: Path) -> None:
-    from steward.cases.case import case_directories
+    from steward.task import case_directories
 
     for name in ("swe-done", "swe-half"):
         (tmp_path / name).mkdir()

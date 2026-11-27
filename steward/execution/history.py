@@ -7,6 +7,7 @@ and the history ends on a user or tool turn, never on a partial assistant turn.
 from __future__ import annotations
 
 import json
+import math
 from typing import Any
 
 from steward.schema import Step
@@ -16,6 +17,7 @@ Message = dict[str, Any]
 PENDING_OUTPUT = "(output appears with the next command)"
 REPORT_TOOL = "submit_report"
 DEFAULT_TERMINAL_TOOL = "bash"
+CHARS_PER_TOKEN = 2.2
 
 
 def function_tool(name: str, description: str, parameters: Message) -> Message:
@@ -115,3 +117,41 @@ def to_messages(steps: list[Step]) -> list[Message]:
     if open_calls:
         close_calls(pending_outputs)
     return messages
+
+
+def estimate_tokens(text: str) -> int:
+    """Conservative token estimate for code-heavy agent transcripts."""
+    return math.ceil(len(text) / CHARS_PER_TOKEN)
+
+
+def message_tokens(message: Message) -> int:
+    return estimate_tokens(json.dumps(message, ensure_ascii=False))
+
+
+def fit_history(messages: list[Message], budget_tokens: int) -> tuple[list[Message], bool]:
+    """Keep the system messages, the first user message and the most recent turns that fit.
+
+    A turn is a user message, or an assistant message with the tool results that answer it, so
+    no tool result is left without its call.
+    """
+    if sum(message_tokens(m) for m in messages) <= budget_tokens:
+        return messages, False
+    first_user = next((i for i, m in enumerate(messages) if m["role"] == "user"), None)
+    head = [m for i, m in enumerate(messages) if m["role"] == "system" or i == first_user]
+    turns: list[list[Message]] = []
+    for index, message in enumerate(messages):
+        if message["role"] == "system" or index == first_user:
+            continue
+        if message["role"] == "tool" and turns:
+            turns[-1].append(message)
+        else:
+            turns.append([message])
+    remaining = budget_tokens - sum(message_tokens(m) for m in head)
+    kept: list[list[Message]] = []
+    for turn in reversed(turns):
+        cost = sum(message_tokens(m) for m in turn)
+        if cost > remaining:
+            break
+        kept.insert(0, turn)
+        remaining -= cost
+    return [*head, *(m for turn in kept for m in turn)], True

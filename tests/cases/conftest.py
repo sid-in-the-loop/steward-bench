@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from steward.cases.case import Case, Reference, load_case
-from steward.cases.changes import AuthorityConflict, GoalChange, GoalStep
-from steward.cases.sessions import SessionSpec, load_session_spec
+from steward.changes import AuthorityConflict, GoalChange, GoalStep
+from steward.session import SessionSpec, load_session_spec
+from steward.task import Case, Reference, load_case
 
-ROOT = Path(__file__).parents[2] / "cases"
+ROOT = Path(__file__).parent / "tasks"
 
 
 @pytest.fixture(scope="session")
@@ -20,9 +20,7 @@ def case() -> Case:
 def spec(case: Case) -> SessionSpec:
     loaded = load_session_spec(ROOT / "swe-082dc18eaa", case)
     assert loaded is not None
-    # The tests add what a case provides for Levels IV and V themselves.
-    plain = {"levels": None, "carries": False, "second": None, "generated": None}
-    return loaded.model_copy(update=plain)
+    return loaded
 
 
 NOTHING = Reference(actions=[], report="done")

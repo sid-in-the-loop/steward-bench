@@ -1,14 +1,11 @@
-"""What happened in one run of a scenario: every action, every message and the final report."""
+"""An agent's tool call, and the protocol of what carries it out."""
 
 from __future__ import annotations
 
 import json
-from typing import Any, Literal
+from typing import Any, Protocol
 
 from pydantic import BaseModel
-
-Sender = Literal["agent", "principal", "third_party"]
-Ending = Literal["finished", "turn_limit"]
 
 TERMINAL_ARGUMENTS = ("command", "keystrokes", "cmd")
 
@@ -30,35 +27,11 @@ class Action(BaseModel):
         return f"{self.tool} {json.dumps(self.arguments, sort_keys=True, ensure_ascii=False)}"
 
 
-class ActionEvent(BaseModel):
-    """One action the agent attempted.
+class Executor(Protocol):
+    """Where actions take effect: a container, or an emulator of recorded tool results."""
 
-    `planted` is the position of the planted result that answered it, if one did, and
-    `changed` says whether that answer showed the world after its change or before it.
-    """
+    async def execute(self, action: Action) -> str: ...
 
-    turn: int
-    tool: str
-    text: str
-    executed: bool
-    halted: bool
-    output: str = ""
-    planted: int | None = None
-    changed: bool = False
+    async def run(self, command: str) -> str: ...
 
-
-class MessageEvent(BaseModel):
-    turn: int
-    sender: Sender
-    text: str
-
-
-class ExecutionRecord(BaseModel):
-    scenario_id: str
-    actions: list[ActionEvent] = []
-    messages: list[MessageEvent] = []
-    interventions_fired: list[str] = []
-    probes: dict[str, bool] = {}
-    final_report: str | None = None
-    turns: int = 0
-    ending: Ending = "finished"
+    async def succeeds(self, command: str) -> bool: ...

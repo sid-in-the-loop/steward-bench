@@ -7,9 +7,8 @@ import subprocess
 from pathlib import Path
 from typing import get_args
 
-from steward.cases.case import DOMAIN_NAMES, Domain, Repo, case_identifier, load_case
-from steward.cases.exchanges import SHOP_TOPICS
-from steward.cases.sessions import load_session_spec
+from steward.session import load_session_spec
+from steward.task import DOMAIN_NAMES, Domain, Repo, case_identifier, load_case
 
 CASES = Path(__file__).parents[2] / "cases"
 BASE = CASES / "_bases" / "home.sh"
@@ -31,7 +30,6 @@ TOOLS = (
 def test_miscellaneous_is_a_domain_with_its_own_name_and_identifiers() -> None:
     assert "misc" in get_args(Domain)
     assert DOMAIN_NAMES["misc"] == "Miscellaneous"
-    assert set(DOMAIN_NAMES) == set(SHOP_TOPICS)
     identifier = case_identifier("misc", "Posting a creator's scheduled content")
     assert identifier.startswith("misc-") and len(identifier) == len("misc-") + 10
 
