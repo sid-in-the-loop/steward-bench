@@ -31,37 +31,6 @@ class Policy(Protocol):
     def next_turn(self, messages: list[Message]) -> Turn: ...
 
 
-class ScriptedPolicy:
-    """Replays a reference execution: its actions in order, then its report.
-
-    A scripted agent that is halted waits: it sends a short acknowledgement each turn until it is
-    permitted to continue, unless `ignore_halts` is set. The action a halt interrupted is issued
-    again once the agent proceeds.
-    """
-
-    def __init__(self, actions: list[Action], report: str, ignore_halts: bool = False) -> None:
-        self.actions = list(actions)
-        self.report = report
-        self.ignore_halts = ignore_halts
-        self.halted = False
-        self.issued: Action | None = None
-
-    def next_turn(self, messages: list[Message]) -> Turn:
-        last = messages[-1] if messages else {}
-        if last.get("steward_event") == "halt":
-            self.halted = True
-            if self.issued is not None:
-                self.actions.insert(0, self.issued)
-        if last.get("steward_event") == "permit":
-            self.halted = False
-        if self.halted and not self.ignore_halts:
-            return Turn(message="Understood, I have stopped. Tell me when to continue.")
-        if self.actions:
-            self.issued = self.actions.pop(0)
-            return Turn(action=self.issued)
-        return Turn(report=self.report)
-
-
 Dialect = Literal["openrouter", "openai"]
 # How many times the output budget grows for the one retry of an empty or cut-off reply.
 RETRY_BUDGET_FACTOR = 2
@@ -92,9 +61,6 @@ class RunSettings(BaseModel):
 
     temperature: float = 0.0
     max_tokens_per_turn: int = 4000
-    reasoning: str = "model default"
-    takeover_framing: str = "silent"
-    attempts_per_scenario: int = 1
 
 
 class Usage(BaseModel):

@@ -21,20 +21,16 @@ import subprocess
 import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
-from datetime import datetime
 from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 
 from pydantic import BaseModel
 
-from steward.environment.fidelity import ReplayLog
 from steward.environment.recorded import RecordedToolExecutor
 from steward.environment.repository import PathResolver, ReplayReport
 from steward.environment.tools import (
-    WRITE_TOOLS,
     ToolError,
     apply_file_tool,
-    changes_files,
 )
 from steward.execution.record import Action
 from steward.schema import Step
@@ -65,8 +61,6 @@ OUTSIDE = re.compile(
     r"(?:^|[;&|(]\s*|\bsudo\s+)(?:gh|curl|wget|ssh|scp|docker|kubectl|gcloud|aws|az|npm\s+publish|"
     r"vercel|fly|heroku|terraform)\b"
 )
-# Recorded commands replayed to rebuild state: git, and plain file operations.
-REPLAYED = re.compile(r"^\s*(?:cd\s+\S+\s*&&\s*)?(?:git|mkdir|mv|cp|rm|touch)\s")
 ABSOLUTE_PATH = re.compile(r"(?<![\w.])/(?:[\w.@+-]+/)+[\w.@+-]+")
 OUTPUT_LIMIT = 20_000
 OUTPUT_TAIL = 2_000
@@ -89,15 +83,6 @@ GH_STATE = Path(".config") / "gh" / "state.json"
 GH_SOCKETS = "/run/steward-gh"
 ITEM_NUMBER = re.compile(r"/(?:pull|issues)/(\d+)")
 CWD_MARK = "__steward_cwd__"
-# Time spent re-running commands that only read; state-changing ones always run.
-REPLAY_BUDGET_SEC = 1200
-# Commands that fetch a project's dependencies or build it; they get longer to finish.
-INSTALLS = re.compile(
-    r"\b(?:npm (?:ci|install|i)\b|pnpm (?:install|i)\b|yarn(?: install)?\s*(?:$|[;&|])|bun install"
-    r"|pip3? install|uv (?:sync|pip|venv|run)|poetry install|go (?:mod|build|test|install)\b"
-    r"|cargo (?:build|test|check|fetch)|make\b|bundle install)"
-)
-INSTALL_TIMEOUT_SEC = 300
 # Inside each command's shell: no file over 4 GiB, no core files, and at most 16,384 processes
 # and threads. The kernel counts that last limit in the container's own user namespace, so it
 # bounds one command, not the machine's user. Where the user's systemd manager can be reached,
@@ -737,214 +722,11 @@ def settle_directory(tool: str, mount: str, ended: str) -> tuple[str, str]:
     return ended, ""
 
 
-def write_remote(tree: Path, remote: Path) -> None:
-    """A bare repository holding what the real remote held: every branch the clone fetched.
-    Its objects are hard links to the tree's, so nothing is transferred and neither depends
-    on the other afterwards."""
-    subprocess.run(
-        ["git", "init", "--quiet", "--bare", str(remote)], check=True, capture_output=True
-    )
-    shutil.rmtree(remote / "objects")
-    subprocess.run(
-        ["cp", "-al", str(tree / ".git" / "objects"), str(remote / "objects")], check=True
-    )
-    listed = subprocess.run(
-        ["git", "for-each-ref", "--format=%(objectname) %(refname)", "refs/remotes/origin"],
-        cwd=tree,
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.splitlines()
-    lines = ["# pack-refs with: peeled fully-peeled sorted "]
-    for line in sorted(listed, key=lambda entry: entry.split(" ", 1)[1]):
-        name = line.split(" ", 1)[1].removeprefix("refs/remotes/origin/")
-        if name != "HEAD":
-            lines.append(f"{line.split(' ', 1)[0]} refs/heads/{name}")
-    (remote / "packed-refs").write_text("\n".join(lines) + "\n")
-    head = subprocess.run(
-        ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-        cwd=tree,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
-    if head:
-        (remote / "HEAD").write_text(f"ref: refs/heads/{head.removeprefix('origin/')}\n")
-
-
 def git(tree: Path, *arguments: str, check: bool = True) -> str:
     done = subprocess.run(
         ["git", *arguments], cwd=tree, check=check, capture_output=True, text=True, timeout=900
     )
     return done.stdout.strip()
-
-
-def session_start(steps: Sequence[Step]) -> datetime | None:
-    return next((step.timestamp for step in steps if step.timestamp is not None), None)
-
-
-def forget_later_state(tree: Path, branch: str, started: datetime | None) -> None:
-    """Leave the repository holding only what existed when the session began: the starting
-    branch, no other local branches, worktrees or stashes, and each remote branch at its last
-    commit from before the session. A remote branch with no such commit did not exist yet."""
-    git(tree, "worktree", "prune")
-    git(tree, "stash", "clear")
-    for name in git(tree, "for-each-ref", "--format=%(refname:short)", "refs/heads").split():
-        if name != branch:
-            git(tree, "branch", "--quiet", "-D", name, check=False)
-    if started is None:
-        return
-    before = started.isoformat()
-    refs = git(tree, "for-each-ref", "--format=%(refname)", "refs/remotes/origin").split()
-    for ref in refs:
-        if ref.endswith("/HEAD"):
-            continue
-        tip = git(tree, "rev-list", "-1", f"--before={before}", ref, check=False)
-        if tip:
-            git(tree, "update-ref", ref, tip)
-        else:
-            git(tree, "update-ref", "-d", ref)
-
-
-def missing_objects(checkout: Path) -> bool:
-    try:
-        listed = subprocess.run(
-            ["git", "rev-list", "--objects", "--all", "--missing=print"],
-            cwd=checkout,
-            capture_output=True,
-            text=True,
-            timeout=900,
-        )
-    except subprocess.TimeoutExpired:
-        log.warning("%s: could not list objects in time; treated as complete", checkout)
-        return False
-    return any(line.startswith("?") for line in listed.stdout.splitlines())
-
-
-def complete_clone(checkout: Path) -> None:
-    """Fetch the file contents a blobless clone left out, so the tree works offline. This is
-    the one step of a build that needs the network."""
-    if not missing_objects(checkout):
-        return
-    for key in ("remote.origin.partialclonefilter", "remote.origin.promisor"):
-        subprocess.run(["git", "config", "--unset", key], cwd=checkout, capture_output=True)
-    # Background maintenance after the fetch would move pack files while the tree is in use.
-    quiet = ("-c", "gc.auto=0", "-c", "maintenance.auto=false")
-    git(checkout, *quiet, "fetch", "--quiet", "--refetch", "origin")
-    for promisor in (checkout / ".git" / "objects" / "pack").glob("*.promisor"):
-        promisor.unlink()
-
-
-def build_workspace(
-    trajectory_id: str,
-    repository: str,
-    commit: str,
-    steps: Sequence[Step],
-    takeover_step: int,
-    checkout: Path,
-    destination: Path,
-    image: Path | str = IMAGE,
-) -> Workspace:
-    """Rebuild the session's tree at the takeover step under `destination`."""
-    if destination.exists():
-        shutil.rmtree(destination)
-    destination.mkdir(parents=True)
-    report = ReplayReport(
-        trajectory_id=trajectory_id,
-        repository=repository,
-        commit=commit,
-        takeover_step=takeover_step,
-        checked_out=True,
-    )
-    staging = destination / "staging"
-    subprocess.run(["cp", "-a", str(checkout), str(staging)], check=True)
-    complete_clone(staging)
-    evident = evident_commit(steps, takeover_step, staging)
-    start = evident[0] if evident else commit
-    report.commit = start
-    branch = starting_branch(steps, takeover_step, staging)
-    git(staging, "checkout", "--quiet", "--force", "-B", branch, start)
-    git(staging, "clean", "-fdxq")
-    forget_later_state(staging, branch, session_start(steps))
-    mount = infer_mount(steps, staging, repository)
-    workspace = Workspace(
-        directory=destination,
-        mount=mount,
-        home=home_of(mount),
-        replay=report,
-        repository=repository,
-        shell="zsh" if mount.startswith("/Users/") else "bash",
-        commit_source="recorded" if evident else "metadata",
-    )
-    for directory in (workspace.home_directory, workspace.temporary, workspace.tree.parent):
-        directory.mkdir(parents=True, exist_ok=True)
-    staging.rename(workspace.tree)
-    tree = workspace.tree
-    write_remote(tree, workspace.remote)
-    git(tree, "branch", "--quiet", "--set-upstream-to", f"origin/{branch}", branch, check=False)
-    abbreviation = f"[core]\n\tabbrev = {evident[1]}\n" if evident and evident[1] < 40 else ""
-    (workspace.home_directory / ".gitconfig").write_text(
-        "[user]\n\tname = Developer\n\temail = developer@example.com\n"
-        f'[url "{REMOTE_MOUNT}"]\n'
-        f"\tinsteadOf = https://github.com/{repository}.git\n"
-        f"\tinsteadOf = https://github.com/{repository}\n"
-        f"\tinsteadOf = git@github.com:{repository}.git\n"
-        f"[safe]\n\tdirectory = *\n[advice]\n\tdetachedHead = false\n{abbreviation}"
-    )
-    git(tree, "remote", "set-url", "origin", f"https://github.com/{repository}")
-    cwd = mount
-    files = WorkspaceFiles(workspace, lambda: cwd)
-    started = time.monotonic()
-    replay = ReplayLog()
-    for step in steps:
-        if step.index >= takeover_step:
-            break
-        if step.kind == "result":
-            replay.result(step.content)
-            continue
-        if step.kind != "action":
-            continue
-        tool = step.tool or ""
-        if changes_files(tool):
-            outcome = asyncio.run(apply_file_tool(files, tool, step.tool_input or {}))
-            applied = outcome is not None and outcome[1]
-            report.edits += 1
-            report.edits_applied += applied
-            report.writes += applied and tool in WRITE_TOOLS
-            if not applied and report.first_mismatch_step is None:
-                report.first_mismatch_step = step.index
-            replay.skipped()
-            continue
-        command = command_of(step.tool_input, tool) if tool in SHELL_TOOLS else None
-        if not command:
-            replay.skipped()
-            continue
-        if OUTSIDE.search(command):
-            workspace.commands_outside += 1
-            replay.skipped()
-            continue
-        changes_state = bool(REPLAYED.match(command) or INSTALLS.search(command))
-        if not changes_state and time.monotonic() - started > REPLAY_BUDGET_SEC:
-            replay.skipped()
-            continue
-        limit = INSTALL_TIMEOUT_SEC if INSTALLS.search(command) else 60 if changes_state else 30
-        # The session's own installs and downloads are part of its state, so the prefix is
-        # re-run with the network; the tested model's commands later run without it.
-        output, status, ended = run_in_container(
-            workspace, image, cwd, command, timeout_sec=limit, network=True
-        )
-        cwd, note = settle_directory(tool, mount, ended)
-        replay.ran(step.index, command, status, output + note)
-    fidelity = replay.flush()
-    workspace.commands_replayed = fidelity.replayed
-    workspace.commands_failed = fidelity.failed
-    workspace.commands_compared = fidelity.compared
-    workspace.commands_matched = fidelity.matched
-    workspace.similarity_total = fidelity.similarity_total
-    with (destination / "replay.jsonl").open("w") as written:
-        written.writelines(row.model_dump_json() + "\n" for row in fidelity.comparisons)
-    seed_github(workspace, repository, steps, takeover_step)
-    (destination / "workspace.json").write_text(workspace.model_dump_json(indent=1))
-    return workspace
 
 
 class GhBroker:
@@ -1110,19 +892,6 @@ class LiveExecutor:
             return await self.shell(f"ls -la -- {path}")
         return await self.recorded.execute(action)
 
-    async def run_as_agent(self, command: str) -> str:
-        """Run a command as the agent's own commands run, without recording it as one of the
-        agent's: a recorded owner's, a person's at the agent's machine."""
-        output, _, _ = await asyncio.to_thread(
-            run_in_container,
-            self.workspace,
-            self.image,
-            self.workspace.mount,
-            command,
-            extra_environment=self.clock_environment(),
-        )
-        return output
-
     async def run(self, command: str) -> str:
         """Run a scenario's own command (an intervention on the environment) in the tree."""
         return (await self.run_status(command))[0]
@@ -1145,11 +914,6 @@ class LiveExecutor:
         """Whether a check on the state the agent left behind passes."""
         _, status = await self.run_status(command)
         return status == 0
-
-
-def workspace_directory(data: Path, trajectory_id: str, takeover_step: int) -> Path:
-    key = hashlib.sha1(trajectory_id.encode()).hexdigest()[:12]
-    return data / "phase2" / "workspaces" / f"{key}-t{takeover_step}"
 
 
 def load_workspace(directory: Path) -> Workspace | None:

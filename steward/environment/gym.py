@@ -378,11 +378,6 @@ class World:
         answer = self.request({"call": tool, "arguments": arguments})
         return str(answer.get("output", "")), bool(answer.get("ok"))
 
-    def evaluate(self, status: str = "success") -> dict[str, Any]:
-        """The verdict of the task's own evaluation script on the state as it is now."""
-        evaluation: dict[str, Any] = self.request({"evaluate": status})["evaluation"]
-        return evaluation
-
     def stop_tools(self) -> None:
         if self.bridge is None:
             return
