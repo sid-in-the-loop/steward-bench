@@ -7,7 +7,7 @@ import logging
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from dotenv import load_dotenv
 
@@ -839,12 +839,13 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     estimate covers the tested model's sessions not yet stored; the limit covers the tested
     models and the simulator together, and what the simulator spent is printed at the end."""
     from steward.cases.commands import MODELS
+    from steward.cases.estimate import model_profile, session_usd, simulator_profile
     from steward.cases.schedule import SHORT_FORMS
     from steward.cases.session_commands import (
         BENCHMARK_TRIALS,
         Budget,
+        Job,
         benchmark_jobs,
-        estimate_simulator_usd,
         estimate_usd,
         pending,
         run_jobs,
@@ -867,16 +868,36 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     if models is None or playing is None:
         return 2
     limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
+    stored = stored_by_model(settings)
+    played = [(sim, simulator_profile(sim.name, stored)) for sim in playing]
+
+    def tested_usd(model: Model, job: Job) -> tuple[float, str]:
+        profile = model_profile(model.name, stored)
+        if profile is None:
+            return estimate_usd(model, job.setting), "assumed"
+        return session_usd(model.pricing, profile, job.setting.items), profile.source
+
+    def expected(model: Model) -> Callable[[Job], float]:
+        def usd(job: Job) -> float:
+            tested = tested_usd(model, job)[0]
+            return tested + sum(session_usd(s.pricing, p, job.setting.items) for s, p in played)
+
+        return usd
+
     for model in models:
         todo = pending(sessions_path(settings, model.name), jobs, played_by)
-        dollars = sum(estimate_usd(model, job.setting) for job in todo)
+        dollars = sum(tested_usd(model, job)[0] for job in todo)
+        source = tested_usd(model, jobs[0])[1] if jobs else "assumed"
         line = (
             f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
-            "for the tested model"
+            f"for the tested model (tokens from {source})"
         )
-        for sim in playing:
-            assumed = sum(estimate_simulator_usd(sim, job.setting) for job in todo)
-            line += f" and about ${assumed:.2f} for the simulator {sim.name}"
+        for sim, profile in played:
+            assumed = sum(session_usd(sim.pricing, profile, job.setting.items) for job in todo)
+            line += (
+                f" and about ${assumed:.2f} for the simulator {sim.name} "
+                f"(tokens from {profile.source})"
+            )
         print(line)
     print(f"limit ${limit:.2f} for the tested models and the simulator together")
     if not args.confirm:
@@ -901,6 +922,7 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
             budget,
             args.start,
             retry_failed=args.retry_failed,
+            expected=expected(model),
         )
     if simulator is not None:
         used = simulator.usage
@@ -1294,6 +1316,57 @@ def cmd_bench_set_aside(settings: Settings, args: argparse.Namespace) -> int:
     for model, count in moved.items():
         print(f"{model}: {count} sessions set aside")
     print(f"{sum(moved.values())} sessions set aside in all; the next bench-run makes them again")
+    return 0
+
+
+def stored_by_model(settings: Settings) -> dict[str, list[Any]]:
+    """Every priced model's stored sessions."""
+    from steward.cases.prices import PRICES
+    from steward.cases.session_commands import sessions_path, stored_sessions
+
+    return {name: stored_sessions(sessions_path(settings, name)) for name in PRICES}
+
+
+def cmd_bench_estimate(settings: Settings, args: argparse.Namespace) -> int:
+    """The cost of the whole planned benchmark for each model, with nothing run."""
+    from steward.cases.estimate import model_profile, session_usd, simulator_profile
+    from steward.cases.prices import pricing_of
+    from steward.cases.schedule import SHORT_FORMS
+    from steward.cases.session_commands import benchmark_jobs, load_sessions
+
+    only = None
+    if args.cases is not None:
+        only = [line.strip() for line in args.cases.read_text().splitlines() if line.strip()]
+    try:
+        prices = {name: pricing_of(name) for name in dict.fromkeys(args.model)}
+        played = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
+        simulator = pricing_of(played) if played else None
+    except KeyError as error:
+        print(f"Refused: {error}", file=sys.stderr)
+        return 2
+    conditions = [SHORT_FORMS[name] for name in dict.fromkeys(args.condition or ["sd", "sid"])]
+    jobs = benchmark_jobs(load_sessions(settings, only), conditions, args.trials)
+    stored = stored_by_model(settings)
+    played_profile = simulator_profile(played, stored) if played else None
+    print(f"{len(jobs)} sessions per model, {args.trials} trial(s), {', '.join(conditions)}")
+    total = 0.0
+    for name, pricing in prices.items():
+        profile = model_profile(name, stored)
+        if profile is None:
+            print(f"{name}: no stored sessions of any model to estimate from")
+            continue
+        dollars = sum(session_usd(pricing, profile, job.setting.items) for job in jobs)
+        total += dollars
+        print(f"{name:20} ${dollars:9.2f}  tokens from {profile.source}")
+    if simulator is not None and played_profile is not None:
+        each = sum(session_usd(simulator, played_profile, job.setting.items) for job in jobs)
+        dollars = each * len(prices)
+        total += dollars
+        print(
+            f"{'simulator ' + str(played):20} ${dollars:9.2f}  ${each:.2f} per model, "
+            f"tokens from {played_profile.source}"
+        )
+    print(f"{'total':20} ${total:9.2f}")
     return 0
 
 
@@ -1875,6 +1948,14 @@ def build_parser() -> argparse.ArgumentParser:
         "move stored sessions with a question sent to the wrong person beside the session file",
     )
     sub.add_argument("--model", action="append")
+    sub = add(
+        "bench-estimate", cmd_bench_estimate, "estimate the whole benchmark's cost, run nothing"
+    )
+    sub.add_argument("--model", action="append", required=True)
+    sub.add_argument("--trials", type=int, default=1)
+    sub.add_argument("--cases", type=Path, help="a file of task IDs, one a line (default: all)")
+    sub.add_argument("--condition", action="append", choices=["sd", "sid"], help="default both")
+    sub.add_argument("--simulator-model", default="claude-sonnet-5-5", help="or 'none'")
     sub = add("bench-spent", cmd_bench_spent, "what the stored sessions cost, against the limit")
     sub.add_argument("--room", action="store_true", help="print only what is left, or none")
     sub = add("bench-status", cmd_bench_status, "count planned, stored and complete sessions")

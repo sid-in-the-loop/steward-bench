@@ -1,6 +1,7 @@
 """`steward session-run --condition`: who plays the people."""
 
 import sys
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -10,6 +11,7 @@ import pytest
 
 import steward.cases.session_commands as session_commands
 from steward.cases.case import Case
+from steward.cases.estimate import session_usd, simulator_profile
 from steward.cases.run import Model
 from steward.cases.session_commands import FailedSession, Job
 from steward.cases.sessions import HARNESS, SessionRun, SessionSpec, Setting
@@ -294,7 +296,8 @@ def test_the_estimate_matches_the_measured_benchmark_session() -> None:
     dollars = session_commands.estimate_usd(MODELS["gpt-6-luna"], setting)
     assert dollars == pytest.approx(0.0163, abs=0.0005)
     # 64 requests at 13,600 prompt tokens and 150 output tokens at gpt-6-luna's prices.
-    played = session_commands.estimate_simulator_usd(MODELS["gpt-6-luna"], setting)
+    profile = simulator_profile("gpt-6-luna", {})
+    played = session_usd(MODELS["gpt-6-luna"].pricing, profile, 12)
     assert played == pytest.approx(64 * (13_600 * 0.10 + 150 * 0.50) / 1e6)
 
 
@@ -432,3 +435,40 @@ def test_each_session_stores_what_its_own_simulator_requests_used(
         sum(r.simulator_usage.requests for r in runs if r.simulator_usage)
         == simulator.usage.requests
     )
+
+
+def test_parallel_sessions_stop_within_one_session_of_the_limit(
+    monkeypatch: pytest.MonkeyPatch, case: Case, full: SessionSpec, tmp_path: Path
+) -> None:
+    from steward.cases.commands import MODELS
+
+    simulator_spent = [0.0]
+    lock = threading.Lock()
+
+    def run_session(
+        settings: object, case: Case, spec: SessionSpec, setting: object, *a: object
+    ) -> SessionRun:
+        time.sleep(0.05)
+        with lock:
+            simulator_spent[0] += 0.5
+        time.sleep(0.05)
+        return finished(case, spec, setting, 1.0)
+
+    monkeypatch.setattr(session_commands, "run_session", run_session)
+    settings = Settings(paths=Paths(root=tmp_path, data=tmp_path))
+    [job] = session_commands.benchmark_jobs([(case, full)], ["State Drift"], 1)
+    jobs = [job.model_copy(update={"trial": trial}) for trial in range(20)]
+    limit, each = 5.0, 1.5
+
+    def run(expected: Callable[[Job], float] | None) -> float:
+        simulator_spent[0] = 0.0
+        for path in (tmp_path / "cases" / "sessions").glob("*.jsonl"):
+            path.unlink()
+        budget = session_commands.Budget(limit, others=lambda: simulator_spent[0])
+        model = MODELS["gpt-6-luna"]
+        session_commands.run_jobs(settings, model, jobs, 8, budget=budget, expected=expected)
+        return budget.spent + simulator_spent[0]
+
+    # Counting only what finished, eight sessions at once pass the limit by far.
+    assert run(None) > limit + each
+    assert run(lambda job: each) <= limit + each

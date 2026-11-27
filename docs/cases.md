@@ -683,24 +683,40 @@ and reply cache; the OpenAI one sends a `prompt_cache_key` drawn from the person
 instructions, as the tested model's policy sends one per task, so that one person's replies
 reuse the cached prefix (before 2026-11-26 none of its 55k prompt tokens in one run was cached). `--start` begins with that many sessions at once and adds more, up to
 `--workers`, while the provider answers without rate limits (`steward/cases/throttle.py`);
-`--max-usd` (default $25) starts no session once the tested models and the simulator together
-have spent that much, failed sessions included; a session that waited for a slot checks again
-before it starts. A reply with no
+`--max-usd` (default $25) holds for the tested models and the simulator together, failed
+sessions included: a session starts only when its expected cost, the tested model's and the
+simulator's from the estimate below, fits beside what is spent and what the running sessions
+hold, each the larger of its expected cost and the tested model's spend in it so far, and a
+session that waited for a slot is checked when it gets one. Parallel sessions so pass the
+limit only by what they spend beyond their expected cost; a test runs eight at once and
+checks that the run stops within one session's spend of the limit. A reply with no
 text and no tool call, one cut off at the output budget (`status: incomplete`, a chat
 `finish_reason` of `length`, an Anthropic `max_tokens` stop) or an Anthropic refusal stop is
 asked once more with twice the output budget; still unusable, it ends the shift with the
 ending `model_error`, and `bench-score` scores such shifts by their checks like any other
 (what the agent did before it stopped still counts) and prints their number per model and
-condition. The estimate covers the tested model's sessions not yet
-stored, at 53 requests per 12-shift session with 10% of prompt tokens not cached (gpt-6-luna's
-measured $0.0163 a session). It assumes fixed tokens per session and was low or high by about
-a fifth on 2026-11-26 ($0.31 against $0.40 for gpt-6-luna, $5.47 against $4.37 for
-gpt-6.2-sol). Beside it the simulator's assumed cost is printed, from gpt-6-luna playing the
-people that day: 64 requests a 12-shift session at about 13,600 prompt tokens each, none
-cached, and 150 output tokens assumed a reply. The simulator's requests, tokens and cost are
-printed at the end. Each stored session also keeps what the simulator's requests in it used
-(`simulator_usage`; none in sessions stored before 2026-11-27): one simulator serves every
-session at once, so each session's guard sums the usage of the replies made on its own thread.
+condition. The estimate covers the sessions not yet stored and is rough
+(`steward/cases/estimate.py`): sessions times the average tokens a stored session used per
+shift (input, cached input, cache writes, output with reasoning) times the price, from the
+model's own stored sessions where it has any, otherwise from the average of the stored
+models' averages, and the line says which. Beside it the simulator's cost is printed from the
+stored sessions whose people it played, which keep what its requests used
+(`simulator_usage`; none in sessions stored before 2026-11-27: one simulator serves every
+session at once, so each session's guard sums the usage of the replies made on its own
+thread), otherwise from gpt-6-luna playing the people on 2026-11-26: 64 requests a 12-shift
+session at about 13,600 prompt tokens each, none cached, and 150 output tokens assumed a
+reply. With no stored session of any model the tested model falls back to the fixed
+assumption the experiments use. The simulator's requests, tokens and cost are printed at the
+end.
+
+    steward bench-estimate --model M [--model M2] [--trials N] [--cases FILE]
+                           [--condition sd|sid] [--simulator-model M|none]
+
+`bench-estimate` prints the same estimate for the whole planned benchmark, stored sessions or
+not, and runs nothing: one figure per model with the source of its tokens, the simulator's
+cost on its own line (for every model listed), and the total. `--cases` takes a file of task
+IDs, one a line, such as `cases/ablation_sample.txt`; both conditions are estimated unless
+`--condition` names one. It refuses a model with no price in `PRICES`.
 `session-build` runs both references over four items with items 2 and 4 changed. The safe
 reference must finish every item, leave no harm and disclose on the changed items; the
 harmful reference must leave harm on exactly the changed items. `session-run` prints a cost

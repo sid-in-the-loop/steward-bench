@@ -564,21 +564,6 @@ def check_levels(
     return problems
 
 
-# What the simulator is assumed to use per 12-shift session, from gpt-6-luna playing the
-# people on 2026-11-26: 64 requests at about 13,600 prompt tokens each, none cached, and an
-# assumed 150 output tokens a reply.
-SIMULATOR_REQUESTS = 64 / 12
-SIMULATOR_PROMPT = 13_600
-SIMULATOR_OUTPUT = 150
-
-
-def estimate_simulator_usd(simulator: Model, setting: Setting) -> float:
-    """A rough cost of the simulator's requests in one session."""
-    price = simulator.pricing
-    per_request = SIMULATOR_PROMPT * price.prompt + SIMULATOR_OUTPUT * price.completion
-    return setting.items * SIMULATOR_REQUESTS * per_request / 1_000_000
-
-
 def estimate_usd(model: Model, setting: Setting) -> float:
     """A rough cost of one session, from the assumed growth of the conversation."""
     requests = setting.items * ITEM_REQUESTS
@@ -828,8 +813,10 @@ def body_of(error: BaseException) -> str:
 
 class Budget:
     """A limit in dollars on what one command spends: the tested models' sessions, finished
-    or failed, and what `others` reports, such as the simulator's spend so far. Sessions
-    already running when it is reached finish; no new one starts."""
+    or failed, and what `others` reports, such as the simulator's spend so far. A session
+    starts only when what it is expected to cost fits beside what is spent and what the
+    running sessions hold: each holds the larger of its expected cost and its spend so far.
+    So parallel sessions pass the limit only by what they spend beyond their expected cost."""
 
     def __init__(
         self, limit: float | None, spent: float = 0.0, others: Callable[[], float] | None = None
@@ -838,6 +825,8 @@ class Budget:
         self.spent = spent
         self.others = others
         self.lock = threading.Lock()
+        self.held: dict[int, tuple[float, Callable[[], float]]] = {}
+        self.tickets = 0
 
     def add(self, dollars: float) -> None:
         with self.lock:
@@ -845,11 +834,25 @@ class Budget:
 
     @property
     def total(self) -> float:
-        return self.spent + (self.others() if self.others is not None else 0.0)
+        running = sum(max(dollars, live()) for dollars, live in list(self.held.values()))
+        return self.spent + running + (self.others() if self.others is not None else 0.0)
 
     @property
     def room(self) -> bool:
         return self.limit is None or self.total < self.limit
+
+    def reserve(self, dollars: float, live: Callable[[], float]) -> int | None:
+        """Hold the expected cost of a session about to start, or None if it does not fit."""
+        with self.lock:
+            if self.limit is not None and self.total + dollars > self.limit:
+                return None
+            self.tickets += 1
+            self.held[self.tickets] = (dollars, live)
+            return self.tickets
+
+    def release(self, ticket: int) -> None:
+        with self.lock:
+            self.held.pop(ticket, None)
 
 
 def pending(path: Path, jobs: list[Job], simulator: str | None = None) -> list[Job]:
@@ -880,6 +883,7 @@ def run_jobs(
     start: int | None = None,
     deadline: Deadline | None = None,
     retry_failed: bool = False,
+    expected: Callable[[Job], float] | None = None,
 ) -> list[SessionRun]:
     """Run every job not already in the model's session file, at most `workers` at once.
     With `start` below `workers` the number at once begins there and follows the provider's
@@ -892,7 +896,17 @@ def run_jobs(
     path.parent.mkdir(parents=True, exist_ok=True)
     with holding(path):
         return run_held(
-            settings, model, jobs, workers, simulator, budget, start, deadline, path, retry_failed
+            settings,
+            model,
+            jobs,
+            workers,
+            simulator,
+            budget,
+            start,
+            deadline,
+            path,
+            retry_failed,
+            expected,
         )
 
 
@@ -907,6 +921,7 @@ def run_held(
     deadline: Deadline | None,
     path: Path,
     retry_failed: bool = False,
+    expected: Callable[[Job], float] | None = None,
 ) -> list[SessionRun]:
     """`run_jobs` once the model's session file is held."""
     dropped = drop_faulty_sessions(path)
@@ -928,6 +943,10 @@ def run_held(
             f"see {failures_path}"
         )
     budget = budget or Budget(None)
+
+    def expected_usd(job: Job) -> float:
+        return expected(job) if expected is not None else 0.0
+
     deadline = deadline or Deadline(None)
     throttle = Throttle(model.name, start or workers, workers)
     lock = threading.Lock()
@@ -965,8 +984,8 @@ def run_held(
         )
         return kind
 
-    def attempt(job: Job) -> SessionRun | FailureKind:
-        policies: list[Policy] = []
+    def attempt(job: Job, policies: list[Policy]) -> SessionRun | FailureKind:
+        policies.clear()
         made = model_policy(client, model, job.case)
 
         def policy_for(tools: list[Message]) -> Policy:
@@ -1001,10 +1020,17 @@ def run_held(
         if not budget.room:
             return None
         throttle.acquire()
+        policies: list[Policy] = []
+
+        def live() -> float:
+            return model.pricing.cost(getattr(policies[-1], "usage", Usage())) if policies else 0.0
+
+        # Spend can pass the limit while a session waits for a slot.
+        ticket = budget.reserve(expected_usd(job), live)
+        if ticket is None:
+            throttle.release()
+            return None
         try:
-            # Spend can pass the limit while a session waits for a slot.
-            if not budget.room:
-                return None
             if not deadline.fits(setting.items):
                 with lock:
                     skipped += 1
@@ -1016,7 +1042,7 @@ def run_held(
                 left = SESSION_ATTEMPTS
             run: SessionRun | None = None
             for _ in range(SESSION_ATTEMPTS):
-                outcome = attempt(job)
+                outcome = attempt(job, policies)
                 if isinstance(outcome, SessionRun):
                     run = outcome
                     break
@@ -1025,14 +1051,15 @@ def run_held(
                     break
             if run is None:
                 return None
+            budget.add(run.cost_usd)
         finally:
+            budget.release(ticket)
             throttle.release()
         # A parameter a subclass dropped on its own is remembered for later sessions too.
         remember_drops(model.name, run.dropped)
         seconds = time.monotonic() - began
         deadline.finished(setting.items, seconds)
         run.seconds = round(seconds, 1)
-        budget.add(run.cost_usd)
         with lock, path.open("a") as out:
             out.write(run.model_dump_json() + "\n")
         changed = [i for i in run.items if i.changed]
