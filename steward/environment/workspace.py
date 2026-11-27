@@ -71,6 +71,8 @@ ABSOLUTE_PATH = re.compile(r"(?<![\w.])/(?:[\w.@+-]+/)+[\w.@+-]+")
 OUTPUT_LIMIT = 20_000
 OUTPUT_TAIL = 2_000
 COMMAND_TIMEOUT_SEC = 120
+# The harness's own scripts do more than one command, and a busy machine slows them.
+HARNESS_TIMEOUT_SEC = 300
 REMOTE_MOUNT = "/srv/git/origin.git"
 # The remote's path as git prints it ("To /srv/git/origin.git", "fatal: '/srv/git/origin'"),
 # with or without .git, standing alone: not inside a longer path and not followed by a path
@@ -1089,6 +1091,7 @@ class LiveExecutor:
             self.image,
             self.workspace.mount,
             command,
+            HARNESS_TIMEOUT_SEC,
             extra_binds=self.extra_binds,
             harness=True,
         )

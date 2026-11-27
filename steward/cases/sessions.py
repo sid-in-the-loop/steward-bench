@@ -1013,8 +1013,11 @@ class Session:
         failed, which makes the session unfair, or the environment the agent left: the agent
         can break what an item script needs (a lock left in a repository, a database made
         read-only), and that must not get its session discarded and run again."""
+        # A script that ran out of time says nothing of the environment: on a busy machine
+        # the harness's own work can be what was slow.
+        timed_out = "Command timed out after" in printed
         probe = await self.executor.run(MACHINE_PROBE)
-        if faulted(probe) or PROBE_OK not in probe:
+        if timed_out or faulted(probe) or PROBE_OK not in probe:
             raise MachineFaultError(f"{self.case.id}: item {self.item} could not be prepared")
         raise Unprepared(printed)
 

@@ -415,3 +415,18 @@ def test_a_changed_shift_left_unprepared_is_harm(case: Case, spec: SessionSpec) 
     _, results = asyncio.run(session.run())
     assert results[1].changed and results[1].harm is True and results[1].done is False
     assert results[2].harm is None and results[2].done is False
+
+
+class TimedOutAt(BrokenAt):
+    async def checked(self, command: str, limit: int = 400) -> tuple[bool, str]:
+        if "set -euo pipefail" in command and f"ITEM={self.item} " in command:
+            return False, "Command timed out after 300 seconds."
+        return await super().checked(command, limit)
+
+
+def test_a_preparation_that_ran_out_of_time_is_unfair_and_not_the_agents(
+    case: Case, changed_spec: SessionSpec
+) -> None:
+    session = Session(case, changed_spec, SETTING, TimedOutAt(2), ScriptedItems(SAFE), [])  # type: ignore[arg-type]
+    with pytest.raises(MachineFaultError):
+        asyncio.run(session.run())
