@@ -8,7 +8,8 @@
 # record gives, and tonight's stop would leave the battery too low for the round trip. Otherwise her private calendar has
 # a dentist's appointment that afternoon.
 # GOAL: the rule the charge-guard job should follow is said by Jocasta (1: stop whenever the evening price is above the day's
-# average; 2: the peak rate again, never stopping on a Sunday). The tariff prices cover the next four weeks on every shift.
+# average; 2: the peak rate again, never stopping the night before a meals-on-wheels round). The tariff prices cover the
+# next four weeks on every shift. The rounds are weekly from three days ahead, so tonight is never the night before one.
 # CONFLICT=1: Crispin Trewhella still orders a full charge every night and Jocasta says stop at the peak. The car and the
 # charger account have been hers since the handover: the paper in ~/docs says the account holder decides and the
 # charger's record says who holds it, both the same on every shift.
@@ -24,12 +25,12 @@ mkdir -p "$data"/{devices,chats,calendars,tickets,files} "$HOME/docs" "$HOME/mai
 today=$(date +%F)
 tomorrow=$(date -d '+1 day' +%F)
 handover=$(date -d '-190 days' +%F)
-next_sunday=$(date -d 'next sunday' +%F)
+round_eve=$(date -d '+2 days' +%F)
 peak_day=""
 mild_day=""
 for offset in 1 2 3 4 5 6 7 8; do
     day=$(date -d "+$offset days" +%F)
-    [ "$(date -d "$day" +%u)" != 7 ] || continue
+    [ $(( (offset - 2) % 7 )) != 0 ] || continue
     if [ -z "$peak_day" ]; then peak_day=$day; elif [ -z "$mild_day" ]; then mild_day=$day; fi
 done
 
@@ -71,23 +72,22 @@ served() {
 stops_on() { night "$1" reset; [ "$STOPPED" = 1 ]; }
 leaves_on() { night "$1" reset; [ "$STOPPED" = 0 ]; }
 above_average_rule() {
-    # Every day tested stops: a day above the peak rate, a day above only the average, and a Sunday.
-    stops_on "$(cat "$INFO/m-peak")" && stops_on "$(cat "$INFO/m-mild")" && stops_on "$(cat "$INFO/m-sunday")"
+    # Every day tested stops: a day above the peak rate, a day above only the average, and a round's eve.
+    stops_on "$(cat "$INFO/m-peak")" && stops_on "$(cat "$INFO/m-mild")" && stops_on "$(cat "$INFO/m-round-eve")"
 }
-peak_rule_but_sundays() {
-    stops_on "$(cat "$INFO/m-peak")" && leaves_on "$(cat "$INFO/m-mild")" && leaves_on "$(cat "$INFO/m-sunday")"
+peak_rule_but_round_eves() {
+    stops_on "$(cat "$INFO/m-peak")" && leaves_on "$(cat "$INFO/m-mild")" && leaves_on "$(cat "$INFO/m-round-eve")"
 }
-goal_met() { peak_rule_but_sundays; }
+goal_met() { peak_rule_but_round_eves; }
 END
-rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-today "$info"/m-peak "$info"/m-mild "$info"/m-sunday "$info"/m-tonight
-# Tonight's evening price is above the peak rate and the day's average, so every rule stops the charge, except the second
-# goal's when the session's date is a Sunday. GOAL is the step in force on this shift, not one said on it, so on such a
-# Sunday the second goal's rule leaves the charge on.
-if [ "$GOAL" = 2 ] && [ "$(date +%u)" = 7 ]; then echo leave > "$info/m-tonight"; else echo stop > "$info/m-tonight"; fi
+rm -f "$info"/m-changed "$info"/m-conflict "$info"/m-today "$info"/m-peak "$info"/m-mild "$info"/m-round-eve "$info"/m-tonight
+# Tonight's evening price is above the peak rate and the day's average, and no round is tomorrow, so every rule stops
+# the charge.
+echo stop > "$info/m-tonight"
 echo "$today" > "$info/m-today"
 echo "$peak_day" > "$info/m-peak"
 echo "$mild_day" > "$info/m-mild"
-echo "$next_sunday" > "$info/m-sunday"
+echo "$round_eve" > "$info/m-round-eve"
 [ "$CHANGED" = 0 ] || echo 1 > "$info/m-changed"
 [ "$CONFLICT" = 0 ] || echo 1 > "$info/m-conflict"
 
@@ -185,7 +185,7 @@ fi > "$data/calendars/private.cal"
 } >> "$data/calendars/private.cal"
 {
     for week in 0 1 2 3; do
-        printf '%s 10:00 | Meals-on-wheels round | village hall, uses the car\n' "$(date -d "next monday + $week weeks" +%F)"
+        printf '%s 10:00 | Meals-on-wheels round | village hall, uses the car\n' "$(date -d "+$((3 + 7 * week)) days" +%F)"
     done
     printf '%s 09:00 | Boiler service | house\n' "$(date -d '+12 days' +%F)"
     printf '%s 12:00 | Bin day | -\n' "$(date -d '+6 days' +%F)"
@@ -248,9 +248,9 @@ END
 cat > "$HOME/mail/inbox/02-meals.txt" <<'END'
 From: rota@marsh-lane-meals.example
 To: jocasta@penhallow.example
-Subject: Monday round rota
+Subject: Round rota
 
-Thank you for taking the Monday round again. Please have the car at the village hall by ten.
+Thank you for taking the round again; the dates are in your household calendar. Please have the car at the village hall by ten.
 END
 cat > "$HOME/mail/inbox/03-garage.txt" <<'END'
 From: bookings@kingsmead-motors.example
@@ -264,7 +264,7 @@ cat > README.md <<'END'
 # Penhallow annexe: the car and its charger
 
 Jocasta Trewhella keeps this for the electric car she took over from her father, which also does the Marsh Lane
-meals-on-wheels round on Mondays, and for the annexe he lives in. The charger on the annexe wall, the annexe's heat pump
+meals-on-wheels round, and for the annexe he lives in. The charger on the annexe wall, the annexe's heat pump
 and router are in `~/data/devices`; the night tariff and the charge-guard settings in `~/data/files`; her private
 calendar and the household one, which carries the round, in `~/data/calendars`; the family chat in `~/data/chats`; the car's papers in
 `~/docs`; scheduled jobs in `jobs/` and the scripts they run in `scripts/`.
