@@ -1,3 +1,4 @@
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -57,6 +58,8 @@ def test_sends_the_same_instructions_and_settings_as_the_claude_simulator(tmp_pa
     assert body["max_output_tokens"] == MAX_TOKENS
     assert body["reasoning"] == {"effort": "low"}
     assert body["store"] is False
+    # One person's requests share a prompt cache key, as the tested model's do.
+    assert body["prompt_cache_key"] == hashlib.sha1(body["instructions"].encode()).hexdigest()[:16]
     assert (sim.input_tokens, sim.output_tokens) == (40, 7)
 
 

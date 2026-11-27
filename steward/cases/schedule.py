@@ -14,7 +14,15 @@ step that the task has not been checked with.
 Each goal step's line is said one shift before the step applies, as the task's own check
 (`changes_setting`) runs it and as the lines are written ("from tomorrow's run"); on the
 shift it is said the rule in force before it still applies and is what is scored, and that
-shift is never itself a change. Every placement that keeps these rules is equally likely.
+shift is never itself a change.
+
+Whether a revised mandate has to survive the night in the agent's own notes is a controlled
+factor, not left to the draw: on each trial half of the tasks draw from the placements in
+which a goal step's line is said on the last shift of day 1 and applies from the first shift
+of day 2, the other half from those in which no goal step's line is (`said_overnight`). Within
+the kind every placement that keeps the rules is equally likely. Where the rules leave only
+one kind (three goal steps fit only with the first applying from the first shift of day 2),
+that kind is drawn on every trial.
 """
 
 from __future__ import annotations
@@ -46,16 +54,46 @@ def schedule_seed(case_id: str, trial: int) -> int:
     return int(hashlib.sha256(f"{case_id}:{trial}".encode()).hexdigest()[:12], 16)
 
 
+def said_overnight(case_id: str, trial: int) -> bool:
+    """Whether the task's revised mandate is said the day before it applies on this trial.
+    The kind alternates over trials from a start drawn per task, so with two trials every
+    task has each kind once and each trial has about half of the tasks of each."""
+    return (schedule_seed(case_id, 0) + trial) % 2 == 0
+
+
 def change_shifts(
-    seed: int, count: int, items: int = DAYS * PER_DAY, goal_steps: int = 0
+    seed: int,
+    count: int,
+    items: int = DAYS * PER_DAY,
+    goal_steps: int = 0,
+    overnight: bool | None = None,
 ) -> tuple[int, ...]:
     """`count` shifts drawn evenly from every placement that keeps the schedule's rules. The
     last `goal_steps` of them are goal steps, whose lines are said `GOAL_SAID_BEFORE` shifts
-    earlier on a shift with no change of its own."""
+    earlier on a shift with no change of its own. With `overnight` set, only from the
+    placements in which a goal step's line is said on day 1 and applies on day 2 (True) or in
+    which none is (False), where the rules leave any."""
     allowed = placements(count, items, goal_steps)
     if not allowed:
         raise ValueError(f"{count} changes do not fit in {items} shifts")
+    if overnight is not None and goal_steps:
+        kind = [chosen for chosen in allowed if crosses_night(chosen, goal_steps) == overnight]
+        allowed = tuple(kind) or allowed
     return random.Random(seed).choice(allowed)
+
+
+def crosses_night(chosen: tuple[int, ...], goal_steps: int, per_day: int = PER_DAY) -> bool:
+    """Whether a goal step's line is said on day 1 and the step applies on day 2."""
+    return any(
+        said_the_day_before(shift, GOAL_SAID_BEFORE, per_day)
+        for shift in chosen[len(chosen) - goal_steps :]
+    )
+
+
+def said_the_day_before(applies: int, said_before: int, per_day: int) -> bool:
+    """Whether a goal step applying on shift `applies` was said on day 1 and applies on
+    day 2."""
+    return applies - said_before <= per_day < applies
 
 
 @functools.cache
@@ -94,7 +132,8 @@ def benchmark_setting(case_id: str, spec: SessionSpec, condition: Condition, tri
     conflicts = 1 if instructions else 0
     seed = schedule_seed(case_id, trial)
     stale = 1 if instructions else STATE_DRIFT_EVENTS
-    shifts = change_shifts(seed, stale + conflicts + steps, goal_steps=steps)
+    overnight = said_overnight(case_id, trial) if steps else None
+    shifts = change_shifts(seed, stale + conflicts + steps, goal_steps=steps, overnight=overnight)
     return Setting(
         items=DAYS * PER_DAY,
         changed=shifts[:stale],

@@ -2,8 +2,8 @@
 
 Every response from the provider is counted as it arrives: its status, its token usage and
 the rate-limit headers it carries. Every `WINDOW_SECONDS` one line is appended to
-`data/cases/rate/<model>.jsonl` with what the window saw and how many sessions were running
-and allowed at once. Requests of the tested model and of the simulator are counted apart,
+`data/cases/rate/<model>.jsonl` with what the window saw, how many sessions were running
+and allowed at once and which tested model the run was running. Requests of the tested model and of the simulator are counted apart,
 since when one model plays both they share the provider's limit.
 """
 
@@ -34,6 +34,9 @@ class Window(BaseModel):
 
     at: str
     seconds: float
+    # The model the run that wrote the window tests; in a simulator's log, the model whose
+    # people it played.
+    tested: str | None = None
     active: int
     allowed: int
     requests: dict[str, int]
@@ -108,11 +111,12 @@ class RateLog:
             self.output += tokens[2]
             self.headers.update(headers)
 
-    def flush(self, active: int, allowed: int) -> Window:
+    def flush(self, active: int, allowed: int, tested: str | None = None) -> Window:
         with self.lock:
             window = Window(
                 at=datetime.now(UTC).isoformat(timespec="seconds"),
                 seconds=round(self.clock() - self.started, 1),
+                tested=tested,
                 active=active,
                 allowed=allowed,
                 requests=dict(self.requests),
@@ -144,7 +148,10 @@ def rate_log(settings: Settings, model: str) -> RateLog:
 
 
 def log_while(
-    log: RateLog, active: Callable[[], tuple[int, int]], stop: threading.Event
+    log: RateLog,
+    active: Callable[[], tuple[int, int]],
+    stop: threading.Event,
+    tested: str | None = None,
 ) -> threading.Thread:
     """Flush `log` every window until `stop` is set, and once more at the end. A log that
     another thread already flushes is left to it: the returned thread does nothing."""
@@ -156,8 +163,8 @@ def log_while(
     def loop() -> None:
         try:
             while not stop.wait(WINDOW_SECONDS):
-                log.flush(*active())
-            log.flush(*active())
+                log.flush(*active(), tested)
+            log.flush(*active(), tested)
         finally:
             log.flusher.release()
 

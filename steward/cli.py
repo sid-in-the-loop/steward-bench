@@ -796,7 +796,16 @@ def cmd_session_run(settings: Settings, args: argparse.Namespace) -> int:
 
     simulator = ClaudeSimulator(anthropic.Anthropic(), simulator_cache(settings), SESSION_MODEL)
     for model in models:
-        run_sessions(settings, model, cases, list(chosen.values()), trials, args.workers, simulator)
+        run_sessions(
+            settings,
+            model,
+            cases,
+            list(chosen.values()),
+            trials,
+            args.workers,
+            simulator,
+            args.retry_failed,
+        )
     used = simulator.input_tokens, simulator.output_tokens
     print(f"simulator: {used[0]} input tokens, {used[1]} output tokens")
     return 0
@@ -821,6 +830,7 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
         BENCHMARK_TRIALS,
         Budget,
         benchmark_jobs,
+        estimate_simulator_usd,
         estimate_usd,
         pending,
         run_jobs,
@@ -840,13 +850,18 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
     models = [MODELS[name] for name in args.model]
     played_by = None if args.simulator_model == NO_SIMULATOR else args.simulator_model
     limit = BENCHMARK_MAX_USD if args.max_usd is None else args.max_usd
+    playing = MODELS.get(played_by) if played_by else None
     for model in models:
         todo = pending(sessions_path(settings, model.name), jobs, played_by)
         dollars = sum(estimate_usd(model, job.setting) for job in todo)
-        print(
+        line = (
             f"{model.name}: {len(todo)} of {len(jobs)} sessions to run, about ${dollars:.2f} "
             "for the tested model"
         )
+        if playing is not None:
+            assumed = sum(estimate_simulator_usd(playing, job.setting) for job in todo)
+            line += f" and about ${assumed:.2f} for the simulator {playing.name}"
+        print(line)
     print(f"limit ${limit:.2f} for the tested models and the simulator together")
     if not args.confirm:
         print("Add --confirm to run.")
@@ -861,7 +876,16 @@ def run_benchmark(settings: Settings, args: argparse.Namespace, cases: list[Sess
 
     budget = Budget(limit, others=simulator_spent)
     for model in models:
-        run_jobs(settings, model, jobs, args.workers, simulator, budget, args.start)
+        run_jobs(
+            settings,
+            model,
+            jobs,
+            args.workers,
+            simulator,
+            budget,
+            args.start,
+            retry_failed=args.retry_failed,
+        )
     if simulator is not None:
         used = simulator.usage
         cost = MODELS[simulator.model].pricing.cost(used) if simulator.model in MODELS else 0.0
@@ -1889,6 +1913,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         help="with --condition, start no session once the tested models and the simulator "
         f"have spent this much (default {BENCHMARK_MAX_USD:.0f})",
+    )
+    sub.add_argument(
+        "--retry-failed",
+        action="store_true",
+        help="try again sessions that failed 4 times by the tested model's own error",
     )
     sub = add("sim-probe", cmd_sim_probe, "send the user simulator fixed probes and grade them")
     sub.add_argument(

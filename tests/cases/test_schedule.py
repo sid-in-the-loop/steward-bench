@@ -18,8 +18,13 @@ from steward.cases.schedule import (
     benchmark_setting,
     change_shifts,
     conditions_of,
+    crosses_night,
+    placements,
+    said_overnight,
+    said_the_day_before,
     schedule_seed,
 )
+from steward.cases.session_commands import BENCHMARK_TRIALS
 from steward.cases.sessions import ScriptedItems, Session, SessionRun, SessionSpec, Setting
 from steward.config import Settings
 from steward.execution.policy import Message, Policy, Usage
@@ -208,6 +213,46 @@ def test_every_placement_of_state_and_instruction_drift_can_be_drawn(spec: Sessi
     # only the one with the goal step applying from the first shift of day 2.
     assert len(drawn) == 35
     assert any(PER_DAY + 1 not in placement for placement in drawn)
+
+
+def test_half_the_tasks_carry_the_revised_mandate_overnight_on_each_trial(
+    spec: SessionSpec,
+) -> None:
+    for steps in (1, 2):
+        full = with_changes(spec, steps)
+        names = [f"t{n}" for n in range(200)]
+        kinds = {
+            (name, trial): crosses_night(
+                tuple(change_shifts_of(benchmark_setting(name, full, BOTH, trial))), steps
+            )
+            for name in names
+            for trial in BENCHMARK_TRIALS
+        }
+        for name in names:
+            assert {kinds[(name, trial)] for trial in BENCHMARK_TRIALS} == {True, False}
+        for trial in BENCHMARK_TRIALS:
+            overnight = sum(kinds[(name, trial)] for name in names)
+            assert 80 <= overnight <= 120
+        for (name, trial), kind in kinds.items():
+            assert kind == said_overnight(name, trial)
+    # Each goal step said the day before applies from the first shift of day 2.
+    assert {
+        tuple(change_shifts_of(benchmark_setting(f"t{n}", with_changes(spec, 1), BOTH, trial)))
+        for n in range(40)
+        for trial in BENCHMARK_TRIALS
+        if said_overnight(f"t{n}", trial)
+    } == {(3, 5, 7)}
+
+
+def test_the_overnight_placements_are_what_the_rules_allow() -> None:
+    def overnight(steps: int) -> set[tuple[int, ...]]:
+        return {p for p in placements(2 + steps, 12, steps) if crosses_night(p, steps)}
+
+    assert overnight(1) == {(3, 5, 7)}
+    assert overnight(2) == {(3, 5, 7, 9), (3, 5, 7, 10), (3, 5, 7, 11)}
+    # Three goal steps fit only one way, and it carries the first overnight: every trial.
+    assert overnight(3) == set(placements(5, 12, 3)) == {(3, 5, 7, 9, 11)}
+    assert said_the_day_before(7, 1, 6) and not said_the_day_before(8, 1, 6)
 
 
 def test_state_drift_changes_the_environment_on_four_shifts_placed_by_the_seed(

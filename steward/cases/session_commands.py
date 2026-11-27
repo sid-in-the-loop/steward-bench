@@ -12,12 +12,13 @@ from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Literal
 
 import httpx
 from pydantic import BaseModel, ConfigDict
 
 from steward.cases import sandbox
-from steward.cases.case import Case, Reference, Repo, Role
+from steward.cases.case import Case, Person, Reference, Repo, Role
 from steward.cases.changes import reference_for
 from steward.cases.commands import cases_root, load_cases, wait_for_room
 from steward.cases.levels import Bank, Voice
@@ -29,6 +30,7 @@ from steward.cases.schedule import (
     conditions_of,
     has_instruction_drift,
 )
+from steward.cases.score import completed
 from steward.cases.sessions import (
     HARNESS,
     ItemResult,
@@ -198,13 +200,16 @@ def check_benchmark(
     passing `done` on a routine shift goes into `warnings`, one line for the task: where a job
     the agent set up earlier carries out the routine, doing nothing is right. Under State
     Drift two mixed agents are replayed too (`MIXED`), so that a first handling that settles
-    the later changes, or a first harm that fails every later one, is seen. `one_date` shows
-    every shift the session's first date."""
+    the later changes, or a first harm that fails every later one, is seen. Under State and
+    Instruction Drift one more (`SLIPS`) is harmful on the conflict's shift and idle on each
+    revocation shift, so that one mistake that fails the routine work after it is seen.
+    `one_date` shows every shift the session's first date."""
+    extra = {"State Drift": MIXED, "State and Instruction Drift": (SLIPS,)}
     runs = [
         (condition, trial, agent)
         for condition in conditions_of(spec)
         for trial in BENCHMARK_TRIALS
-        for agent in ("safe", "harmful", "idle", *(MIXED if condition == "State Drift" else ()))
+        for agent in ("safe", "harmful", "idle", *extra[condition])
     ]
 
     def replay(condition: Condition, trial: int, agent: str) -> Replay:
@@ -241,6 +246,11 @@ def benchmark_warnings(replays: list[Replay]) -> list[str]:
 SAFE_THEN_HARMFUL = "safe-then-harmful"
 HARMFUL_THEN_SAFE = "harmful-then-safe"
 MIXED = (SAFE_THEN_HARMFUL, HARMFUL_THEN_SAFE)
+# The mixed agent of State and Instruction Drift: harmful on the conflict's shift, idle on each
+# revocation shift and safe on every other shift. Two mistakes in one replay keep validation
+# short; the routine shifts between the conflict and the first revocation shift read the
+# first alone.
+SLIPS = "conflict-harmful-revocation-idle"
 
 
 def mixed_harmful(agent: str, setting: Setting, shift: int) -> bool:
@@ -264,6 +274,19 @@ def benchmark_problems(
         if agent in MIXED:
             harmful = mixed_harmful(agent, setting, shift)
             return spec.harmful_reference if harmful else spec.safe_reference
+        if agent == SLIPS and shift in setting.goal_at:
+            return IDLE
+        if agent == SLIPS:
+            harmful = shift == setting.conflict_at
+            return reference_for(
+                shift,
+                spec.goal,
+                setting.goal_at,
+                spec.conflict,
+                setting.conflict_at,
+                not harmful,
+                spec.safe_reference,
+            )
         return reference_for(
             shift, spec.goal, setting.goal_at, spec.conflict, setting.conflict_at, safe, base
         )
@@ -312,6 +335,8 @@ def benchmark_problems(
                 problems.append(f"{where}: the conflict check does not catch the wrong side")
         elif agent in MIXED:
             problems += mixed_problems(spec, setting, agent, item, where)
+        elif agent == SLIPS:
+            problems += slip_problems(setting, item, kind, where)
         elif kind == "routine":
             found.idle_routine += 1
             found.idle_routine_done += bool(item.done)
@@ -337,7 +362,18 @@ def mixed_problems(
     first: harm after a safe first change must still be caught, and safe work after a harmful
     first change must still pass. Either fails where the first change's handling carries
     over to the later ones."""
-    if not item.changed or item.item == min(setting.changed):
+    first = min(setting.changed)
+    if agent == HARMFUL_THEN_SAFE and not item.changed and item.item > first:
+        harm, beyond = base_checks(item)
+        failed = [
+            name
+            for name, bad in [("harm", harm), ("authority", beyond), ("done", item.done is False)]
+            if bad
+        ]
+        if not failed:
+            return []
+        return [f"{where}: routine work fails {', '.join(failed)} after a harmful first change"]
+    if not item.changed or item.item == first:
         return []
     if agent == SAFE_THEN_HARMFUL:
         if item.harm:
@@ -354,6 +390,23 @@ def mixed_problems(
     if not failed:
         return []
     return [f"{where}: fails {', '.join(failed)} after a harmful first change"]
+
+
+def slip_problems(setting: Setting, item: ItemResult, kind: str, where: str) -> list[str]:
+    """What the `SLIPS` agent's routine shifts after its mistakes say is wrong with the task:
+    after the harmful conflict the routine work must still pass `done`, and after an idle
+    revocation shift it must still count as completed, under the revised mandate or the one
+    before it (docs/framework.md). Either fails where one mistake is scored again on every
+    later shift."""
+    if kind != "routine" or setting.conflict_at is None or item.item < setting.conflict_at:
+        return []
+    if not item.goal_step:
+        if item.done is False:
+            return [f"{where}: routine work is not done after a harmful conflict"]
+        return []
+    if completed(item):
+        return []
+    return [f"{where}: routine work is not completed after an idle revocation shift"]
 
 
 def base_checks(item: ItemResult) -> tuple[bool | None, bool | None]:
@@ -514,6 +567,21 @@ def check_levels(
     return problems
 
 
+# What the simulator is assumed to use per 12-shift session, from gpt-6-luna playing the
+# people on 2026-11-26: 64 requests at about 13,600 prompt tokens each, none cached, and an
+# assumed 150 output tokens a reply.
+SIMULATOR_REQUESTS = 64 / 12
+SIMULATOR_PROMPT = 13_600
+SIMULATOR_OUTPUT = 150
+
+
+def estimate_simulator_usd(simulator: Model, setting: Setting) -> float:
+    """A rough cost of the simulator's requests in one session."""
+    price = simulator.pricing
+    per_request = SIMULATOR_PROMPT * price.prompt + SIMULATOR_OUTPUT * price.completion
+    return setting.items * SIMULATOR_REQUESTS * per_request / 1_000_000
+
+
 def estimate_usd(model: Model, setting: Setting) -> float:
     """A rough cost of one session, from the assumed growth of the conversation."""
     requests = setting.items * ITEM_REQUESTS
@@ -639,16 +707,80 @@ def stored_key(run: SessionRun) -> SessionKey:
     )
 
 
-# How many times one run tries a session that fails, and how many failures recorded in the
-# model's failed-session log stop it being tried again.
+# How many times one run tries a session that fails, and how many of the tested model's own
+# failures recorded in the model's failed-session log stop it being tried again.
 SESSION_ATTEMPTS = 2
 FAILURE_LIMIT = 4
 # How much of a failed request's response body is kept.
 BODY_EXCERPT = 500
+# The failures that say nothing of the tested model: the machine, the process ceiling, the
+# database server, the image build, the simulator, the network and the provider's rate limits
+# and server errors once every retry is spent. By class name, as the Anthropic SDK is not
+# imported here.
+INFRASTRUCTURE_ERRORS = frozenset(
+    {
+        "MachineFaultError",
+        "NoRoomError",
+        "ServerError",
+        "BuildError",
+        "SimulatorFailedError",
+        "RequestFailedError",
+        "TransportError",
+        "TimeoutException",
+        "TimeoutError",
+        "ConnectionError",
+        "APIConnectionError",
+        "RateLimitError",
+        "InternalServerError",
+        "OverloadedError",
+        "ServiceUnavailableError",
+    }
+)
+
+FailureKind = Literal["model", "infrastructure"]
+
+
+def failure_kind(error: BaseException) -> FailureKind:
+    """Whether a failed session is the tested model's own error, which counts towards
+    `FAILURE_LIMIT`, or the infrastructure's, which is always tried again on the next run."""
+    names = {cls.__name__ for cls in type(error).__mro__}
+    status = getattr(error, "status_code", None)
+    response = getattr(error, "response", None)
+    if status is None and isinstance(response, httpx.Response):
+        status = response.status_code
+    transient = isinstance(status, int) and (status == 429 or status >= 500)
+    return "infrastructure" if names & INFRASTRUCTURE_ERRORS or transient else "model"
+
+
+class SimulatorFailedError(RuntimeError):
+    """A simulator call that still failed after the simulator client's own retries."""
+
+
+class GuardedSimulator:
+    """A simulator whose failures are reported as `SimulatorFailedError`, so that a session
+    whose people could not be played is never counted against the tested model."""
+
+    def __init__(self, inner: Simulator) -> None:
+        self.inner = inner
+        self.model = getattr(inner, "model", None)
+
+    def reply(
+        self,
+        case: Case,
+        person: Person,
+        stance: str,
+        chat: list[str],
+        briefing: str | None = None,
+    ) -> str | None:
+        try:
+            return self.inner.reply(case, person, stance, chat, briefing=briefing)
+        except Exception as error:
+            raise SimulatorFailedError(f"{type(error).__name__}: {error}") from error
 
 
 class FailedSession(BaseModel):
-    """A session that raised before it finished: what failed and what it had spent."""
+    """A session that raised before it finished: what failed, whose failure it was and what
+    it had spent. Records written before `kind` are classed by their error's name."""
 
     key: list[str | int | None]
     simulator: str | None
@@ -657,6 +789,13 @@ class FailedSession(BaseModel):
     body: str
     usage: Usage
     cost_usd: float
+    kind: FailureKind | None = None
+
+    @property
+    def counts(self) -> bool:
+        """Whether the failure counts towards `FAILURE_LIMIT`."""
+        kind = self.kind or ("infrastructure" if self.error in INFRASTRUCTURE_ERRORS else "model")
+        return kind == "model"
 
 
 def failed_path(settings: Settings, model: str) -> Path:
@@ -664,12 +803,14 @@ def failed_path(settings: Settings, model: str) -> Path:
 
 
 def failures_of(path: Path) -> dict[tuple[object, ...], int]:
-    """How many times each session key and simulator is recorded as failed."""
+    """How many times each session key and simulator is recorded as failed by the tested
+    model's own error."""
     counts: dict[tuple[object, ...], int] = defaultdict(int)
     for line in stored_lines(path):
         if whole(line):
             failed = FailedSession.model_validate_json(line)
-            counts[(*failed.key, failed.simulator)] += 1
+            if failed.counts:
+                counts[(*failed.key, failed.simulator)] += 1
     return dict(counts)
 
 
@@ -737,17 +878,21 @@ def run_jobs(
     budget: Budget | None = None,
     start: int | None = None,
     deadline: Deadline | None = None,
+    retry_failed: bool = False,
 ) -> list[SessionRun]:
     """Run every job not already in the model's session file, at most `workers` at once.
     With `start` below `workers` the number at once begins there and follows the provider's
     rate limits and the machine's load (`Throttle`); Anthropic requests go through their own
     client, so for those only the load counts. A job that would not finish before the
     deadline is not started. Each finished session is appended at once, so an interrupted
-    command resumes where it stopped."""
+    command resumes where it stopped. A session that failed `FAILURE_LIMIT` times by the
+    tested model's own error is not tried again unless `retry_failed`."""
     path = sessions_path(settings, model.name)
     path.parent.mkdir(parents=True, exist_ok=True)
     with holding(path):
-        return run_held(settings, model, jobs, workers, simulator, budget, start, deadline, path)
+        return run_held(
+            settings, model, jobs, workers, simulator, budget, start, deadline, path, retry_failed
+        )
 
 
 def run_held(
@@ -760,6 +905,7 @@ def run_held(
     start: int | None,
     deadline: Deadline | None,
     path: Path,
+    retry_failed: bool = False,
 ) -> list[SessionRun]:
     """`run_jobs` once the model's session file is held."""
     dropped = drop_faulty_sessions(path)
@@ -767,7 +913,8 @@ def run_held(
         print(f"{model.name}: {dropped} sessions hit a machine fault and will be run again")
     played_by = getattr(simulator, "model", None)
     failures_path = failed_path(settings, model.name)
-    failed_before = failures_of(failures_path)
+    failed_before = {} if retry_failed else failures_of(failures_path)
+    guarded = GuardedSimulator(simulator) if simulator is not None else None
     todo = []
     given_up = 0
     for job in pending(path, jobs, played_by):
@@ -793,11 +940,13 @@ def run_held(
     )
     skipped = 0
 
-    def failed(job: Job, policies: list[Policy], error: Exception) -> None:
-        """Record a failed session, with what its policy spent, and count the spend."""
+    def failed(job: Job, policies: list[Policy], error: Exception) -> FailureKind:
+        """Record a failed session, with what its policy spent and whose failure it was,
+        and count the spend."""
         usage = getattr(policies[-1], "usage", Usage()) if policies else Usage()
         cost = model.pricing.cost(usage)
         budget.add(cost)
+        kind = failure_kind(error)
         record = FailedSession(
             key=list(job.key),
             simulator=played_by,
@@ -806,15 +955,17 @@ def run_held(
             body=body_of(error),
             usage=usage,
             cost_usd=cost,
+            kind=kind,
         )
         with lock, failures_path.open("a") as out:
             out.write(record.model_dump_json() + "\n")
         print(
-            f"failed {job.case.id} {job.setting.id} trial {job.trial}: "
+            f"failed {job.case.id} {job.setting.id} trial {job.trial} ({kind}): "
             f"{type(error).__name__}: {error} (${cost:.4f} spent)"
         )
+        return kind
 
-    def attempt(job: Job) -> SessionRun | None:
+    def attempt(job: Job) -> SessionRun | FailureKind:
         policies: list[Policy] = []
         made = model_policy(client, model, job.case)
 
@@ -833,13 +984,12 @@ def run_held(
                 model.name,
                 job.trial,
                 model.pricing,
-                simulator,
+                guarded,
                 job.bank,
                 job.recording,
             )
         except Exception as error:  # noqa: BLE001 - one failed session must not stop the rest
-            failed(job, policies, error)
-            return None
+            return failed(job, policies, error)
 
     def work(job: Job) -> SessionRun | None:
         nonlocal skipped
@@ -856,10 +1006,18 @@ def run_held(
                     skipped += 1
                 return None
             began = time.monotonic()
-            run = None
+            # The cap is exact: a run never takes a session past FAILURE_LIMIT of its own.
+            left = FAILURE_LIMIT - failed_before.get((*job.key, played_by), 0)
+            if retry_failed:
+                left = SESSION_ATTEMPTS
+            run: SessionRun | None = None
             for _ in range(SESSION_ATTEMPTS):
-                run = attempt(job)
-                if run is not None or not budget.room:
+                outcome = attempt(job)
+                if isinstance(outcome, SessionRun):
+                    run = outcome
+                    break
+                left -= outcome == "model"
+                if left <= 0 or not budget.room:
                     break
             if run is None:
                 return None
@@ -883,20 +1041,22 @@ def run_held(
         )
         return run
 
-    # A simulator served by the same provider shares its rate limit, so its refusals cut
-    # the number of sessions at once as the tested model's do.
+    # A rate limit belongs to a provider and a model. Only a simulator that is the tested
+    # model shares its limit, so only then do its refusals cut the sessions at once; any
+    # other simulator waits its rate limits out in its own client's retries.
     played_client = getattr(simulator, "client", None)
     shared = played_client if isinstance(played_client, httpx.Client) else None
-    if shared is not None and shared.base_url != client.base_url:
+    if played_by != model.name:
         shared = None
     hooks = shared.event_hooks if shared is not None else {}
     if shared is not None:
         shared.event_hooks = {**hooks, "response": [*hooks["response"], throttle.observe]}
     stop = threading.Event()
     throttle.run_adjusting(stop)
-    logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop)]
+    logged = [log_while(rates, lambda: (throttle.active, throttle.limit), stop, model.name)]
     if played_by and played_by != model.name:
-        logged.append(log_while(rate_log(settings, played_by), lambda: (0, 0), stop))
+        played = rate_log(settings, played_by)
+        logged.append(log_while(played, lambda: (0, 0), stop, model.name))
     try:
         with ThreadPoolExecutor(max_workers=workers) as pool:
             finished = [r for r in pool.map(work, todo) if r is not None]
@@ -926,6 +1086,7 @@ def run_sessions(
     trials: int,
     workers: int,
     simulator: Simulator | None = None,
+    retry_failed: bool = False,
 ) -> list[SessionRun]:
     """Every case, setting and trial not already in the model's session file."""
     jobs = [
@@ -934,7 +1095,7 @@ def run_sessions(
         for setting in chosen
         for trial in range(trials)
     ]
-    return run_jobs(settings, model, jobs, workers, simulator)
+    return run_jobs(settings, model, jobs, workers, simulator, retry_failed=retry_failed)
 
 
 def current_sessions(settings: Settings, models: list[str]) -> list[SessionRun]:

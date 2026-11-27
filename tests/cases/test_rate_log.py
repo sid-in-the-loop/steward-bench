@@ -49,11 +49,12 @@ def test_a_window_counts_callers_refusals_tokens_and_limit_headers(tmp_path: Pat
 def test_logging_writes_a_last_window_when_stopped(tmp_path: Path) -> None:
     log = RateLog(tmp_path / "m.jsonl")
     stop = threading.Event()
-    thread = log_while(log, lambda: (3, 4), stop)
+    thread = log_while(log, lambda: (3, 4), stop, "gpt-6-luna")
     stop.set()
     thread.join(timeout=5)
     [line] = (tmp_path / "m.jsonl").read_text().splitlines()
     assert json.loads(line)["active"] == 3
+    assert json.loads(line)["tested"] == "gpt-6-luna"
 
 
 def test_a_log_has_one_flusher_at_a_time(tmp_path: Path) -> None:
