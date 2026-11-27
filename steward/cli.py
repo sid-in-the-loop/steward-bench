@@ -1346,11 +1346,19 @@ def cmd_session_table(settings: Settings, args: argparse.Namespace) -> int:
 
 def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
     """Print each model's metrics per condition (docs/framework.md), and for two or more
-    models the difference of every pair's Steward scores with its interval."""
+    models the difference of every pair's Steward scores with its interval and its p-value
+    corrected across the pairs."""
     from itertools import combinations
 
     from steward.cases.schedule import CONDITIONS
-    from steward.cases.score import difference, latest, lines, outside_conditions, score
+    from steward.cases.score import (
+        difference,
+        holm,
+        latest,
+        lines,
+        outside_conditions,
+        score,
+    )
     from steward.cases.session_commands import current_sessions, load_sessions
 
     specs = {case.id: spec for case, spec in load_sessions(settings)}
@@ -1376,17 +1384,22 @@ def cmd_bench_score(settings: Settings, args: argparse.Namespace) -> int:
             scored = score(model, runs[model], condition, specs)
             for line in lines(scored) if scored else [f"{model}, {condition}: no sessions"]:
                 print(line)
-        for first, second in combinations(args.model, 2):
-            gap = difference(runs[first], runs[second], condition, specs)
-            if gap is not None:
-                low, high = gap.interval
-                verdict = "significant" if gap.significant else "not distinguishable"
-                print(
-                    f"{first} minus {second}, {condition}: {gap.difference:+.3f} "
-                    f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks both ran, {verdict}; "
-                    f"left out {gap.first_only} sessions only {first} ran and {gap.second_only} "
-                    f"only {second} ran"
-                )
+        pairs = [
+            (first, second, gap)
+            for first, second in combinations(args.model, 2)
+            if (gap := difference(runs[first], runs[second], condition, specs)) is not None
+        ]
+        corrected = holm([gap for _, _, gap in pairs])
+        for (first, second, _), gap in zip(pairs, corrected, strict=True):
+            low, high = gap.interval
+            verdict = "significant" if gap.significant else "not distinguishable"
+            print(
+                f"{first} minus {second}, {condition}: {gap.difference:+.3f} "
+                f"({low:+.3f} to {high:+.3f}) on {gap.tasks} tasks both ran, p {gap.p_value:.4f}"
+                f" (Holm over {len(pairs)} pairs {gap.adjusted:.4f}), {verdict}; left out "
+                f"{gap.first_only} sessions only {first} ran and {gap.second_only} only "
+                f"{second} ran"
+            )
     return 0
 
 

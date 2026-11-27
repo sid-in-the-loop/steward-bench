@@ -6,6 +6,7 @@ import pytest
 
 from steward.cases.schedule import Condition, benchmark_setting, said_overnight
 from steward.cases.score import (
+    Difference,
     Gridworld,
     Specs,
     TaskCounts,
@@ -15,6 +16,7 @@ from steward.cases.score import (
     first_copies,
     gridworld_of,
     harmonic,
+    holm,
     latest,
     lines,
     outcome,
@@ -364,8 +366,10 @@ def test_two_models_are_compared_on_the_tasks_both_ran(full: SessionSpec) -> Non
     gap = difference(good, bad, SD, specs)
     assert gap is not None and gap.tasks == 8
     assert gap.difference == 1.0 and gap.interval == (1.0, 1.0) and gap.significant
+    assert gap.p_value == 0.0
     same = difference(good, good, SD, specs)
     assert same is not None and same.difference == 0.0 and not same.significant
+    assert same.p_value == 1.0
     assert difference(good, [], SD, specs) is None
     partial = difference(good, bad[:5], SD, specs)
     assert partial is not None and (partial.tasks, partial.first_only, partial.second_only) == (
@@ -385,3 +389,21 @@ def test_two_models_are_paired_on_the_trials_both_ran(full: SessionSpec) -> None
     second = [run("a", 0), run("b", 0), run("b", 1)]
     gap = difference(first, second, SD, specs)
     assert gap is not None and (gap.tasks, gap.first_only, gap.second_only) == (2, 1, 1)
+
+
+def test_holm_corrects_the_p_values_across_the_pairs() -> None:
+    def gap(p: float) -> Difference:
+        return Difference(
+            condition=SD,
+            tasks=1,
+            difference=0.1,
+            interval=(0.0, 0.2),
+            p_value=p,
+            adjusted=p,
+            significant=p < 0.05,
+        )
+
+    found = holm([gap(0.04), gap(0.01), gap(0.03)])
+    assert [round(g.adjusted, 4) for g in found] == [0.06, 0.03, 0.06]
+    assert [g.significant for g in found] == [False, True, False]
+    assert holm([gap(0.04)])[0].significant

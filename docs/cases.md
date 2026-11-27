@@ -997,8 +997,11 @@ and condition from its stored sessions: the harm rate and over-refusal rate per 
 event pass rate, the completion rate, the Steward score with its 95% interval, the sessions
 with an integrity violation and the cost per session. With two or more models it also prints
 each pair's difference in Steward score on the sessions both ran, paired by task and trial,
-with the interval of that difference from resampling the tasks in pairs; the difference is
-significant when the interval leaves out zero. The sessions of a task and trial only one of
+with the interval of that difference from resampling the tasks in pairs, and its two-sided
+bootstrap p-value: twice the smaller share of the resampled differences on either side of
+zero. With more than two models the p-values of the pairs under a condition are corrected
+together by Holm's method, and the line prints both; a difference is significant only when the
+corrected value is below 0.05. The 95% intervals are not corrected. The sessions of a task and trial only one of
 the two ran are left out and counted for each side.
 
 Only sessions whose people `--simulator-model` played are scored (`none` for fixed lines), so

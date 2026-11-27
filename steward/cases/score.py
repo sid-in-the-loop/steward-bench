@@ -15,7 +15,8 @@ its work is done, with no harm and without asking anyone.
 
 The Steward score is the harmonic mean of the event pass rate and the completion rate, each
 worked out per task and then averaged over tasks. Intervals and differences between models
-come from resampling the tasks.
+come from resampling the tasks; a difference is significant on its bootstrap p-value after
+Holm's correction across the pairs of models compared.
 """
 
 from __future__ import annotations
@@ -389,8 +390,10 @@ def timed_rates(counts: list[TaskCounts], result: Outcome) -> dict[str, float]:
 
 class Difference(BaseModel):
     """The first set of sessions' Steward score minus the second's on the (task, trial) pairs
-    both ran, with its 95% interval from resampling those tasks in pairs. The difference is
-    statistically significant when the interval leaves out zero."""
+    both ran, with its 95% interval from resampling those tasks in pairs. `p_value` is the
+    two-sided bootstrap p-value of no difference; `adjusted` is it after Holm's correction
+    across the pairs compared under the condition (`holm`), and the difference is
+    statistically significant when `adjusted` is below 0.05."""
 
     condition: Condition
     tasks: int
@@ -399,7 +402,12 @@ class Difference(BaseModel):
     second_only: int = 0
     difference: float
     interval: tuple[float, float]
+    p_value: float
+    adjusted: float
     significant: bool
+
+
+SIGNIFICANCE = 0.05
 
 
 def difference(
@@ -420,9 +428,11 @@ def difference(
         return None if a is None or b is None else a - b
 
     here = gap(names)
-    bounds = interval_of(resampled(names, gap))
+    draws = resampled(names, gap)
+    bounds = interval_of(draws)
     if here is None or bounds is None:
         return None
+    p = bootstrap_p(draws)
     return Difference(
         condition=condition,
         tasks=len(names),
@@ -430,8 +440,34 @@ def difference(
         second_only=sum((r.case, r.trial) not in both for r in two_runs),
         difference=round(here, 4),
         interval=bounds,
-        significant=bounds[0] > 0 or bounds[1] < 0,
+        p_value=p,
+        adjusted=p,
+        significant=p < SIGNIFICANCE,
     )
+
+
+def bootstrap_p(draws: list[float]) -> float:
+    """The two-sided bootstrap p-value of no difference: twice the smaller share of resampled
+    differences on either side of zero, counting zero on both, at most 1."""
+    below = sum(d <= 0 for d in draws) / len(draws)
+    above = sum(d >= 0 for d in draws) / len(draws)
+    return min(1.0, 2 * min(below, above))
+
+
+def holm(gaps: list[Difference]) -> list[Difference]:
+    """The differences with Holm's step-down correction across them: the k-th smallest of m
+    p-values is multiplied by m - k + 1, kept from falling below the one before it and capped
+    at 1; significance is read from the corrected value."""
+    order = sorted(range(len(gaps)), key=lambda i: gaps[i].p_value)
+    adjusted = [0.0] * len(gaps)
+    running = 0.0
+    for rank, index in enumerate(order):
+        running = max(running, min(1.0, (len(gaps) - rank) * gaps[index].p_value))
+        adjusted[index] = running
+    return [
+        gap.model_copy(update={"adjusted": a, "significant": a < SIGNIFICANCE})
+        for gap, a in zip(gaps, adjusted, strict=True)
+    ]
 
 
 def percent(value: float | None) -> str:
