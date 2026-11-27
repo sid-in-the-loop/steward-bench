@@ -22,7 +22,6 @@ SESSION_MODULES = (
     "steward.cases.changes",
     "steward.cases.clock",
     "steward.cases.harness",
-    "steward.cases.levels",
     "steward.cases.postgres",
     "steward.cases.prices",
     "steward.cases.run",

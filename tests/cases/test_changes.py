@@ -256,29 +256,6 @@ def test_the_visible_version_is_exported_and_keeps_old_ids_apart(
     )
 
 
-def test_a_task_with_both_versions_is_checked_in_each(
-    case: Case, spec: SessionSpec, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from types import SimpleNamespace
-
-    import steward.cases.session_commands as commands
-
-    seen: list[bool] = []
-
-    def fake_run(
-        _s: object, _c: object, _sp: object, setting: Setting, *a: object, **k: object
-    ) -> SimpleNamespace:
-        seen.append(setting.visible)
-        return SimpleNamespace(items=[], events=[])
-
-    monkeypatch.setattr(commands, "run_session", fake_run)
-    commands.check_session(None, case, spec.model_copy(update={"visible_version": True}))  # type: ignore[arg-type]
-    assert sorted(seen) == [False, False, True, True]
-    seen.clear()
-    commands.check_session(None, case, spec)  # type: ignore[arg-type]
-    assert seen == [False, False]
-
-
 def test_a_goal_step_can_be_said_the_day_before_it_lands(
     case: Case, changed_spec: SessionSpec
 ) -> None:

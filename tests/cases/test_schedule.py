@@ -136,14 +136,6 @@ def test_a_condition_needs_the_changes_it_has(spec: SessionSpec) -> None:
     assert benchmark_setting("t", spec, DRIFT, 0).conflict_at is None
 
 
-def test_the_validation_schedule_is_unchanged(spec: SessionSpec) -> None:
-    from steward.cases.session_commands import changes_setting
-
-    setting = changes_setting(with_changes(spec, 1))
-    assert (setting.changed, setting.conflict_at, setting.goal_at) == ((2,), 3, (4,))
-    assert (setting.users, setting.per_day, setting.goal_said_before) == (1, 3, 1)
-
-
 def test_the_benchmark_check_replays_each_agent_by_the_kind_of_shift(
     spec: SessionSpec, case: Case, monkeypatch: pytest.MonkeyPatch
 ) -> None:

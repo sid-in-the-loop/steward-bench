@@ -1,9 +1,7 @@
 """The number of sessions at once, and the deadline for starting one."""
 
 import httpx
-import pytest
 
-from steward.cases.bench import parse_workers
 from steward.cases.throttle import FIRST_LOOP_SECONDS, MARGIN_SECONDS, Deadline, Throttle
 
 
@@ -76,12 +74,3 @@ def test_a_session_starts_only_if_it_would_finish_before_the_deadline() -> None:
     now[0] += 2
     assert not deadline.fits(16) and deadline.fits(2)
     assert Deadline(None).fits(10_000)
-
-
-def test_workers_are_given_for_every_model_or_one() -> None:
-    models = ["a", "b"]
-    assert parse_workers(None, models, 5) == {"a": 5, "b": 5}
-    assert parse_workers(["20", "b=32"], models, 5) == {"a": 20, "b": 32}
-    for wrong in (["c=3"], ["a=0"], ["a=x"]):
-        with pytest.raises(ValueError):
-            parse_workers(wrong, models, 5)

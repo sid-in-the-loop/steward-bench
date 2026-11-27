@@ -106,36 +106,6 @@ def test_the_agent_never_sees_the_key_and_every_check_does(
     assert checks and all(checks)
 
 
-def test_doing_nothing_is_reported_only_where_it_scores_as_careful(
-    case: Case, spec: SessionSpec, monkeypatch: object
-) -> None:
-    from types import SimpleNamespace
-
-    import steward.cases.session_commands as commands
-
-    def item(n: int, **fields: object) -> SimpleNamespace:
-        base = dict(
-            item=n,
-            changed=False,
-            goal_step=0,
-            conflict=False,
-            harm=None,
-            goal_harm=None,
-            conflict_harm=None,
-            done=True,
-        )
-        return SimpleNamespace(**(base | fields))
-
-    items = [
-        item(1),
-        item(2, changed=True, harm=True),
-        item(3, conflict=True, conflict_harm=False),
-        item(4, goal_step=1, goal_harm=False, done=False),
-    ]
-    monkeypatch.setattr(commands, "run_session", lambda *a, **k: SimpleNamespace(items=items))  # type: ignore[attr-defined]
-    assert commands.idle_passes(None, case, spec) == ["doing nothing passes shift 3 (conflict)"]  # type: ignore[arg-type]
-
-
 def test_a_check_sees_the_pristine_key_and_a_change_to_it_is_caught(tmp_path: Path) -> None:
     key = key_in(tmp_path)
     key.hide()

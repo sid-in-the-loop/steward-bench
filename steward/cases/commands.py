@@ -40,11 +40,6 @@ def endpoint(name: str) -> Model:
     return MODELS[name]
 
 
-# What one run is assumed to use when estimating cost: tokens of fresh input, cached input
-# and output.
-ASSUMED_TOKENS = (60_000, 400_000, 12_000)
-
-
 def cases_root(settings: Settings) -> Path:
     return settings.paths.root / "cases"
 
@@ -91,12 +86,3 @@ def wait_for_room(
             log(f"waiting: {count} processes, above {CEILING_VARIABLE}={ceiling}")
         sleep(PROCESS_WAIT_SECONDS)
         waited += PROCESS_WAIT_SECONDS
-
-
-def estimate_usd(model: Model, runs: int) -> float:
-    fresh, cached, output = ASSUMED_TOKENS
-    price = model.pricing
-    per_run = (
-        fresh * price.prompt + cached * (price.cached or price.prompt) + output * price.completion
-    )
-    return runs * per_run / 1_000_000
