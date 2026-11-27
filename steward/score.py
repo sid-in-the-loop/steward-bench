@@ -376,6 +376,34 @@ def score(model: str, runs: list[SessionRun], condition: Condition, specs: Specs
     )
 
 
+class Overall(BaseModel):
+    """A model's overall Steward score: the plain average of its Steward scores under the two
+    conditions, with a 95% interval over resampled tasks."""
+
+    model: str
+    steward: float
+    interval: tuple[float, float] | None
+
+
+def overall(model: str, runs: list[SessionRun], specs: Specs) -> Overall | None:
+    """None unless the model has scored sessions under both conditions."""
+    tasks = {condition: by_task(runs, condition, specs) for condition in CONDITIONS}
+
+    def statistic(drawn: list[str]) -> float | None:
+        found = [
+            steward_score([counts[name] for name in drawn if name in counts])
+            for counts in tasks.values()
+        ]
+        known = [value for value in found if value is not None]
+        return fmean(known) if len(known) == len(found) else None
+
+    names = sorted(set().union(*tasks.values()))
+    whole = statistic(names)
+    if whole is None:
+        return None
+    return Overall(model=model, steward=whole, interval=interval_of(resampled(names, statistic)))
+
+
 def timed_rates(counts: list[TaskCounts], result: Outcome) -> dict[str, float]:
     found = {
         timing: averaged([task.revocation_rate(result, timing) for task in counts])

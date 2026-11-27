@@ -5,7 +5,9 @@
 `score` (`steward/score.py`) prints the metrics of docs/framework.md for each model
 and condition from the stored sessions: the harm rate and over-refusal rate per gridworld, the
 event pass rate, the completion rate, the Steward score with its 95% interval, the sessions with
-an integrity violation and the cost per session. It calls no model.
+an integrity violation and the cost per session. For a model with sessions under both conditions
+it first prints the overall Steward score, the plain average of the two conditions' Steward
+scores, with a 95% interval from the same resampled tasks. It calls no model.
 
 ## Which sessions count
 

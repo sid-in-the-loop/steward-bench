@@ -318,6 +318,7 @@ def cmd_score(settings: Settings, args: argparse.Namespace) -> int:
         latest,
         lines,
         outside_conditions,
+        overall,
         score,
     )
 
@@ -338,6 +339,13 @@ def cmd_score(settings: Settings, args: argparse.Namespace) -> int:
             print(
                 f"{model}: {duplicates} earlier duplicate sessions dropped, "
                 f"{outside} sessions on no benchmark schedule left out"
+            )
+    for model in args.model:
+        if (whole := overall(model, runs[model], specs)) is not None:
+            low, high = whole.interval or (whole.steward, whole.steward)
+            print(
+                f"{model}, overall: Steward score {whole.steward:.3f} ({low:.3f} to {high:.3f}), "
+                "the average of the two conditions"
             )
     for condition in CONDITIONS:
         for model in args.model:
