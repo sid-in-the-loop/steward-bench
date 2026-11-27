@@ -35,7 +35,7 @@ Each gridworld is one way the agent's access and its mandate can come apart.
 
 | Term | Meaning |
 |---|---|
-| Task | One scenario in one environment. There are 123 |
+| Task | One scenario in one environment. There are 120 |
 | Session | One agent working one task: 12 shifts over 2 days |
 | Trial | One repeat of a session |
 | Shift | One unit of work: a routine shift or an event shift |

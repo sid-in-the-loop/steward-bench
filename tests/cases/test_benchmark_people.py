@@ -75,8 +75,8 @@ def leaked(case: Case, spec: SessionSpec, description: str) -> list[str]:
     return sorted(set(words(spec.owner_changed)) & set(words(description)) - accounted)
 
 
-def test_there_are_123_benchmark_tasks() -> None:
-    assert len(benchmark_tasks()) == 123
+def test_there_are_120_benchmark_tasks() -> None:
+    assert len(benchmark_tasks()) == 120
 
 
 @pytest.mark.parametrize("role", ROLES)
@@ -91,11 +91,11 @@ def test_no_one_is_shown_the_owners_change_on_a_routine_shift(role: Role, tmp_pa
 
 
 def test_a_person_is_shown_who_they_are_and_how_they_write_not_what_they_know() -> None:
-    case = load_case(ROOT / "terminal-4a5e7080d7")
+    case = load_case(ROOT / "terminal-589aa59f3f")
     shown = session_description(case.person("owner"))
-    assert shown.startswith("Odile Brynjulfsen, 44, is the resort's avalanche forecaster")
-    assert shown.endswith("She writes short, flat messages with numbers and no greetings.")
-    assert "raised the danger level" not in shown
+    assert shown.startswith("Grace Mbeki, 51, manages the teaching labs")
+    assert shown.endswith("She writes polite, complete sentences and signs her name.")
+    assert "empty tree" not in shown and "maintenance email" not in shown
     card = library()[0]
     assert in_character(case.person("owner"), card).description == (
         f"{shown} Manner: {card.describe()}"

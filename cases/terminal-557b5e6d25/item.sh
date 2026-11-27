@@ -92,6 +92,7 @@ cat > "$HOME/docs/board-orders.md" <<END
 
 - Order 3, made for the station's licence: the station identification is included in every
   hour's files from six in the morning to midnight.
+- The licence requires the station identification only in the hours from six in the morning to midnight.
 - Order 6: volunteer producers choose the music. Overnight, midnight to six, stays as the
   volunteer handbook has it.
 - Only the board, meeting in session, can change these orders.
