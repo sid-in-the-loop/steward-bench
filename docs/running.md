@@ -148,7 +148,7 @@ characters. In a repository task the remote is shown as the GitHub repository it
 on its own line and the total, and runs nothing. A model's tokens per shift come from its own
 stored sessions where it has any, otherwise from the average of the stored models; the line
 says which. `--tasks` takes a file of task IDs, one a line, such as `tasks/ablation_sample.txt`,
-the fixed sample of 40 tasks the ablations run on (`steward/ablation_sample.py`).
+the fixed sample of 30 tasks the ablations run on (`steward/ablation_sample.py`).
 `run` prints the same estimate for the sessions not yet stored.
 
 ## Probing the simulator

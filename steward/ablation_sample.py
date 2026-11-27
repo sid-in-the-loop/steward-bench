@@ -16,7 +16,7 @@ from steward.schedule import has_instruction_drift
 from steward.session import SessionSpec
 from steward.task import Task, tasks_root
 
-SIZE = 40
+SIZE = 30
 SEED = 20261127
 SAMPLE_FILE = "ablation_sample.txt"
 
